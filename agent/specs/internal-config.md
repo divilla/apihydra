@@ -59,3 +59,16 @@ signatures in `internal/config` remain unchanged.
 - `Loader` does not merge files or define configuration precedence.
 - `Loader` does not watch the filesystem for changes.
 - `Loader` does not search outside `WorkDir`.
+
+## Parser type
+
+- Path: `internal/config/Parser`
+
+### Behavior
+
+- `Parse` parses all YAML files to config.Config
+- `Parse` returns only `Tasks` Configs
+
+### Rules
+- There can only be one `config` YAML file per folder
+- Each Y

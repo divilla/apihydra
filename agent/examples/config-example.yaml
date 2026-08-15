@@ -1,0 +1,13 @@
+app: apihydra #required - used for filtering when mixed non-apihydra YAML files
+kind: config #required - can be config or tasks
+metadata:
+  name: create-tasks #optional - must be unique if used - used for querying tasks
+  labels: [create, tasks] #optional - used for querying tasks
+spec:
+  baseUrl: http://127.0.0.1:8080 #optional
+  basePath: /api/v1 #optional
+  headers: #optional
+    Content-Type: application/json
+    User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36
+  timeout: 10 #optional - seconds - default 10
+  retries: 3 #optional - default 3

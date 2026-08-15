@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -14,14 +15,15 @@ func NewLoader(workDir string) *Loader {
 	return &Loader{WorkDir: workDir}
 }
 
-func (l *Loader) Files() []string {
+func (l *Loader) Files() ([]string, error) {
+	var files []string
+
 	info, err := os.Stat(l.WorkDir)
 	if err != nil || !info.IsDir() {
-		return nil
+		return nil, fmt.Errorf("%s is not a directory: %w", l.WorkDir, err)
 	}
 
-	var files []string
-	_ = filepath.WalkDir(l.WorkDir, func(path string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(l.WorkDir, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil || entry.IsDir() || !entry.Type().IsRegular() {
 			return nil
 		}
@@ -34,5 +36,5 @@ func (l *Loader) Files() []string {
 		return nil
 	})
 
-	return files
+	return files, err
 }
