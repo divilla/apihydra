@@ -1,16 +1,22 @@
-apihydra: tasks
-tasks:
-
-  - req:
-      path: /change/create
-      body: {
-        "project_id": 1,
-        "title": "API tester Title",
-        "def": "API tester Def"
-      }
-    res:
-      expected: {
-        "agent_edit": false,
-        "change_phase": "backlo",
-        "change_types": []
-      }
+app: apihydra
+kind: steps
+metadata:
+  name: create-change
+  labels: [create, change]
+spec:
+  steps:
+    - request:
+        path: /change/create
+        body: |
+          {
+            "project_id": 1,
+            "title": "API tester Title",
+            "def": "API tester Def"
+          }
+      response:
+        expected: |
+          {
+            "agent_edit": false,
+            "change_phase": "backlo",
+            "change_types": []
+          }
