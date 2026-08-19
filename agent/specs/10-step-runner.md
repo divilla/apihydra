@@ -65,10 +65,11 @@ Stages run in ascending order. For one active stage, StepRunner starts one
 goroutine per directory and waits for every started goroutine before returning
 or advancing to the next stage.
 
-The first directory error recorded for a stage retains its error and non-zero
-code and cancels the shared execution context. If that directory supplied code
-`0`, StepRunner derives a code through `errs.Code` with `ExitInternal` fallback.
-Sibling goroutines are still joined, and later stages do not start.
+The first directory error recorded for a stage retains its error and supplied
+non-zero code and cancels the shared execution context. If that directory
+supplied code `0`, StepRunner derives a code through `errs.Code` with
+`ExitInternal` fallback and preserves the derived code, including `0`. Sibling
+goroutines are still joined, and later stages do not start.
 
 If the shared context is canceled between otherwise successful stages,
 execution returns `ExitInternal` and a built error matching
@@ -115,7 +116,7 @@ error formatting. Those contracts remain with their owning specs.
 4. Same-stage directories may overlap, all are joined, and later stages wait
    for the barrier.
 5. The first recorded fatal stage error cancels shared work, prevents later
-   stages, and cannot be returned with success code.
+   stages, and returns the code derived by the reference implementation.
 6. Per-step execution uses the five phases in the reference order.
 7. Completed validation mismatch traversal returns code `101` and
    `ErrValidation`.
