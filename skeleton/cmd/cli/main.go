@@ -1,7 +1,6 @@
 package main
 
 import (
-	"apih/internal/execution"
 	"apih/skeleton/internal/definition"
 	"apih/skeleton/internal/domain"
 	"apih/skeleton/internal/reporter"
@@ -81,13 +80,6 @@ func run(ctx context.Context, args []string, report *reporter.Reporter) (int, er
 	if err = resolver.ResolveSteps(ctx, suite); err != nil {
 		return errs.ExitConfiguration, err
 	}
-
-	kvs := execution.NewKeyValueStore()
-	reporter := reporter.NewReporter(os.Stdin)
-	varproc := execution.NewVariableProcessor()
-	_ = kvs
-	_ = reporter
-	_ = varproc
 
 	return errs.ExitSuccess, nil
 }
