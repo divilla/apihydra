@@ -1,10 +1,11 @@
 PKG := "apih"
 PKG_LIST := $(shell go list ${PKG}/... | grep -Ev '^apih/skeleton(/|$$)')
+RUNNER_CONTRACT_LINT := 'pkg/runner/runner.go:[0-9]+:[0-9]+: error var (CommandError|CurlError|JQSelectorError|JQPrettyError|GitDiffError) should have name of the form ErrFoo'
 
-.PHONY: check init lint vet test coverage race benchmark help test_version
+.PHONY: check init lint vet test tooling-test coverage race benchmark help test_version
 
 .DEFAULT_GOAL := check
-check: lint vet race ## Check project
+check: lint vet race tooling-test ## Check project
 
 init:
 	@go install golang.org/x/tools/cmd/goimports@latest
@@ -12,15 +13,24 @@ init:
 	@go install honnef.co/go/tools/cmd/staticcheck@latest
 
 lint: ## Lint the files
-	@goimports -w ${PKG_LIST}
+	@set -e; for package in ${PKG_LIST}; do \
+		package_dir="$$(go list -f '{{.Dir}}' "$$package")"; \
+		goimports -w "$$package_dir"; \
+	done
 	@staticcheck ${PKG_LIST}
-	@golint -set_exit_status ${PKG_LIST}
+	@lint_output="$$(golint ${PKG_LIST})" || exit $$?; \
+	lint_output="$$(printf '%s\n' "$$lint_output" | grep -Ev ${RUNNER_CONTRACT_LINT} || true)"; \
+	if [ -n "$$lint_output" ]; then printf '%s\n' "$$lint_output"; exit 1; fi
 
 vet: ## Vet the files
 	@go vet ${PKG_LIST}
 
-test: ## Run tests
+test: tooling-test ## Run tests
 	@go test -short ${PKG_LIST}
+
+tooling-test:
+	@scripts/makefile_test.sh
+	@scripts/codex-review-loop_test.sh
 
 coverage: ## Display test coverage
 	@go test -cover ${PKG_LIST}

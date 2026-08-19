@@ -151,8 +151,8 @@ Package-local requirements are owned in one place:
 | KeyValueStore | [`06-key-value-store-service.md`](specs/06-key-value-store-service.md) |
 | VariableProcessor | [`07-variable-processor.md`](specs/07-variable-processor.md) |
 | Validator | [`08-validator.md`](specs/08-validator.md) |
-| Preparation and execution phase order, tree validation, and stage scheduling | [`09-step-runner.md`](specs/09-step-runner.md) |
-| Reporter methods and output fixed by the reference implementation | [`10-reporter.md`](specs/10-reporter.md) |
+| Preparation and execution phase order, tree validation, and stage scheduling | [`09-step-runner.md`](specs/10-step-runner.md) |
+| Reporter methods and output fixed by the reference implementation | [`10-reporter.md`](specs/09-reporter.md) |
 
 No spec restates another spec's normative behavior. A consumer spec references
 the owner and states only how its own API participates.

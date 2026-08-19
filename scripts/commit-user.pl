@@ -24,9 +24,9 @@ sub capture_checked {
     return $value;
 }
 
-@ARGV <= 1 or fail('usage: scripts/commit.pl ["commit message"]');
+@ARGV <= 1 or fail('usage: scripts/commit-user.pl ["commit message"]');
 
-my $message = @ARGV == 1 ? $ARGV[0] : "Commit by user";
+my $message = @ARGV == 1 ? $ARGV[0] : "User commit";
 $message ne "" or fail("commit message cannot be empty");
 
 my $script = abs_path($0);
