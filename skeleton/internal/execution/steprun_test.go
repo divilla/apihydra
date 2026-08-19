@@ -170,9 +170,9 @@ func TestExecutionErrorsUseProductExitCodes(t *testing.T) {
 		exitCode int
 	}{
 		"invalid directory tree": {errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil), errs.ExitConfiguration},
-		"missing variable":       {errs.Build(errs.ExitConfiguration, NotFoundError, nil), errs.ExitConfiguration},
-		"duplicate variable":     {errs.Build(errs.ExitConfiguration, KeyExistError, nil), errs.ExitConfiguration},
-		"validation":             {errs.Build(errs.ExitValidation, ValidationError, nil), errs.ExitValidation},
+		"missing variable":       {errs.Build(errs.ExitConfiguration, ErrNotFound, nil), errs.ExitConfiguration},
+		"duplicate variable":     {errs.Build(errs.ExitConfiguration, ErrKeyExists, nil), errs.ExitConfiguration},
+		"validation":             {errs.Build(errs.ExitValidation, ErrValidation, nil), errs.ExitValidation},
 	}
 
 	for name, test := range tests {
@@ -189,13 +189,13 @@ func TestExecuteStagesDerivesValidationExitCode(t *testing.T) {
 		context.Background(),
 		[][]*domain.Directory{{{Stage: 0, Path: "/"}}},
 		func(context.Context, *domain.Directory) (int, error) {
-			return errs.ExitSuccess, errs.Build(errs.ExitValidation, ValidationError, nil)
+			return errs.ExitSuccess, errs.Build(errs.ExitValidation, ErrValidation, nil)
 		},
 	)
 	if exitCode != errs.ExitValidation {
 		t.Fatalf("executeStages() exit code = %d, want %d", exitCode, errs.ExitValidation)
 	}
-	if !errors.Is(err, ValidationError) {
-		t.Fatalf("executeStages() error = %v, want ValidationError", err)
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("executeStages() error = %v, want ErrValidation", err)
 	}
 }

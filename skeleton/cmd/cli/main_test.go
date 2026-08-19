@@ -24,8 +24,8 @@ func TestRunReturnsConfigurationExitCodeForInvalidPath(t *testing.T) {
 	if exitCode != errs.ExitConfiguration {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
 	}
-	if !errors.Is(err, InvalidPathError) {
-		t.Fatalf("run() error = %v, want InvalidPathError", err)
+	if !errors.Is(err, ErrInvalidPath) {
+		t.Fatalf("run() error = %v, want ErrInvalidPath", err)
 	}
 	if output.Len() != 0 {
 		t.Fatalf("run() output = %q, want empty output", output.String())

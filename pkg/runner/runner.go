@@ -13,30 +13,20 @@ import (
 	"strings"
 )
 
-// CommandError reports that an external command could not be started.
-//
-//lint:ignore ST1012 Name fixed by the binding skeleton API.
-var CommandError = errors.New("command error")
+// ErrCommand reports that an external command could not be started.
+var ErrCommand = errors.New("command error")
 
-// CurlError reports an unsuccessful curl operation.
-//
-//lint:ignore ST1012 Name fixed by the binding skeleton API.
-var CurlError = errors.New("curl error")
+// ErrCurl reports an unsuccessful curl operation.
+var ErrCurl = errors.New("curl error")
 
-// JQSelectorError reports an unsuccessful jq selection operation.
-//
-//lint:ignore ST1012 Name fixed by the binding skeleton API.
-var JQSelectorError = errors.New("jq selector error")
+// ErrJQSelector reports an unsuccessful jq selection operation.
+var ErrJQSelector = errors.New("jq selector error")
 
-// JQPrettyError reports an unsuccessful jq formatting operation.
-//
-//lint:ignore ST1012 Name fixed by the binding skeleton API.
-var JQPrettyError = errors.New("jq pretty error")
+// ErrJQPretty reports an unsuccessful jq formatting operation.
+var ErrJQPretty = errors.New("jq pretty error")
 
-// GitDiffError reports an unsuccessful Git diff operation.
-//
-//lint:ignore ST1012 Name fixed by the binding skeleton API.
-var GitDiffError = errors.New("git diff error")
+// ErrGitDiff reports an unsuccessful Git diff operation.
+var ErrGitDiff = errors.New("git diff error")
 
 // Curl executes an HTTP request and returns its response body and status code.
 func Curl(
@@ -51,7 +41,7 @@ func Curl(
 ) (string, int, error) {
 	tempDir, err := os.MkdirTemp("", "apih-curl-")
 	if err != nil {
-		return "", -1, CurlError
+		return "", -1, ErrCurl
 	}
 	defer os.RemoveAll(tempDir)
 	responsePath := filepath.Join(tempDir, "response")
@@ -87,7 +77,7 @@ func Curl(
 			"jq",
 			[]string{"--compact-output", "--monochrome-output", "."},
 			body,
-			CurlError,
+			ErrCurl,
 		)
 		if err != nil {
 			return "", code, err
@@ -97,7 +87,7 @@ func Curl(
 	}
 	args = append(args, "--", appendQuery(url, query))
 
-	statusOutput, code, err := runCommand(ctx, "curl", args, input, CurlError)
+	statusOutput, code, err := runCommand(ctx, "curl", args, input, ErrCurl)
 	if err != nil {
 		if headRequest {
 			return "", code, err
@@ -111,16 +101,16 @@ func Curl(
 
 	response, err := os.ReadFile(responsePath)
 	if err != nil {
-		return "", code, CurlError
+		return "", code, ErrCurl
 	}
 
 	separator := strings.LastIndexByte(statusOutput, '\n')
 	if separator < 0 {
-		return string(response), code, CurlError
+		return string(response), code, ErrCurl
 	}
 	status, err := strconv.Atoi(statusOutput[separator+1:])
 	if err != nil {
-		return string(response), code, CurlError
+		return string(response), code, ErrCurl
 	}
 	if headRequest {
 		return "", status, nil
@@ -135,7 +125,7 @@ func JQFilter(ctx context.Context, selector, input string) (string, int, error) 
 		"jq",
 		[]string{"--raw-output", "--", selector},
 		input,
-		JQSelectorError,
+		ErrJQSelector,
 	)
 }
 
@@ -146,7 +136,7 @@ func JQSelect(ctx context.Context, selectors []string, input string) (string, in
 	for index, selector := range selectors {
 		encodedSelector, err := json.Marshal(selector)
 		if err != nil {
-			return "", -1, JQSelectorError
+			return "", -1, ErrJQSelector
 		}
 		quotedSelector := string(encodedSelector)
 		members[index] = quotedSelector + ":.[" + quotedSelector + "]"
@@ -157,7 +147,7 @@ func JQSelect(ctx context.Context, selectors []string, input string) (string, in
 		"jq",
 		[]string{"--sort-keys", "--", program},
 		input,
-		JQSelectorError,
+		ErrJQSelector,
 	)
 }
 
@@ -169,7 +159,7 @@ func JQPretty(ctx context.Context, input string) (string, int, error) {
 		"jq",
 		[]string{"--sort-keys", "--color-output", "."},
 		input,
-		JQPrettyError,
+		ErrJQPretty,
 	)
 }
 
@@ -178,17 +168,17 @@ func JQPretty(ctx context.Context, input string) (string, int, error) {
 func GitDiff(ctx context.Context, expected, actual string) (string, int, error) {
 	tempDir, err := os.MkdirTemp("", "apih-git-diff-")
 	if err != nil {
-		return "", -1, GitDiffError
+		return "", -1, ErrGitDiff
 	}
 	defer os.RemoveAll(tempDir)
 
 	expectedPath := filepath.Join(tempDir, "expected")
 	actualPath := filepath.Join(tempDir, "actual")
 	if err := os.WriteFile(expectedPath, []byte(expected), 0o600); err != nil {
-		return "", -1, GitDiffError
+		return "", -1, ErrGitDiff
 	}
 	if err := os.WriteFile(actualPath, []byte(actual), 0o600); err != nil {
-		return "", -1, GitDiffError
+		return "", -1, ErrGitDiff
 	}
 
 	output, code, err := runCommandWithEnv(
@@ -210,7 +200,7 @@ func GitDiff(ctx context.Context, expected, actual string) (string, int, error) 
 			"actual",
 		},
 		"",
-		GitDiffError,
+		ErrGitDiff,
 		[]string{"GIT_ATTR_NOSYSTEM=1"},
 		1,
 	)
@@ -286,7 +276,7 @@ func runCommandWithEnv(
 
 	var exitError *exec.ExitError
 	if !errors.As(err, &exitError) {
-		return stdout.String(), -1, CommandError
+		return stdout.String(), -1, ErrCommand
 	}
 	exitCode := exitError.ExitCode()
 	for _, accepted := range acceptedExitCodes {

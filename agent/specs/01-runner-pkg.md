@@ -14,11 +14,11 @@ package.
 ## Public API
 
 ```go
-var CommandError = errors.New("command error")
-var CurlError = errors.New("curl error")
-var JQSelectorError = errors.New("jq selector error")
-var JQPrettyError = errors.New("jq pretty error")
-var GitDiffError = errors.New("git diff error")
+var ErrCommand = errors.New("command error")
+var ErrCurl = errors.New("curl error")
+var ErrJQSelector = errors.New("jq selector error")
+var ErrJQPretty = errors.New("jq pretty error")
+var ErrGitDiff = errors.New("git diff error")
 
 func Curl(ctx context.Context, method, url string, headers map[string]string,
     timeout, retries int, query, body string) (string, int, error)

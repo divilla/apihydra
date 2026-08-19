@@ -10,7 +10,7 @@ import (
 )
 
 var ErrInvalidDirectoryTree = errors.New("invalid directory tree")
-var ExecutionCanceledError = errors.New("execution canceled")
+var ErrExecutionCanceled = errors.New("execution canceled")
 
 type StepRunner struct {
 	varProc *VariableProcessor
@@ -43,7 +43,7 @@ func (s *StepRunner) Prepare(
 // until entire same number stage is executed. For each directory it iterates directory.ResolvedSteps and executes
 // runner.Curl, varProc.ParseResponseExpected, val.ValidateTypes, val.ValidateExpected and finally varProc.Capture
 // On detected validation error, Execute reports failed validation through s.report.
-// Once it finishes traversing with one or more validation failures it returns exit code 101 and ValidationError.
+// Once it finishes traversing with one or more validation failures it returns exit code 101 and ErrValidation.
 func (s *StepRunner) Execute(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -147,7 +147,7 @@ func executeStages(
 			return exitCode, err
 		}
 		if err := ctx.Err(); err != nil {
-			return errs.ExitInternal, errs.Build(errs.ExitInternal, ExecutionCanceledError, err)
+			return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrExecutionCanceled, err)
 		}
 	}
 
@@ -189,7 +189,7 @@ func executeStage(
 
 func (s *StepRunner) processDir(ctx context.Context, dir *domain.Directory) (int, error) {
 	if err := ctx.Err(); err != nil {
-		return errs.ExitInternal, errs.Build(errs.ExitInternal, ExecutionCanceledError, err)
+		return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrExecutionCanceled, err)
 	}
 
 	_ = s

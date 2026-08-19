@@ -16,7 +16,7 @@ not restate those rules.
 
 ```go
 var ErrInvalidDirectoryTree = errors.New("invalid directory tree")
-var ExecutionCanceledError = errors.New("execution canceled")
+var ErrExecutionCanceled = errors.New("execution canceled")
 
 func NewStepRunner(
     variableProcessor *VariableProcessor,
@@ -72,7 +72,7 @@ Sibling goroutines are still joined, and later stages do not start.
 
 If the shared context is canceled between otherwise successful stages,
 execution returns `ExitInternal` and a built error matching
-`ExecutionCanceledError` that preserves the context error.
+`ErrExecutionCanceled` that preserves the context error.
 
 No ordering between same-stage directory goroutines is promised.
 
@@ -92,7 +92,7 @@ For each executed step, the skeleton comment fixes this phase order:
 
 StepRunner sends detected validation failures to its Reporter. After traversal
 finishes with at least one validation mismatch, `Execute` returns
-`errs.ExitValidation` and an error matching `ValidationError`.
+`errs.ExitValidation` and an error matching `ErrValidation`.
 
 The skeleton does not define phase argument construction, response assignment,
 the mapping of individual validation errors to Reporter methods, success
@@ -118,6 +118,6 @@ error formatting. Those contracts remain with their owning specs.
    stages, and cannot be returned with success code.
 6. Per-step execution uses the five phases in the reference order.
 7. Completed validation mismatch traversal returns code `101` and
-   `ValidationError`.
+   `ErrValidation`.
 8. Debug, presentation, sorting, and per-validator payload rules absent from
    the skeleton are not introduced here.

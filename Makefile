@@ -1,6 +1,5 @@
 PKG := "apih"
 PKG_LIST := $(shell go list ${PKG}/... | grep -Ev '^apih/skeleton(/|$$)')
-RUNNER_CONTRACT_LINT := 'pkg/runner/runner.go:[0-9]+:[0-9]+: error var (CommandError|CurlError|JQSelectorError|JQPrettyError|GitDiffError) should have name of the form ErrFoo'
 
 .PHONY: check init lint vet test tooling-test coverage race benchmark help test_version
 
@@ -18,9 +17,7 @@ lint: ## Lint the files
 		goimports -w "$$package_dir"; \
 	done
 	@staticcheck ${PKG_LIST}
-	@lint_output="$$(golint ${PKG_LIST})" || exit $$?; \
-	lint_output="$$(printf '%s\n' "$$lint_output" | grep -Ev ${RUNNER_CONTRACT_LINT} || true)"; \
-	if [ -n "$$lint_output" ]; then printf '%s\n' "$$lint_output"; exit 1; fi
+	@golint ${PKG_LIST}
 
 vet: ## Vet the files
 	@go vet ${PKG_LIST}

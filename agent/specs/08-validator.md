@@ -13,7 +13,7 @@ and suite-level treatment of detected validation failures.
 ## Public API
 
 ```go
-var ValidationError = errors.New("validation error")
+var ErrValidation = errors.New("validation error")
 var ErrValidatorFatal = errors.New("fatal validator error")
 
 type Validator struct{}
@@ -32,7 +32,7 @@ The zero-value Validator has no retained state in the reference.
 `ValidateExpected` validates the runtime step's response body against
 `Step.Response.Expected` and returns at most one error.
 
-`ValidationError` classifies one or more mismatches found by either validation
+`ErrValidation` classifies one or more mismatches found by either validation
 operation. `ErrValidatorFatal` exists as a separate static classification, but
 the skeleton does not define which conditions must use it.
 

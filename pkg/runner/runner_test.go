@@ -26,11 +26,11 @@ func TestPublicContract(t *testing.T) {
 		err  error
 		want string
 	}{
-		"command":     {CommandError, "command error"},
-		"curl":        {CurlError, "curl error"},
-		"jq selector": {JQSelectorError, "jq selector error"},
-		"jq pretty":   {JQPrettyError, "jq pretty error"},
-		"git diff":    {GitDiffError, "git diff error"},
+		"command":     {ErrCommand, "command error"},
+		"curl":        {ErrCurl, "curl error"},
+		"jq selector": {ErrJQSelector, "jq selector error"},
+		"jq pretty":   {ErrJQPretty, "jq pretty error"},
+		"git diff":    {ErrGitDiff, "git diff error"},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -278,8 +278,8 @@ func TestCurlClassifiesCommandAndOutputFailures(t *testing.T) {
 		defer server.Close()
 
 		output, code, err := Curl(context.Background(), http.MethodPost, server.URL, nil, 1, 0, "", `{`)
-		if output != "" || code == 0 || !errors.Is(err, CurlError) {
-			t.Fatalf("Curl() = (%q, %d, %v), want (empty, non-zero, CurlError)", output, code, err)
+		if output != "" || code == 0 || !errors.Is(err, ErrCurl) {
+			t.Fatalf("Curl() = (%q, %d, %v), want (empty, non-zero, ErrCurl)", output, code, err)
 		}
 		if requestReceived.Load() {
 			t.Fatal("Curl() sent a request after jq rejected the body")
@@ -290,8 +290,8 @@ func TestCurlClassifiesCommandAndOutputFailures(t *testing.T) {
 		useCommandScript(t, "curl", "exit 7\n")
 
 		output, code, err := Curl(context.Background(), "GET", "http://example.test", nil, 1, 0, "", "")
-		if output != "" || code != 7 || !errors.Is(err, CurlError) {
-			t.Fatalf("Curl() = (%q, %d, %v), want (empty, 7, CurlError)", output, code, err)
+		if output != "" || code != 7 || !errors.Is(err, ErrCurl) {
+			t.Fatalf("Curl() = (%q, %d, %v), want (empty, 7, ErrCurl)", output, code, err)
 		}
 	})
 
@@ -299,8 +299,8 @@ func TestCurlClassifiesCommandAndOutputFailures(t *testing.T) {
 		useCommandScript(t, "curl", curlOutputScript("printf response > \"$output\"\n"))
 
 		output, code, err := Curl(context.Background(), "GET", "http://example.test", nil, 1, 0, "", "")
-		if output != "response" || code != 0 || !errors.Is(err, CurlError) {
-			t.Fatalf("Curl() = (%q, %d, %v), want (response, 0, CurlError)", output, code, err)
+		if output != "response" || code != 0 || !errors.Is(err, ErrCurl) {
+			t.Fatalf("Curl() = (%q, %d, %v), want (response, 0, ErrCurl)", output, code, err)
 		}
 	})
 
@@ -308,8 +308,8 @@ func TestCurlClassifiesCommandAndOutputFailures(t *testing.T) {
 		useCommandScript(t, "curl", curlOutputScript("printf response > \"$output\"\nprintf '\\ninvalid'\n"))
 
 		output, code, err := Curl(context.Background(), "GET", "http://example.test", nil, 1, 0, "", "")
-		if output != "response" || code != 0 || !errors.Is(err, CurlError) {
-			t.Fatalf("Curl() = (%q, %d, %v), want (response, 0, CurlError)", output, code, err)
+		if output != "response" || code != 0 || !errors.Is(err, ErrCurl) {
+			t.Fatalf("Curl() = (%q, %d, %v), want (response, 0, ErrCurl)", output, code, err)
 		}
 	})
 
@@ -317,8 +317,8 @@ func TestCurlClassifiesCommandAndOutputFailures(t *testing.T) {
 		useCommandScript(t, "curl", "printf '\\n200'\n")
 
 		output, code, err := Curl(context.Background(), "GET", "http://example.test", nil, 1, 0, "", "")
-		if output != "" || code != 0 || !errors.Is(err, CurlError) {
-			t.Fatalf("Curl() = (%q, %d, %v), want (empty, 0, CurlError)", output, code, err)
+		if output != "" || code != 0 || !errors.Is(err, ErrCurl) {
+			t.Fatalf("Curl() = (%q, %d, %v), want (empty, 0, ErrCurl)", output, code, err)
 		}
 	})
 
@@ -326,8 +326,8 @@ func TestCurlClassifiesCommandAndOutputFailures(t *testing.T) {
 		t.Setenv("PATH", t.TempDir())
 
 		_, code, err := Curl(context.Background(), "GET", "http://example.test", nil, 1, 0, "", "")
-		if code != -1 || !errors.Is(err, CommandError) {
-			t.Fatalf("Curl() = (_, %d, %v), want (_, -1, CommandError)", code, err)
+		if code != -1 || !errors.Is(err, ErrCommand) {
+			t.Fatalf("Curl() = (_, %d, %v), want (_, -1, ErrCommand)", code, err)
 		}
 	})
 
@@ -350,8 +350,8 @@ func TestCurlClassifiesCommandAndOutputFailures(t *testing.T) {
 		t.Setenv("TMPDIR", notDirectory)
 
 		output, code, err := Curl(context.Background(), "GET", "http://example.test", nil, 1, 0, "", "")
-		if output != "" || code != -1 || !errors.Is(err, CurlError) {
-			t.Fatalf("Curl() = (%q, %d, %v), want (empty, -1, CurlError)", output, code, err)
+		if output != "" || code != -1 || !errors.Is(err, ErrCurl) {
+			t.Fatalf("Curl() = (%q, %d, %v), want (empty, -1, ErrCurl)", output, code, err)
 		}
 	})
 }
@@ -460,24 +460,24 @@ func TestJQOperationsClassifyFailures(t *testing.T) {
 	t.Run("filter", func(t *testing.T) {
 		useCommandScript(t, "jq", "exit 3\n")
 		_, code, err := JQFilter(context.Background(), ".name", `{}`)
-		if code != 3 || !errors.Is(err, JQSelectorError) {
-			t.Fatalf("JQFilter() = (_, %d, %v), want (_, 3, JQSelectorError)", code, err)
+		if code != 3 || !errors.Is(err, ErrJQSelector) {
+			t.Fatalf("JQFilter() = (_, %d, %v), want (_, 3, ErrJQSelector)", code, err)
 		}
 	})
 
 	t.Run("select", func(t *testing.T) {
 		useCommandScript(t, "jq", "exit 4\n")
 		_, code, err := JQSelect(context.Background(), []string{"name"}, `{}`)
-		if code != 4 || !errors.Is(err, JQSelectorError) {
-			t.Fatalf("JQSelect() = (_, %d, %v), want (_, 4, JQSelectorError)", code, err)
+		if code != 4 || !errors.Is(err, ErrJQSelector) {
+			t.Fatalf("JQSelect() = (_, %d, %v), want (_, 4, ErrJQSelector)", code, err)
 		}
 	})
 
 	t.Run("pretty", func(t *testing.T) {
 		useCommandScript(t, "jq", "exit 5\n")
 		_, code, err := JQPretty(context.Background(), `{`)
-		if code != 5 || !errors.Is(err, JQPrettyError) {
-			t.Fatalf("JQPretty() = (_, %d, %v), want (_, 5, JQPrettyError)", code, err)
+		if code != 5 || !errors.Is(err, ErrJQPretty) {
+			t.Fatalf("JQPretty() = (_, %d, %v), want (_, 5, ErrJQPretty)", code, err)
 		}
 	})
 }
@@ -598,8 +598,8 @@ func TestGitDiffClassifiesFailures(t *testing.T) {
 		useCommandScript(t, "git", "exit 2\n")
 
 		output, code, err := GitDiff(context.Background(), "expected", "actual")
-		if output != "" || code != 2 || !errors.Is(err, GitDiffError) {
-			t.Fatalf("GitDiff() = (%q, %d, %v), want (empty, 2, GitDiffError)", output, code, err)
+		if output != "" || code != 2 || !errors.Is(err, ErrGitDiff) {
+			t.Fatalf("GitDiff() = (%q, %d, %v), want (empty, 2, ErrGitDiff)", output, code, err)
 		}
 	})
 
@@ -611,8 +611,8 @@ func TestGitDiffClassifiesFailures(t *testing.T) {
 		t.Setenv("TMPDIR", notDirectory)
 
 		output, code, err := GitDiff(context.Background(), "expected", "actual")
-		if output != "" || code != -1 || !errors.Is(err, GitDiffError) {
-			t.Fatalf("GitDiff() = (%q, %d, %v), want (empty, -1, GitDiffError)", output, code, err)
+		if output != "" || code != -1 || !errors.Is(err, ErrGitDiff) {
+			t.Fatalf("GitDiff() = (%q, %d, %v), want (empty, -1, ErrGitDiff)", output, code, err)
 		}
 	})
 }

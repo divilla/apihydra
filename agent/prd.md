@@ -103,7 +103,7 @@ The JSON names on declarative and runtime step fields match their YAML names.
 `skeleton/cmd/cli.run` starts with `os.Getwd()`. If a first positional argument
 exists, it joins that argument to the current directory and requires the result
 to be a directory. Invalid input returns configuration code `102` and an error
-matching CLI-owned `InvalidPathError`.
+matching CLI-owned `ErrInvalidPath`.
 
 The reference CLI creates separate Reporters for `os.Stdout` and `os.Stderr`. `run`
 reports the selected working directory, creates

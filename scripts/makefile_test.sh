@@ -59,7 +59,6 @@ cat >"$fake_bin/golint" <<'EOF'
 set -euo pipefail
 
 printf 'golint:%s\n' "$*" >>"$MAKEFILE_TEST_LOG"
-printf '%s\n' 'pkg/runner/runner.go:1:1: error var CommandError should have name of the form ErrFoo'
 EOF
 
 chmod +x "$fake_bin/go" "$fake_bin/goimports" "$fake_bin/staticcheck" "$fake_bin/golint"

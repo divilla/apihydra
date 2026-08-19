@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 )
 
-var InvalidPathError = errors.New("invalid path")
-var WorkingDirectoryError = errors.New("working directory error")
+var ErrInvalidPath = errors.New("invalid path")
+var ErrWorkingDirectory = errors.New("working directory error")
 
 func main() {
 	outputReport := reporter.NewReporter(os.Stdout)
@@ -27,7 +27,7 @@ func main() {
 func run(ctx context.Context, args []string, report *reporter.Reporter) (int, error) {
 	workDir, err := os.Getwd()
 	if err != nil {
-		return errs.ExitInternal, errs.Build(errs.ExitInternal, WorkingDirectoryError, err)
+		return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrWorkingDirectory, err)
 	}
 
 	if len(args) > 1 {
@@ -35,10 +35,10 @@ func run(ctx context.Context, args []string, report *reporter.Reporter) (int, er
 		path := filepath.Join(workDir, subdir)
 		info, err := os.Stat(path)
 		if err != nil {
-			return errs.ExitConfiguration, errs.Build(errs.ExitConfiguration, InvalidPathError, err, path)
+			return errs.ExitConfiguration, errs.Build(errs.ExitConfiguration, ErrInvalidPath, err, path)
 		}
 		if !info.IsDir() {
-			return errs.ExitConfiguration, errs.Build(errs.ExitConfiguration, InvalidPathError, nil, path)
+			return errs.ExitConfiguration, errs.Build(errs.ExitConfiguration, ErrInvalidPath, nil, path)
 		}
 		workDir = path
 	}

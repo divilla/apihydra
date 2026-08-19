@@ -297,6 +297,10 @@ if [[ -z "$progress_read_timeout" ]] ||
 	printf '%s\n' 'review loop uses a non-integer Bash read timeout' >&2
 	exit 1
 fi
+grep -Fxq "readonly -a activity_frames=('·' '•' '●' '•')" "$repo/scripts/codex-review-loop.sh"
+grep -Fxq "readonly activity_interval='0.25'" "$repo/scripts/codex-review-loop.sh"
+grep -Fxq 'readonly activity_interval_us=250000' "$repo/scripts/codex-review-loop.sh"
+grep -Fq 'kill -USR1 -- "$progress_owner_pid"' "$repo/scripts/codex-review-loop.sh"
 if grep -Eq '(^|[[:space:]])timeout[[:space:]]' "$0"; then
 	printf '%s\n' 'review-loop test depends on an external timing utility' >&2
 	exit 1

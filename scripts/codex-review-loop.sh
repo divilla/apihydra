@@ -2,14 +2,15 @@
 set -euo pipefail
 
 readonly no_findings_message='No findings.'
-readonly -a activity_frames=('·' '•' '●' '⬤' '●' '•')
-readonly activity_interval='0.166667'
-readonly activity_interval_us=166667
+readonly -a activity_frames=('·' '•' '●' '•')
+readonly activity_interval='0.25'
+readonly activity_interval_us=250000
 readonly progress_read_timeout=1
 readonly output_dot_interval_us=1000000
 
 active_codex_pid=''
 active_output_dir=''
+progress_ticker_pid=''
 requested_exit_code=0
 progress_active=false
 progress_has_output=false
@@ -126,6 +127,29 @@ render_progress() {
 	printf '\r\033[2K%s %s' "$(progress_text)" "$frame"
 }
 
+progress_tick() {
+	[[ "$progress_active" == true ]] || return 0
+	render_progress
+}
+
+start_progress_ticker() {
+	local progress_owner_pid=$$
+	(
+		while true; do
+			sleep "$activity_interval"
+			kill -USR1 -- "$progress_owner_pid" 2>/dev/null || exit 0
+		done
+	) &
+	progress_ticker_pid=$!
+}
+
+stop_progress_ticker() {
+	[[ -n "$progress_ticker_pid" ]] || return 0
+	kill "$progress_ticker_pid" 2>/dev/null || true
+	wait "$progress_ticker_pid" 2>/dev/null || true
+	progress_ticker_pid=''
+}
+
 finish_progress() {
 	local result=${1:-success}
 	[[ "$progress_active" == true ]] || return 0
@@ -178,6 +202,7 @@ run_codex() {
 	local command_pid=$active_codex_pid
 	local output_fd=3
 	exec 3<"$output_fifo"
+	start_progress_ticker
 	local line
 	local read_status
 	local exit_code
@@ -216,6 +241,7 @@ run_codex() {
 	else
 		exit_code=$?
 	fi
+	stop_progress_ticker
 	active_codex_pid=''
 	exec 3<&-
 	rm -f -- "$output_fifo"
@@ -246,6 +272,7 @@ commit_review_fix() {
 
 trap 'stop 130' INT
 trap 'stop 143' TERM
+trap 'progress_tick' USR1
 
 command -v codex >/dev/null 2>&1 || fail "codex is not installed or is not on PATH"
 command -v git >/dev/null 2>&1 || fail "git is not installed or is not on PATH"

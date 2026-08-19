@@ -14,9 +14,9 @@ scheduling or validation algorithms.
 ## Public API
 
 ```go
-var ReporterError = errors.New("reporter error")
-var TypeValidationError = errors.New("type validation failed for")
-var ExpectedValidationError = errors.New("response does not match expected")
+var ErrReporter = errors.New("reporter error")
+var ErrTypeValidation = errors.New("type validation failed for")
+var ErrExpectedValidation = errors.New("response does not match expected")
 
 func NewReporter(output io.Writer) *Reporter
 func (r *Reporter) WorkingDirectory(workDir string) error
@@ -51,7 +51,7 @@ Working Directory: <workDir>
 ```
 
 A nil Reporter/writer or failed write returns a built internal error matching
-`ReporterError`; writer errors remain available through the error chain.
+`ErrReporter`; writer errors remain available through the error chain.
 
 ## `Error`
 
@@ -64,7 +64,7 @@ ESC[31m<diagnostic>ESC[0m\n
 ```
 
 A nil Reporter/writer, nil failure, or failed write returns a built internal
-error matching `ReporterError`. This method does not choose or change the
+error matching `ErrReporter`. This method does not choose or change the
 process exit code.
 
 ## Stubbed reporting operations

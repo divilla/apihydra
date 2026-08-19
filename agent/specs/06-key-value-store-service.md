@@ -12,8 +12,8 @@ behavior is implemented in the reference skeleton.
 ## Public API
 
 ```go
-var NotFoundError = errors.New("key not found")
-var KeyExistError = errors.New("key already exists")
+var ErrNotFound = errors.New("key not found")
+var ErrKeyExists = errors.New("key already exists")
 
 func NewKeyValueStore() *KeyValueStore
 func (kvs *KeyValueStore) Get(key string) (string, error)
@@ -28,12 +28,12 @@ The concrete store contains a `map[string]string` protected by
 `NewKeyValueStore` returns an independent store with an initialized empty map.
 
 `Get` performs an exact key lookup under a read lock. An existing key returns
-its stored string and nil. A missing key returns `""` and `NotFoundError`.
+its stored string and nil. A missing key returns `""` and `ErrNotFound`.
 Empty stored strings remain distinguishable from absence.
 
 `Set` holds the write lock across its existence check and insertion. A new key
 stores the exact value and returns nil. An existing key returns
-`KeyExistError` and does not replace the first value.
+`ErrKeyExists` and does not replace the first value.
 
 The map and lock make reads safe with writes and make concurrent first writes
 atomic. The store does not normalize keys, validate values, interpolate text,
