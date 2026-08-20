@@ -31,7 +31,7 @@ func (v *Validator) ValidateStatus(
 	step *domain.Step,
 ) error {
 	// TODO: implement
-	panic("Validator.ValidateStatus is not implemented")
+	return nil
 }
 
 // ValidateBody validates ActualBody against ExpectedBody. ActualBody parsed
@@ -43,7 +43,7 @@ func (v *Validator) ValidateBody(
 	step *domain.Step,
 ) (string, error) {
 	// TODO: implement
-	panic("Validator.ValidateBody is not implemented")
+	return "", nil
 }
 
 // ValidateTypes builds a jq filter from step.Response.ExpectedTypes that selects
@@ -56,5 +56,5 @@ func (v *Validator) ValidateTypes(
 	step *domain.Step,
 ) (string, error) {
 	// TODO: implement
-	panic("Validator.ValidateTypes is not implemented")
+	return "", nil
 }

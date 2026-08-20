@@ -1,10 +1,10 @@
 PKG := "apih"
 PKG_LIST := $(shell go list ${PKG}/... | grep -Ev '^apih/skeleton(/|$$)')
 
-.PHONY: check init lint vet test tooling-test coverage race benchmark help test_version
+.PHONY: check init lint vet test tooling-test integration-test coverage race benchmark help test_version
 
 .DEFAULT_GOAL := check
-check: lint vet race tooling-test ## Check project
+check: lint vet race tooling-test integration-test ## Check project
 
 init:
 	@go install golang.org/x/tools/cmd/goimports@latest
@@ -16,14 +16,17 @@ lint: ## Lint the files
 		package_dir="$$(go list -f '{{.Dir}}' "$$package")"; \
 		goimports -w "$$package_dir"; \
 	done
-	@staticcheck ${PKG_LIST}
-	@golint ${PKG_LIST}
+	@if [ -n "${PKG_LIST}" ]; then staticcheck ${PKG_LIST}; fi
+	@if [ -n "${PKG_LIST}" ]; then golint ${PKG_LIST}; fi
 
 vet: ## Vet the files
-	@go vet ${PKG_LIST}
+	@if [ -n "${PKG_LIST}" ]; then go vet ${PKG_LIST}; fi
 
 test: tooling-test ## Run tests
-	@go test -short ${PKG_LIST}
+	@if [ -n "${PKG_LIST}" ]; then go test -short ${PKG_LIST}; fi
+
+integration-test: ## Run black-box CLI integration tests with production coverage
+	@go test -tags=integration ./int-tests -count=1
 
 tooling-test:
 	@scripts/makefile_test.sh
@@ -31,13 +34,13 @@ tooling-test:
 	@scripts/codex-review-loop_test.sh
 
 coverage: ## Display test coverage
-	@go test -cover ${PKG_LIST}
+	@if [ -n "${PKG_LIST}" ]; then go test -cover ${PKG_LIST}; fi
 
 race: ## Run tests with data race detector
-	@go test -race ${PKG_LIST}
+	@if [ -n "${PKG_LIST}" ]; then go test -race ${PKG_LIST}; fi
 
 benchmark: ## Run benchmarks
-	@go test -run="-" -benchmem -bench=".*" ${PKG_LIST}
+	@if [ -n "${PKG_LIST}" ]; then go test -run="-" -benchmem -bench=".*" ${PKG_LIST}; fi
 
 help: ## Display this help screen
 	@grep -h -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'

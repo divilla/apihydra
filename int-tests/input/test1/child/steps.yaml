@@ -1,0 +1,13 @@
+app: apihydra
+kind: steps
+metadata:
+  name: integration-child-steps
+  labels: [integration, child]
+spec:
+  steps:
+    - request:
+        method: GET
+        path: /inherited
+      response:
+        expected_status: 200
+        expected_body: '{"id":7,"ok":true}'

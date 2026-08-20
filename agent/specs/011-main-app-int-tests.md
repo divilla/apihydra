@@ -5,6 +5,7 @@
 - Binding implementation reference: [`skeleton/cmd/cli/main.go`](../../skeleton/cmd/cli/main.go)
 - Binding reference tests: [`skeleton/cmd/cli/main_test.go`](../../skeleton/cmd/cli/main_test.go)
 - Shared CLI and exit-code contract: [`prd.md`](../prd.md)
+- Shared domain types: [`000-domain-types.md`](000-domain-types.md)
 - Reporter guide: [`009-reporter-service.md`](009-reporter-service.md)
 - Definition guides: [`003-loader-service.md`](003-loader-service.md),
   [`004-decoder-service.md`](004-decoder-service.md), and
@@ -32,6 +33,20 @@ Tests remain in `cmd/cli/*_test.go` and follow
 invalid-path rejection, successful main-flow completion, and output failure
 handling without adding production test seams absent from the skeleton.
 
+Black-box subprocess fixtures and application coverage belong to
+[`012-integration-tests.md`](012-integration-tests.md), not this package guide.
+
+## Required implementation and tests
+
+- Production output: `cmd/cli/main.go` reproduces the binding composition root
+  with production import paths and no placeholders or alternate API.
+- Test output: `cmd/cli/main_test.go` reproduces and extends the binding package
+  tests to cover path selection, pipeline failures reachable without a new
+  public seam, reporter failures, main logging, and exact exit propagation.
+- Each acceptance criterion is traced to at least one meaningful unit or helper
+  subprocess test, and CLI package unit-test statement coverage remains greater
+  than 95%.
+
 ## Acceptance criteria
 
 1. `cmd/cli/main.go` is identical to `skeleton/cmd/cli/main.go` after replacing
@@ -49,3 +64,5 @@ handling without adding production test seams absent from the skeleton.
    skeleton, without adding behavior absent from that reference.
 6. `go test ./cmd/cli`, `go test ./...`, `go test -race ./...`, and
    `git diff --check` pass.
+7. With guides `000` through `010` implemented, completing this guide produces
+   a runnable `apih` application and enables the `012` black-box suite.

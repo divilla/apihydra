@@ -38,6 +38,9 @@ package dependencies acyclic and enforces four production boundaries:
 
 ## Domain lifecycle
 
+The shared declarations and executable repository boundaries are implemented by
+[`000-domain-types.md`](specs/000-domain-types.md).
+
 The same `domain.Suite` tree exposes fields for these phases:
 
 ```text
@@ -87,6 +90,10 @@ JQProject, JQExtract, JQFilter, JQPretty, and GitDiff. Command-line construction
 and result-normalization details absent from that contract are not
 architectural requirements.
 
+The [`cmd/cli` guide](specs/011-main-app-int-tests.md) completes the production
+composition root. The separate [`integration-test guide`](specs/012-integration-tests.md)
+owns only black-box verification and fixtures; it introduces no production API.
+
 ## Errors and exits
 
 Static classifications originate in the package that declares them.
@@ -102,3 +109,6 @@ codes. The PRD owns the shared meanings of codes `0`, `101`, `102`, and `103`.
 4. Package guides do not create parallel APIs or restate skeleton contracts.
 5. Behavior absent from the skeleton remains an implementation choice, not a
    product or architecture commitment.
+6. Unfinished skeleton bodies use the single `// TODO: implement` plus
+   zero-value-return convention; production guides require replacing those
+   bodies with working implementations.

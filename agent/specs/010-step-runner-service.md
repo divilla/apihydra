@@ -5,6 +5,7 @@
 - Binding reference: [`skeleton/internal/execution/steprun.go`](../../skeleton/internal/execution/steprun.go)
 - Reference tests: [`skeleton/internal/execution/steprun_test.go`](../../skeleton/internal/execution/steprun_test.go)
 - Shared domain and exit codes: [`prd.md`](../prd.md)
+- Shared domain types: [`000-domain-types.md`](000-domain-types.md)
 - Reporter methods: [`009-reporter-service.md`](009-reporter-service.md)
 - Status: skeleton-aligned implementation guide
 
@@ -29,6 +30,19 @@ ordering between same-stage goroutines, sorting beyond the existing slice
 structure, separate file or step goroutines, URL construction, success
 reporting, debug selection or stopping, or precedence between multiple
 nonfatal validation failures.
+
+## Required implementation and tests
+
+- Production output: `internal/execution/steprun.go` retains the implemented
+  tree validation and scheduler and replaces the `Prepare` and `processDir`
+  TODO bodies with the binding deep-copy and eight-phase execution behavior.
+- Test output: `internal/execution/steprun_test.go` retains the reference tests
+  and adds coverage for deep-copy isolation, every phase and mutation, all
+  validation-reporting paths, collaborator failures, success/debug reporting
+  chosen within the contract, and context cancellation.
+- Each acceptance criterion is traced to at least one meaningful unit test, and
+  StepRunner unit-test statement coverage remains greater than 95% under the
+  race detector.
 
 ## Acceptance criteria
 
@@ -55,3 +69,5 @@ nonfatal validation failures.
    and returns code `101` with a nil error.
 8. Debug, presentation, sorting, and per-validator payload rules absent from
    the skeleton are not introduced here.
+9. No TODO or zero-value placeholder remains in `Prepare` or `processDir`;
+   package tests, race tests, and `git diff --check` pass.

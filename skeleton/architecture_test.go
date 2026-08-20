@@ -46,6 +46,35 @@ func TestPackageBoundaries(t *testing.T) {
 	})
 }
 
+func TestTODOConvention(t *testing.T) {
+	err := filepath.WalkDir(".", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		text := string(contents)
+		for lineNumber, line := range strings.Split(text, "\n") {
+			if strings.Contains(line, "TODO") && strings.TrimSpace(line) != "// TODO: implement" {
+				t.Errorf("%s:%d uses noncanonical TODO %q", path, lineNumber+1, strings.TrimSpace(line))
+			}
+		}
+		if strings.Contains(text, "// TODO: implement") && strings.Contains(text, "panic(") {
+			t.Errorf("%s mixes a TODO implementation marker with panic", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("scan skeleton TODOs: %v", err)
+	}
+}
+
 func assertPatternsAbsentOutside(t *testing.T, allowedDir string, patterns []string) {
 	t.Helper()
 

@@ -1,20 +1,11 @@
 package execution
 
-import (
-	"context"
-	"testing"
+import "testing"
 
-	"apih/skeleton/internal/domain"
-)
-
-func TestInterpolateResponseExpectedBodyPlaceholder(t *testing.T) {
-	processor := NewVariableProcessor(NewKeyValueStore())
-
-	defer func() {
-		if got, want := recover(), "VariableProcessor.InterpolateResponseExpectedBody is not implemented"; got != want {
-			t.Fatalf("panic = %v, want %q", got, want)
-		}
-	}()
-
-	_, _ = processor.InterpolateResponseExpectedBody(context.Background(), &domain.Step{})
+func TestNewVariableProcessorRetainsStore(t *testing.T) {
+	store := NewKeyValueStore()
+	processor := NewVariableProcessor(store)
+	if processor.kvs != store {
+		t.Fatalf("processor.kvs = %p, want %p", processor.kvs, store)
+	}
 }

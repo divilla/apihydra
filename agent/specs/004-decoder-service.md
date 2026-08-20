@@ -4,6 +4,7 @@
 
 - Binding reference: [`skeleton/internal/definition/decoder.go`](../../skeleton/internal/definition/decoder.go)
 - Shared domain and pipeline: [`prd.md`](../prd.md)
+- Shared domain types: [`000-domain-types.md`](000-domain-types.md)
 - Contextual definition errors: [`002-errs-pkg.md`](002-errs-pkg.md)
 - Status: skeleton-aligned implementation guide
 
@@ -24,6 +25,16 @@ construction is governed by `002-errs-pkg.md`; this guide does not duplicate its
 formatting rules. The skeleton currently declares no Decoder-specific static
 errors.
 
+## Required implementation and tests
+
+- Production output: `internal/definition/decoder.go` replaces all placeholders
+  with decoding and validation over the exact binding domain fields.
+- Test output: `internal/definition/decoder_test.go` covers defaults and steps
+  decoding, source provenance, traversal, malformed YAML, chosen validation
+  rules, context/error paths, and mutation boundaries.
+- Each acceptance criterion is traced to at least one meaningful unit test, and
+  Decoder unit-test statement coverage remains greater than 95%.
+
 ## Acceptance criteria
 
 1. Names, signatures, and the stateless constructor match the reference.
@@ -33,3 +44,5 @@ errors.
    reference contract.
 4. Decoder does not classify files, resolve values, execute steps, or invent
    validation rules absent from the reference.
+5. No TODO or zero-value placeholder remains in Decoder production methods;
+   its unit tests and `git diff --check` pass.

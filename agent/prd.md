@@ -177,6 +177,7 @@ Each package guide points to its binding skeleton contract:
 
 | Contract | Implementation guide |
 | --- | --- |
+| Shared domain and repository boundaries | [`000-domain-types.md`](specs/000-domain-types.md) |
 | External-command functions | [`001-runner-pkg.md`](specs/001-runner-pkg.md) |
 | Contextual errors | [`002-errs-pkg.md`](specs/002-errs-pkg.md) |
 | Loader | [`003-loader-service.md`](specs/003-loader-service.md) |
@@ -185,13 +186,24 @@ Each package guide points to its binding skeleton contract:
 | KeyValueStore | [`006-key-value-store-service.md`](specs/006-key-value-store-service.md) |
 | VariableProcessor | [`007-variable-processor.md`](specs/007-variable-processor.md) |
 | Validator | [`008-validator-service.md`](specs/008-validator-service.md) |
-| Preparation, execution phase order, tree validation, and stage scheduling | [`010-step-runner-service.md`](specs/010-step-runner-service.md) |
 | Reporter methods and output fixed by the reference implementation | [`009-reporter-service.md`](specs/009-reporter-service.md) |
+| Preparation, execution phase order, tree validation, and stage scheduling | [`010-step-runner-service.md`](specs/010-step-runner-service.md) |
+| CLI composition and process behavior | [`011-main-app-int-tests.md`](specs/011-main-app-int-tests.md) |
+| Black-box application verification | [`012-integration-tests.md`](specs/012-integration-tests.md) |
 
 The guides do not reproduce public declarations, method contracts, or reference
 implementations. A consumer guide references the applicable skeleton contract
 and states only rationale, boundaries, unspecified behavior, and acceptance
 criteria relevant to its own package.
+
+Guides `000` through `011` form the complete implementation sequence. After
+`011` is implemented, `apih` must be a working application rather than a set of
+compiling placeholders. Skeleton placeholders consistently use
+`// TODO: implement` with zero-value returns (or no return for void methods).
+They are work markers, not binding zero-value behavior, and are replaced while
+implementing the behavior fixed by the surrounding declarations, comments,
+implemented code, and tests. Guide `012` then verifies that application as a
+separate black-box integration suite.
 
 ## Not specified by the skeleton
 

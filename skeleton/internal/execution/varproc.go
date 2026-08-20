@@ -26,7 +26,7 @@ func (p *VariableProcessor) LoadVariables(
 	step *domain.Step,
 ) (int, error) {
 	// TODO: implement
-	panic("VariableProcessor.LoadVariables is not implemented")
+	return 0, nil
 }
 
 // InterpolateRequestBody replaces $var and ${var} placeholders in
@@ -36,7 +36,7 @@ func (p *VariableProcessor) InterpolateRequestBody(
 	step *domain.Step,
 ) (int, error) {
 	// TODO: implement
-	panic("VariableProcessor.InterpolateRequestBody is not implemented")
+	return 0, nil
 }
 
 // InterpolateResponseExpectedBody replaces $var and ${var} placeholders in
@@ -46,7 +46,7 @@ func (p *VariableProcessor) InterpolateResponseExpectedBody(
 	step *domain.Step,
 ) (int, error) {
 	// TODO: implement
-	panic("VariableProcessor.InterpolateResponseExpectedBody is not implemented")
+	return 0, nil
 }
 
 // CaptureResponseVariables evaluates every selector in step.Response.Capture
@@ -57,5 +57,5 @@ func (p *VariableProcessor) CaptureResponseVariables(
 	step *domain.Step,
 ) (int, error) {
 	// TODO: implement
-	panic("VariableProcessor.CaptureResponseVariables is not implemented")
+	return 0, nil
 }

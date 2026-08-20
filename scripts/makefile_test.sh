@@ -17,6 +17,10 @@ set -euo pipefail
 
 [[ ${1-} == list ]]
 if [[ $# -eq 2 && $2 == apih/... ]]; then
+	if [[ ${MAKEFILE_TEST_EMPTY-} == 1 ]]; then
+		printf '%s\n' apih/skeleton apih/skeleton/internal/domain
+		exit 0
+	fi
 	printf '%s\n' apih/pkg/runner apih/skeleton apih/skeleton/internal/domain
 	exit 0
 fi
@@ -77,5 +81,16 @@ grep -Fxq "goimports:$repo/pkg/runner" "$log"
 grep -Fxq 'staticcheck:apih/pkg/runner' "$log"
 grep -Fxq 'golint:apih/pkg/runner' "$log"
 ! grep -Fq 'go-list-dir:apih/skeleton' "$log"
+
+: >"$log"
+(
+	cd "$repo"
+	PATH="$fake_bin:$PATH" \
+		MAKEFILE_TEST_EMPTY=1 \
+		MAKEFILE_TEST_LOG="$log" \
+		MAKEFILE_TEST_REPO="$repo" \
+		make lint vet race
+)
+[[ ! -s "$log" ]]
 
 printf '%s\n' 'Makefile tests passed'

@@ -21,8 +21,9 @@ by type validation. `GitDiff` replaces any legacy `BatDiff`/`bat` boundary.
 
 ## Deliberately unspecified
 
-The reference functions are stubs except for their signatures and comments.
-It therefore does not fix:
+The reference functions use canonical TODO bodies beneath their signatures and
+comments. Those bodies must be replaced by working command implementations;
+their empty results are not production behavior. The reference does not fix:
 
 - executable names or argument vectors;
 - use of stdin, temporary files, or environment variables;
@@ -36,6 +37,18 @@ It therefore does not fix:
 Those details may be chosen during implementation but cannot be asserted as
 product requirements until represented by the skeleton.
 
+## Required implementation and tests
+
+- Production output: `pkg/runner/runner.go` implements all six command
+  operations and retains the binding exported API and static errors.
+- Test output: `pkg/runner/runner_test.go` covers successful results, command
+  startup/failure/cancellation, data passed to each operation, and result/error
+  normalization chosen within the contract.
+- Root `architecture_test.go` proves that no other production package executes
+  external commands and that `bat`/`BatDiff` is absent.
+- Each acceptance criterion is traced to a meaningful unit or architecture
+  test, and package unit-test statement coverage remains greater than 95%.
+
 ## Acceptance criteria
 
 1. Exported names, signatures, and static error text match the reference.
@@ -46,3 +59,5 @@ product requirements until represented by the skeleton.
 4. No external command is invoked by another production package.
 5. No `BatDiff`, `bat` dependency, shell policy, or command-line contract is
    invented here.
+6. No reference TODO body remains in production, and the package's tests and
+   repository ownership test pass.

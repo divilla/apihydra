@@ -3,7 +3,9 @@
 ## Status and ownership
 
 - Binding reference: [`skeleton/internal/execution/validator.go`](../../skeleton/internal/execution/validator.go)
+- Reference tests: [`skeleton/internal/execution/validator_test.go`](../../skeleton/internal/execution/validator_test.go)
 - Shared step model and exit codes: [`prd.md`](../prd.md)
+- Shared domain types: [`000-domain-types.md`](000-domain-types.md)
 - Phase orchestration: [`010-step-runner-service.md`](010-step-runner-service.md)
 - Status: skeleton-aligned implementation guide
 
@@ -32,10 +34,21 @@ The reference does not define:
 Those behaviors must not appear as requirements or required test matrices
 until they are added to the protected skeleton.
 
+## Required implementation and tests
+
+- Production output: `internal/execution/validator.go` replaces all canonical
+  zero-value TODO bodies with the three binding validation operations.
+- Test output: `internal/execution/validator_test.go` covers the status wildcard
+  and equality/mismatch, empty/non-empty type results, normalized body
+  equality/diff, runner failures, context cancellation, and mutation/output
+  boundaries using the implementation choices permitted above.
+- Each acceptance criterion is traced to at least one meaningful unit test, and
+  Validator unit-test statement coverage remains greater than 95%.
+
 ## Acceptance criteria
 
-1. Exported names, signatures, static error text, and explicit not-implemented
-   placeholders match the reference.
+1. Exported names, signatures, and static error text match the reference, and
+   production methods do not retain zero-value TODO bodies.
 2. Type validation builds a filter from `ExpectedTypes`, evaluates it against
    `ActualBody` with `runner.JQFilter`, and returns `(failed string, error)`.
    Empty `failed` means all types validate; non-empty `failed` is a nonfatal
@@ -46,3 +59,4 @@ until they are added to the protected skeleton.
 4. Validator does not print, schedule work, or choose the process exit code.
 5. No validation language, comparison algorithm, external-tool dependency, or
    failure payload absent from the skeleton is specified here.
+6. Package tests and `git diff --check` pass.
