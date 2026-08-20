@@ -10,7 +10,7 @@
 - Definition guides: [`003-loader-service.md`](003-loader-service.md),
   [`004-decoder-service.md`](004-decoder-service.md), and
   [`005-resolver-service.md`](005-resolver-service.md)
-- Execution guide: [`010-executor.md`](010-executor.md)
+- Execution guide: [`010-executor-service.md`](010-executor-service.md)
 - Status: skeleton-aligned implementation guide
 
 ## Reference contract
@@ -26,7 +26,7 @@ packages from acquiring process-level responsibilities. The CLI adds no flags,
 filters, debug-selection policy, exported helpers, configuration types, or
 alternate application constructors absent from the reference.
 
-## Package tests
+## Application package tests
 
 Tests remain in `cmd/cli/*_test.go` and follow
 `skeleton/cmd/cli/main_test.go`, using production import paths. They verify

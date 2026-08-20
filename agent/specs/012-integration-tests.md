@@ -2,7 +2,7 @@
 
 ## Status and ownership
 
-- Production composition guide: [`011-main-app-int-tests.md`](011-main-app-int-tests.md)
+- Production composition guide: [`011-main-app.md`](011-main-app.md)
 - Shared product contract: [`prd.md`](../prd.md)
 - Static inputs: [`int-tests/input`](../../int-tests/input)
 - Test harness: [`int-tests/integration_test.go`](../../int-tests/integration_test.go)

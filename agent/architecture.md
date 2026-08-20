@@ -71,9 +71,9 @@ The current CLI composition order is owned by the PRD.
 `internal/execution` contains:
 
 - [`KeyValueStore`](specs/006-key-value-store-service.md)
-- [`Binder`](specs/007-binder.md)
+- [`Binder`](specs/007-binder-service.md)
 - [`Validator`](specs/008-validator-service.md)
-- [`Executor`](specs/010-executor.md)
+- [`Executor`](specs/010-executor-service.md)
 
 The Executor skeleton contract defines preparation scope, execution phase
 order, tree validation, and stage scheduling. The execution guides do not
@@ -90,7 +90,7 @@ JQProject, JQExtract, JQFilter, JQPretty, and GitDiff. Command-line construction
 and result-normalization details absent from that contract are not
 architectural requirements.
 
-The [`cmd/cli` guide](specs/011-main-app-int-tests.md) completes the production
+The [`cmd/cli` guide](specs/011-main-app.md) completes the production
 composition root. The separate [`integration-test guide`](specs/012-integration-tests.md)
 owns only black-box verification and fixtures; it introduces no production API.
 

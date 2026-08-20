@@ -6,7 +6,7 @@
 - Reference tests: [`skeleton/internal/execution/binder_test.go`](../../skeleton/internal/execution/binder_test.go)
 - Shared step model: [`prd.md`](../prd.md#defaults-and-steps)
 - Shared domain types: [`000-domain-types.md`](000-domain-types.md)
-- Phase orchestration: [`010-executor.md`](010-executor.md)
+- Phase orchestration: [`010-executor-service.md`](010-executor-service.md)
 - Status: skeleton-aligned implementation guide
 
 ## Reference contract

@@ -50,7 +50,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	repoRoot := repositoryRoot(t)
 	cliPackage := filepath.Join(repoRoot, "cmd", "cli")
 	if _, err := os.Stat(cliPackage); errors.Is(err, os.ErrNotExist) {
-		t.Skip("integration prerequisite missing: implement agent/specs/011-main-app-int-tests.md")
+		t.Skip("integration prerequisite missing: implement agent/specs/011-main-app.md")
 	} else if err != nil {
 		t.Fatalf("stat CLI package: %v", err)
 	}

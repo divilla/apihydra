@@ -6,7 +6,7 @@
 - Reference tests: [`skeleton/internal/execution/validator_test.go`](../../skeleton/internal/execution/validator_test.go)
 - Shared step model and exit codes: [`prd.md`](../prd.md)
 - Shared domain types: [`000-domain-types.md`](000-domain-types.md)
-- Phase orchestration: [`010-executor.md`](010-executor.md)
+- Phase orchestration: [`010-executor-service.md`](010-executor-service.md)
 - Status: skeleton-aligned implementation guide
 
 ## Reference contract

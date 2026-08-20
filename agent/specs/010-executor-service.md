@@ -6,6 +6,7 @@
 - Reference tests: [`skeleton/internal/execution/executor_test.go`](../../skeleton/internal/execution/executor_test.go)
 - Shared domain and exit codes: [`prd.md`](../prd.md)
 - Shared domain types: [`000-domain-types.md`](000-domain-types.md)
+- Binder phases: [`007-binder-service.md`](007-binder-service.md)
 - Reporter methods: [`009-reporter-service.md`](009-reporter-service.md)
 - Status: skeleton-aligned implementation guide
 

@@ -184,11 +184,11 @@ Each package guide points to its binding skeleton contract:
 | Decoder | [`004-decoder-service.md`](specs/004-decoder-service.md) |
 | Resolver | [`005-resolver-service.md`](specs/005-resolver-service.md) |
 | KeyValueStore | [`006-key-value-store-service.md`](specs/006-key-value-store-service.md) |
-| Binder | [`007-binder.md`](specs/007-binder.md) |
+| Binder | [`007-binder-service.md`](specs/007-binder-service.md) |
 | Validator | [`008-validator-service.md`](specs/008-validator-service.md) |
 | Reporter methods and output fixed by the reference implementation | [`009-reporter-service.md`](specs/009-reporter-service.md) |
-| Preparation, execution phase order, tree validation, and stage scheduling | [`010-executor.md`](specs/010-executor.md) |
-| CLI composition and process behavior | [`011-main-app-int-tests.md`](specs/011-main-app-int-tests.md) |
+| Preparation, execution phase order, tree validation, and stage scheduling | [`010-executor-service.md`](specs/010-executor-service.md) |
+| CLI composition and process behavior | [`011-main-app.md`](specs/011-main-app.md) |
 | Black-box application verification | [`012-integration-tests.md`](specs/012-integration-tests.md) |
 
 The guides do not reproduce public declarations, method contracts, or reference
