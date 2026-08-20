@@ -30,7 +30,7 @@ Both scripts resolve the repository root from their own location, so they can be
 Run Codex review-and-fix passes until the native review returns no comments:
 
 ```shell
-scripts/codex-review-loop.pl agent/specs/010-step-runner.md
+scripts/codex-review-loop.pl agent/specs/010-step-runner-service.md
 ```
 
 The required first positional argument is the specification file. The script
@@ -46,7 +46,7 @@ supplied as a bare positional prompt, `-` for standard input, or after `--`.
 For example:
 
 ```shell
-scripts/codex-review-loop.pl agent/specs/010-step-runner.md --base develop
+scripts/codex-review-loop.pl agent/specs/010-step-runner-service.md --base develop
 ```
 
 The `--uncommitted` and `--commit SHA` review targets are rejected because they

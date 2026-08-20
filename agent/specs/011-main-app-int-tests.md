@@ -5,7 +5,7 @@
 - Binding implementation reference: `skeleton/cmd/cli/main.go`
 - Binding reference tests: `skeleton/cmd/cli/main_test.go`
 - Shared CLI and exit-code contract: [`prd.md`](../prd.md)
-- Reporter contract: [`09-reporter.md`](009-reporter.md)
+- Reporter contract: [`09-reporter.md`](009-reporter-service.md)
 - Definition collaborators: [`03-loader-service.md`](003-loader-service.md),
   [`04-decoder-service.md`](004-decoder-service.md), and
   [`05-resolver-service.md`](005-resolver-service.md)

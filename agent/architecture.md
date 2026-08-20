@@ -68,8 +68,8 @@ The current CLI composition order is owned by the PRD.
 
 - [`KeyValueStore`](specs/006-key-value-store-service.md)
 - [`VariableProcessor`](specs/007-variable-processor.md)
-- [`Validator`](specs/008-validator.md)
-- [`StepRunner`](specs/010-step-runner.md)
+- [`Validator`](specs/008-validator-service.md)
+- [`StepRunner`](specs/010-step-runner-service.md)
 
 StepRunner owns preparation scope, execution phase order, tree validation, and
 stage scheduling. The other execution specs define only their own APIs and do
@@ -77,7 +77,7 @@ not duplicate orchestration rules.
 
 ## Reporter and commands
 
-[`Reporter`](specs/009-reporter.md) owns the execution-output API and the exact
+[`Reporter`](specs/009-reporter-service.md) owns the execution-output API and the exact
 working-directory behavior implemented by the skeleton. It never owns fatal
 standard-error diagnostics; `cmd/cli` logs those before process exit. The
 remaining reporting methods are specified only to the extent of their

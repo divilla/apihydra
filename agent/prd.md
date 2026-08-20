@@ -152,9 +152,9 @@ Package-local requirements are owned in one place:
 | Resolver | [`05-resolver-service.md`](specs/005-resolver-service.md) |
 | KeyValueStore | [`06-key-value-store-service.md`](specs/006-key-value-store-service.md) |
 | VariableProcessor | [`07-variable-processor.md`](specs/007-variable-processor.md) |
-| Validator | [`08-validator.md`](specs/008-validator.md) |
-| Preparation, execution phase order, tree validation, and stage scheduling | [`10-step-runner.md`](specs/010-step-runner.md) |
-| Reporter methods and output fixed by the reference implementation | [`09-reporter.md`](specs/009-reporter.md) |
+| Validator | [`08-validator.md`](specs/008-validator-service.md) |
+| Preparation, execution phase order, tree validation, and stage scheduling | [`10-step-runner.md`](specs/010-step-runner-service.md) |
+| Reporter methods and output fixed by the reference implementation | [`09-reporter.md`](specs/009-reporter-service.md) |
 
 No spec restates another spec's normative behavior. A consumer spec references
 the owner and states only how its own API participates.

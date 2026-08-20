@@ -5,7 +5,7 @@
 - Binding reference: `skeleton/internal/execution/steprun.go`
 - Reference tests: `skeleton/internal/execution/steprun_test.go`
 - Shared domain and exit codes: [`prd.md`](../prd.md)
-- Reporter methods: [`09-reporter.md`](009-reporter.md)
+- Reporter methods: [`09-reporter.md`](009-reporter-service.md)
 - Status: skeleton-aligned specification
 
 This specification is the single owner of preparation scope, per-step execution
