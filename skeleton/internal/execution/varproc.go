@@ -1,57 +1,55 @@
 package execution
 
 import (
-	"apih/skeleton/internal/domain"
 	"context"
+
+	"apih/skeleton/internal/domain"
 )
 
 type VariableProcessor struct {
 	kvs *KeyValueStore
 }
 
+// NewVariableProcessor returns a processor that reads from and writes to kvs.
 func NewVariableProcessor(kvs *KeyValueStore) *VariableProcessor {
 	return &VariableProcessor{
 		kvs: kvs,
 	}
 }
 
-// Load iterates over *domain.Step.Vars and triggers execution.KeyValueStore.Set
-// for each key: value pair
-func (p *VariableProcessor) Load(
+// LoadVariables stores every variable declared in step.Vars in the processor's
+// key-value store.
+func (p *VariableProcessor) LoadVariables(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
-	// func is to be implemented
-	return 0, nil
+	panic("VariableProcessor.LoadVariables is not implemented")
 }
 
-// ParseRequestBody replaces `$var` and `${var}` placeholders with
-// execution.KeyValueStore.Get(var) value in *domain.Step.Request.Body
-func (p *VariableProcessor) ParseRequestBody(
+// InterpolateRequestBody replaces $var and ${var} placeholders in
+// step.Request.Body with values from the processor's key-value store.
+func (p *VariableProcessor) InterpolateRequestBody(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
-	// func is to be implemented
-	return 0, nil
+	panic("VariableProcessor.InterpolateRequestBody is not implemented")
 }
 
-// ParseResponseExpected replaces `$var` and `${var}` placeholders with
-// execution.KeyValueStore.Get(var) value in *domain.Step.Response.Expected
-func (p *VariableProcessor) ParseResponseExpected(
+// InterpolateResponseExpected replaces $var and ${var} placeholders in
+// step.Response.Expected with values from the processor's key-value store.
+func (p *VariableProcessor) InterpolateResponseExpected(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
-	// func is to be implemented
-	return 0, nil
+	panic("VariableProcessor.InterpolateResponseExpected is not implemented")
 }
 
-// Capture iterates over *domain.Step.Response.Capture key: value pairs
-// executing <value> using runner.JQSelect and saving to store with
-// execution.KeyValueStore.Set
-func (p *VariableProcessor) Capture(
+// CaptureResponseVariables evaluates every selector in step.Response.Capture
+// against step.Response.Body with runner.JQExtract and stores each result in the
+// processor's key-value store under its corresponding capture name.
+func (p *VariableProcessor) CaptureResponseVariables(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
-	// func is to be implemented
-	return 0, nil
+	panic("VariableProcessor.CaptureResponseVariables is not implemented")
 }

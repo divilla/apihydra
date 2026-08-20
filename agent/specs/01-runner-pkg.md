@@ -22,8 +22,8 @@ var ErrGitDiff = errors.New("git diff error")
 
 func Curl(ctx context.Context, method, url string, headers map[string]string,
     timeout, retries int, query, body string) (string, int, error)
-func JQFilter(ctx context.Context, selector, input string) (string, int, error)
-func JQSelect(ctx context.Context, selectors []string, input string) (string, int, error)
+func JQProject(ctx context.Context, selector, input string) (string, int, error)
+func JQExtract(ctx context.Context, selector, input string) (string, int, error)
 func JQPretty(ctx context.Context, input string) (string, int, error)
 func GitDiff(ctx context.Context, expected, actual string) (string, int, error)
 ```
@@ -35,17 +35,20 @@ does not define which failure paths match each one.
 ## Operation boundaries
 
 - `Curl` is the request operation with the exact request inputs represented by
-  its parameters.
-- `JQFilter` selects one JSON member or value from `input`.
-- `JQSelect` returns one recursively key-sorted, pretty JSON document
-  containing the requested members.
-- `JQPretty` returns recursively key-sorted, pretty JSON with jq's original
-  color output preserved.
+  its parameters and returns the response body and HTTP status code.
+- `JQProject` evaluates `selector` against `input` and returns the selected
+  members as one recursively key-sorted, pretty JSON object.
+- `JQExtract` evaluates `selector` against `input` and returns the selected JSON
+  value without wrapping it in an object. Its result may be any JSON value,
+  including a scalar such as `1` or `"some text"`.
+- `JQPretty` returns `input` as recursively key-sorted, pretty JSON.
 - `GitDiff` compares `expected` with `actual` and returns a headerless diff
   preserving Git's original color output.
 
-`JQFilter` and `JQSelect` are distinct APIs. `GitDiff` replaces any legacy
-`BatDiff`/`bat` boundary.
+`JQProject` and `JQExtract` are distinct operations: projection preserves a
+selected object shape for document comparison, while extraction returns the
+selected value for capture. `GitDiff` replaces any legacy `BatDiff`/`bat`
+boundary.
 
 ## Deliberately unspecified
 
@@ -54,7 +57,7 @@ It therefore does not fix:
 
 - executable names or argument vectors;
 - use of stdin, temporary files, or environment variables;
-- sorting beyond the `JQSelect` and `JQPretty` result descriptions;
+- sorting beyond the `JQProject` and `JQPretty` result descriptions;
 - treatment of empty inputs, jq streams, or semantic non-zero statuses;
 - stdout/stderr inclusion in errors;
 - startup, cancellation, and operational exit-code normalization;
@@ -68,8 +71,8 @@ product requirements until represented by the skeleton.
 1. Exported names, signatures, and static error text match the reference.
 2. Each function stays within the operation boundary stated by its reference
    name or comment.
-3. JQ and Git presentation output preserves the color behavior explicitly
-   required by the comments.
+3. `JQProject` and `JQPretty` return comparable normalized JSON, while
+   `GitDiff` preserves the color behavior required by its comment.
 4. No external command is invoked by another production package.
 5. No `BatDiff`, `bat` dependency, shell policy, or command-line contract is
    invented here.

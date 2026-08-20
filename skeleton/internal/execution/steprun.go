@@ -31,8 +31,7 @@ func NewStepRunner(
 	}
 }
 
-// Prepare traverses directories through children, starting from suite.Root
-// For each directory it iterates directory.ResolvedSteps and executes varProc.Load and varProc.ParseRequestBody
+// Prepare prepares the suite's resolved steps for execution.
 func (s *StepRunner) Prepare(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -40,11 +39,16 @@ func (s *StepRunner) Prepare(
 	return nil
 }
 
-// Execute traverses directories through children, starting from suite.Root, from goroutines, one for each directory,
-// until entire same number stage is executed. For each directory it iterates directory.ResolvedSteps and executes
-// runner.Curl, varProc.ParseResponseExpected, val.ValidateTypes, val.ValidateExpected and finally varProc.Capture
-// On detected validation error, Execute reports failed validation through s.report.
-// Once it finishes traversing with one or more validation failures it returns exit code 101 and ErrValidation.
+// Execute processes the directory tree in stages, running directories in the
+// same stage concurrently. For every runtime step, it calls
+// VariableProcessor.LoadVariables, VariableProcessor.InterpolateRequestBody,
+// VariableProcessor.InterpolateResponseExpected, runner.Curl,
+// Validator.ValidateTypes, Validator.ValidateExpected, and
+// VariableProcessor.CaptureResponseVariables in that order. Validation failures
+// are reported through s.report. The response body returned by runner.Curl is
+// assigned to step.Response.Body for validation and capture. After all work
+// finishes, Execute returns exit code 101 and ErrValidation when one or more
+// validations failed.
 func (s *StepRunner) Execute(
 	ctx context.Context,
 	suite *domain.Suite,

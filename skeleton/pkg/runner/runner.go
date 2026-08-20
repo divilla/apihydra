@@ -3,7 +3,6 @@ package runner
 import (
 	"context"
 	"errors"
-	"fmt"
 )
 
 var ErrCommand = errors.New("command error")
@@ -12,23 +11,25 @@ var ErrJQSelector = errors.New("jq selector error")
 var ErrJQPretty = errors.New("jq pretty error")
 var ErrGitDiff = errors.New("git diff error")
 
+// Curl executes an HTTP request and returns its response body and status code.
 func Curl(ctx context.Context, method string, url string, headers map[string]string, timeout int, retries int, query string, body string) (string, int, error) {
 	return "", 0, nil
 }
 
-// JQFilter selects one JSON member or value from input.
-func JQFilter(ctx context.Context, selector, input string) (string, int, error) {
+// JQProject selects members from input and returns them as one recursively
+// key-sorted, pretty JSON object.
+func JQProject(ctx context.Context, selector, input string) (string, int, error) {
 	return "", 0, nil
 }
 
-// JQSelect returns one recursively key-sorted, pretty JSON document containing
-// the requested members.
-func JQSelect(ctx context.Context, selector string, input string) (string, int, error) {
-	return JQFilter(ctx, fmt.Sprintf("{%s}", selector), input)
+// JQExtract evaluates selector against input and returns the selected JSON value
+// without wrapping it in an object. Results include scalars such as 1 and
+// "some text".
+func JQExtract(ctx context.Context, selector string, input string) (string, int, error) {
+	return "", 0, nil
 }
 
-// JQPretty returns recursively key-sorted, pretty JSON with jq's original
-// color output preserved.
+// JQPretty returns input as recursively key-sorted, pretty JSON.
 func JQPretty(ctx context.Context, input string) (string, int, error) {
 	return "", 0, nil
 }

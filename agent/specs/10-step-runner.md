@@ -5,12 +5,12 @@
 - Binding reference: `skeleton/internal/execution/steprun.go`
 - Reference tests: `skeleton/internal/execution/steprun_test.go`
 - Shared domain and exit codes: [`prd.md`](../prd.md)
-- Reporter methods: [`10-reporter.md`](09-reporter.md)
+- Reporter methods: [`09-reporter.md`](09-reporter.md)
 - Status: skeleton-aligned specification
 
-This specification is the single owner of preparation order, execution phase
+This specification is the single owner of preparation scope, per-step execution
 order, directory-tree validation, and stage scheduling. Collaborator specs do
-not restate those rules.
+not restate the phase order.
 
 ## Public API
 
@@ -33,15 +33,12 @@ work.
 
 ## Preparation
 
-`Prepare` traverses directories through `Children`, starting at `suite.Root`.
-For each step encountered in `Directory.ResolvedSteps`, it invokes:
+`Prepare` prepares the suite's resolved steps for execution. Variable loading
+and interpolation are not preparation phases; they run per runtime step inside
+`Execute`.
 
-1. `VariableProcessor.Load`
-2. `VariableProcessor.ParseRequestBody`
-
-The skeleton does not define runtime-copy policy, preparation transactionality,
-or conversion of collaborators' integer codes into Prepare's error-only
-result.
+The skeleton does not define traversal, runtime-copy policy, preparation
+transactionality, or the exact mutations performed by `Prepare`.
 
 ## Directory-tree validation
 
@@ -79,26 +76,32 @@ No ordering between same-stage directory goroutines is promised.
 
 ## Directory and step processing
 
-For each directory, StepRunner iterates the groups and steps already represented
-by `Directory.ResolvedSteps`. The reference does not specify sorting beyond
-that slice structure and does not define separate file or step goroutines.
+For each directory, StepRunner processes the runtime steps represented by
+`Directory.RuntimeSteps`. The reference does not specify sorting beyond that
+slice structure and does not define separate file or step goroutines.
 
 For each executed step, the skeleton comment fixes this phase order:
 
-1. `runner.Curl`
-2. `VariableProcessor.ParseResponseExpected`
-3. `Validator.ValidateTypes`
-4. `Validator.ValidateExpected`
-5. `VariableProcessor.Capture`
+1. `VariableProcessor.LoadVariables`
+2. `VariableProcessor.InterpolateRequestBody`
+3. `VariableProcessor.InterpolateResponseExpected`
+4. `runner.Curl`
+5. `Validator.ValidateTypes`
+6. `Validator.ValidateExpected`
+7. `VariableProcessor.CaptureResponseVariables`
+
+The response body returned by `runner.Curl` becomes `Step.Response.Body` for
+the validation and capture phases that follow it. Expected-response variables
+are interpolated before the request is executed.
 
 StepRunner sends detected validation failures to its Reporter. After traversal
 finishes with at least one validation mismatch, `Execute` returns
 `errs.ExitValidation` and an error matching `ErrValidation`.
 
-The skeleton does not define phase argument construction, response assignment,
-the mapping of individual validation errors to Reporter methods, success
-reporting, debug selection/stopping, or precedence between multiple nonfatal
-failures. Those details remain outside this spec.
+The skeleton does not define URL construction, HTTP-status treatment, the
+mapping of individual validation errors to Reporter methods, success reporting,
+debug selection/stopping, or precedence between multiple nonfatal failures.
+Those details remain outside this spec.
 
 ## Boundaries
 
@@ -110,14 +113,16 @@ error formatting. Those contracts remain with their owning specs.
 
 1. Public names, signatures, constructor state, and static error text match the
    reference.
-2. Preparation uses the exact two phases in order.
+2. `Prepare` does not load or interpolate variables.
 3. Every invalid tree shape covered by the reference returns configuration code
    and `ErrInvalidDirectoryTree` without panic.
 4. Same-stage directories may overlap, all are joined, and later stages wait
    for the barrier.
 5. The first recorded fatal stage error cancels shared work, prevents later
    stages, and returns the code derived by the reference implementation.
-6. Per-step execution uses the five phases in the reference order.
+6. Per-step execution uses the seven phases in the reference order, assigns the
+   Curl response body to `Step.Response.Body`, and interpolates expected values
+   before Curl runs.
 7. Completed validation mismatch traversal returns code `101` and
    `ErrValidation`.
 8. Debug, presentation, sorting, and per-validator payload rules absent from

@@ -70,7 +70,7 @@ The current CLI composition order is owned by the PRD.
 - [`Validator`](specs/08-validator.md)
 - [`StepRunner`](specs/10-step-runner.md)
 
-StepRunner owns preparation order, execution phase order, tree validation, and
+StepRunner owns preparation scope, execution phase order, tree validation, and
 stage scheduling. The other execution specs define only their own APIs and do
 not duplicate orchestration rules.
 
@@ -81,10 +81,10 @@ working-directory and fatal-diagnostic behavior implemented by the skeleton.
 Its other reporting methods remain stubbed and are specified only to the extent
 of their reference comments.
 
-[`pkg/runner`](specs/01-runner-pkg.md) owns Curl, JQFilter, JQSelect, JQPretty,
-and GitDiff. Their signatures and reference comments are binding; command-line
-construction and result-normalization details are not yet architectural
-requirements.
+[`pkg/runner`](specs/01-runner-pkg.md) owns Curl, JQProject, JQExtract,
+JQPretty, and GitDiff. Their signatures and reference comments are binding;
+command-line construction and result-normalization details not described by
+those comments are not yet architectural requirements.
 
 ## Errors and exits
 

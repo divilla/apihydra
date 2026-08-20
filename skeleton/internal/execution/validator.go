@@ -19,6 +19,9 @@ func (v *Validator) ValidateTypes(
 	return nil
 }
 
+// ValidateExpected projects step.Response.Body with runner.JQProject, formats
+// step.Response.Expected with runner.JQPretty, and compares the normalized
+// documents with runner.GitDiff.
 func (v *Validator) ValidateExpected(
 	ctx context.Context,
 	step *domain.Step,

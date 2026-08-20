@@ -151,8 +151,8 @@ Package-local requirements are owned in one place:
 | KeyValueStore | [`06-key-value-store-service.md`](specs/06-key-value-store-service.md) |
 | VariableProcessor | [`07-variable-processor.md`](specs/07-variable-processor.md) |
 | Validator | [`08-validator.md`](specs/08-validator.md) |
-| Preparation and execution phase order, tree validation, and stage scheduling | [`09-step-runner.md`](specs/10-step-runner.md) |
-| Reporter methods and output fixed by the reference implementation | [`10-reporter.md`](specs/09-reporter.md) |
+| Preparation, execution phase order, tree validation, and stage scheduling | [`10-step-runner.md`](specs/10-step-runner.md) |
+| Reporter methods and output fixed by the reference implementation | [`09-reporter.md`](specs/09-reporter.md) |
 
 No spec restates another spec's normative behavior. A consumer spec references
 the owner and states only how its own API participates.
@@ -166,10 +166,12 @@ The following are not product requirements:
 - deterministic file ordering or symlink/hidden-directory policy;
 - presence-sensitive default merging, implicit HTTP methods, URL
   normalization, or header canonicalization;
-- variable syntax, scope, serialization, interpolation, or capture-storage
-  lifetime;
-- response-type tokens/modifiers, projection rules, HTTP-status behavior, or
-  exact validation algorithms;
+- variable-name grammar within the documented `$var` and `${var}` forms,
+  escaping, serialization, replacement precedence, or scope beyond the
+  injected VariableProcessor store;
+- response-type tokens/modifiers, projection-selector construction,
+  HTTP-status behavior, or validation rules beyond the documented normalized
+  expected-response comparison;
 - exact curl, jq, or Git argument vectors and command-result normalization;
 - success, validation-failure, or debug layouts not implemented or tested in
   `skeleton/`;

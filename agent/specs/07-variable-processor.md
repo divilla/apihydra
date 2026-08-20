@@ -4,7 +4,7 @@
 
 - Binding reference: `skeleton/internal/execution/varproc.go`
 - Shared step model: [`prd.md`](../prd.md#defaults-and-steps)
-- Phase orchestration: [`09-step-runner.md`](10-step-runner.md)
+- Phase orchestration: [`10-step-runner.md`](10-step-runner.md)
 - Status: skeleton-aligned specification
 
 This specification owns the VariableProcessor API and the step field associated
@@ -13,55 +13,61 @@ with each phase. StepRunner owns when the phases are called.
 ## Public API
 
 ```go
-type VariableProcessor struct{}
+type VariableProcessor struct {
+    kvs *KeyValueStore
+}
 
-func NewVariableProcessor() *VariableProcessor
-func (p *VariableProcessor) Load(ctx context.Context, step *domain.Step) (int, error)
-func (p *VariableProcessor) ParseRequestBody(ctx context.Context, step *domain.Step) (int, error)
-func (p *VariableProcessor) ParseResponseExpected(ctx context.Context, step *domain.Step) (int, error)
-func (p *VariableProcessor) Capture(ctx context.Context, step *domain.Step) (int, error)
+func NewVariableProcessor(kvs *KeyValueStore) *VariableProcessor
+func (p *VariableProcessor) LoadVariables(ctx context.Context, step *domain.Step) (int, error)
+func (p *VariableProcessor) InterpolateRequestBody(ctx context.Context, step *domain.Step) (int, error)
+func (p *VariableProcessor) InterpolateResponseExpected(ctx context.Context, step *domain.Step) (int, error)
+func (p *VariableProcessor) CaptureResponseVariables(ctx context.Context, step *domain.Step) (int, error)
 ```
 
-The names are exact. In particular, the reference has no `ParseRequest`,
-`ParseResponse`, or constructor receiving a KeyValueStore.
+The names and signatures are exact. The skeleton method bodies panic with an
+explicit not-implemented message; those placeholders define no runtime result.
 
 ## Construction and phases
 
-`NewVariableProcessor` returns an empty processor. The type has no retained
-store or other collaborator.
+`NewVariableProcessor` retains the supplied `KeyValueStore`. All four phases
+read from or write to that same store.
 
-The phase names associate operations with the shared Step fields as follows:
+The phases have these responsibilities:
 
-| Method | Associated input |
+| Method | Responsibility |
 | --- | --- |
-| `Load` | `Step.Vars` |
-| `ParseRequestBody` | `Step.Request.Body` |
-| `ParseResponseExpected` | `Step.Response.Expected` |
-| `Capture` | `Step.Response.Capture` and the runtime response |
+| `LoadVariables` | Store every `Step.Vars` entry in the processor's `KeyValueStore`. |
+| `InterpolateRequestBody` | Replace `$var` and `${var}` placeholders in `Step.Request.Body` with values from the store. |
+| `InterpolateResponseExpected` | Replace `$var` and `${var}` placeholders in `Step.Response.Expected` with values from the store. |
+| `CaptureResponseVariables` | Evaluate every `Step.Response.Capture` selector against `Step.Response.Body` with `runner.JQExtract`, then store the extracted value under its capture name. |
 
-This association does not define a variable language or mutation algorithm.
-The call order is stated once in the StepRunner specification.
+The call order is owned by the StepRunner specification and is not repeated
+here.
 
 ## Deliberately unspecified
 
-The skeleton does not connect VariableProcessor to KeyValueStore or Runner and
-does not define:
+The skeleton does not define:
 
-- variable name syntax, scope, lifetime, or duplicate behavior;
+- variable-name grammar within the two documented placeholder forms;
+- escaping, replacement precedence, or behavior for a missing variable;
+- variable scope or lifetime beyond the injected processor store;
 - YAMLString serialization;
-- interpolation markers, escaping, or canonicalization;
-- capture selector semantics or storage;
+- capture iteration order or selector syntax beyond delegation to
+  `runner.JQExtract`;
+- nil processor, store, context, or step behavior;
 - success/failure code selection for these methods;
 - cancellation behavior beyond accepting a context.
 
-No such behavior is a requirement of this spec.
+Duplicate storage behavior is inherited from `KeyValueStore.Set`; this spec
+does not redefine it.
 
 ## Acceptance criteria
 
-1. Names, signatures, and the stateless constructor match the reference.
-2. Each method remains limited to its named variable phase and shared Step
-   data.
+1. Names, signatures, injected store, and explicit not-implemented placeholders
+   match the reference.
+2. Each method remains limited to its documented variable phase, shared Step
+   data, and the injected `KeyValueStore`.
 3. Phase ordering is not duplicated from StepRunner.
-4. The implementation does not add constructor state, direct command
-   execution, output formatting, or a variable grammar absent from the
-   skeleton.
+4. Capture delegates value extraction to `runner.JQExtract`; VariableProcessor
+   does not execute external commands directly.
+5. No variable grammar or error policy absent from the skeleton is introduced.
