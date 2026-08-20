@@ -32,20 +32,21 @@ hierarchy:
 
 | Package | Owned responsibility |
 | --- | --- |
-| `cmd/cli` | Working-directory selection, service composition, fatal-diagnostic routing, and process exit. |
+| `cmd/cli` | Working-directory selection, service composition, fatal-diagnostic logging, and process exit. |
 | `internal/domain` | Shared suite, directory, file, definition, defaults, and step values. |
 | `internal/definition` | Directory/file loading, document classification, definition decoding and validation, and resolution. |
 | `internal/execution` | The key-value store, variable phases, response validation, step preparation, and staged execution. |
-| `internal/reporter` | Human-readable terminal output through injected writers. |
+| `internal/reporter` | Human-readable execution output through an injected standard-output writer. |
 | `pkg/errs` | Contextual error construction and exit-code metadata. |
 | `pkg/runner` | External-command operations. |
 
-The architecture test makes three ownership rules enforceable:
+The architecture test makes four ownership rules enforceable:
 
 - production command execution is confined to `pkg/runner`;
 - production contextual error composition with `fmt.Errorf` or `errors.Join`
   is confined to `pkg/errs`;
-- production terminal writes are confined to `internal/reporter`.
+- production execution-output writes are confined to `internal/reporter`;
+- fatal standard-error diagnostics are confined to `cmd/cli`.
 
 `bat` and a `BatDiff` API are expressly absent.
 
@@ -105,8 +106,8 @@ exists, it joins that argument to the current directory and requires the result
 to be a directory. Invalid input returns configuration code `102` and an error
 matching CLI-owned `ErrInvalidPath`.
 
-The reference CLI creates separate Reporters for `os.Stdout` and `os.Stderr`. `run`
-reports the selected working directory, creates
+The reference CLI creates one Reporter for `os.Stdout`. `run` reports the
+selected working directory, creates
 `domain.Suite{WorkDir: workDir}`, and invokes:
 
 1. `Loader.LoadDirectoryStructure`
@@ -118,9 +119,10 @@ reports the selected working directory, creates
 7. `Resolver.ResolveDefaults`
 8. `Resolver.ResolveSteps`
 
-The reference `run` returns success after step resolution. A returned error is
-passed to the stderr Reporter's `Error` method, after which `main` exits with
-the code returned by `run`.
+The reference `run` returns success after step resolution. When `run` returns
+an error, `main` writes it to `os.Stderr` with the standard logger and then
+calls `os.Exit` with the exact code returned by `run`. Reporter does not own
+fatal diagnostics or process exit.
 
 ## Exit-code contract
 
@@ -129,7 +131,7 @@ The product reserves:
 | Constant | Code | Meaning |
 | --- | ---: | --- |
 | `errs.ExitSuccess` | `0` | Success. |
-| `errs.ExitValidation` | `101` | Execution completed with validation failure. |
+| `errs.ExitValidation` | `101` | Execution completed with one or more validation failures reported to stdout; the result is not a fatal error. |
 | `errs.ExitConfiguration` | `102` | Invocation or configuration failure. |
 | `errs.ExitInternal` | `103` | Internal failure. |
 
@@ -192,8 +194,8 @@ updated to match.
 2. The current CLI follows the eight definition phases in order and does not
    compose the execution pipeline prematurely.
 3. Shared workflow state uses `internal/domain` rather than parallel carriers.
-4. Command execution, contextual error composition, and terminal output remain
-   within their owner packages.
+4. Command execution, contextual error composition, execution output, and
+   fatal diagnostic logging remain within their owner packages.
 5. Every package-local behavior is specified once and referenced by consumers.
 6. No behavior listed as unspecified is asserted by a package spec.
 7. `go test ./...`, `go test -race ./...`, and `git diff --check` pass.

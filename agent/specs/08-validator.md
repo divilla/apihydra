@@ -37,9 +37,11 @@ documents by projecting `Step.Response.Body` with `runner.JQProject` and
 formatting `Step.Response.Expected` with `runner.JQPretty`, then compares the
 normalized expected and actual documents with `runner.GitDiff`.
 
-`ErrValidation` classifies one or more mismatches found by either validation
-operation. `ErrValidatorFatal` exists as a separate static classification, but
-the skeleton does not define which conditions must use it.
+`ErrValidation` classifies one or more nonfatal mismatches found by either
+validation operation. StepRunner reports those mismatches and converts them to
+validation exit status rather than returning them as its final error.
+`ErrValidatorFatal` exists as a separate static classification, but the
+skeleton does not define which conditions must use it.
 
 ## Deliberately unspecified
 

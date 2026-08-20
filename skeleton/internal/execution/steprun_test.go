@@ -196,18 +196,52 @@ func TestExecutionErrorsUseProductExitCodes(t *testing.T) {
 	}
 }
 
-func TestExecuteStagesDerivesValidationExitCode(t *testing.T) {
+func TestExecuteStagesContinuesAfterValidationStatus(t *testing.T) {
+	var processed atomic.Int32
 	exitCode, err := executeStages(
 		context.Background(),
-		[][]*domain.Directory{{{Stage: 0, Path: "/"}}},
-		func(context.Context, *domain.Directory) (int, error) {
-			return errs.ExitSuccess, errs.Build(errs.ExitValidation, ErrValidation, nil)
+		[][]*domain.Directory{
+			{{Stage: 0, Path: "/"}},
+			{{Stage: 1, Path: "/child"}},
+		},
+		func(_ context.Context, dir *domain.Directory) (int, error) {
+			processed.Add(1)
+			if dir.Stage == 0 {
+				return errs.ExitValidation, nil
+			}
+			return errs.ExitSuccess, nil
 		},
 	)
 	if exitCode != errs.ExitValidation {
 		t.Fatalf("executeStages() exit code = %d, want %d", exitCode, errs.ExitValidation)
 	}
-	if !errors.Is(err, ErrValidation) {
-		t.Fatalf("executeStages() error = %v, want ErrValidation", err)
+	if err != nil {
+		t.Fatalf("executeStages() error = %v, want nil", err)
+	}
+	if got, want := processed.Load(), int32(2); got != want {
+		t.Fatalf("processed directories = %d, want %d", got, want)
+	}
+}
+
+func TestExecuteStagesFatalErrorTakesPrecedenceOverValidationStatus(t *testing.T) {
+	wantErr := errors.New("fatal execution error")
+	exitCode, err := executeStages(
+		context.Background(),
+		[][]*domain.Directory{
+			{{Stage: 0, Path: "/"}},
+			{{Stage: 1, Path: "/child"}},
+		},
+		func(_ context.Context, dir *domain.Directory) (int, error) {
+			if dir.Stage == 0 {
+				return errs.ExitValidation, nil
+			}
+			return errs.ExitInternal, wantErr
+		},
+	)
+	if exitCode != errs.ExitInternal {
+		t.Fatalf("executeStages() exit code = %d, want %d", exitCode, errs.ExitInternal)
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("executeStages() error = %v, want %v", err, wantErr)
 	}
 }

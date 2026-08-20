@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -57,4 +60,35 @@ func TestRunReturnsInternalExitCodeForOutputFailure(t *testing.T) {
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("run() error = %v, want %v", err, wantErr)
 	}
+}
+
+func TestMainLogsFatalErrorAndPreservesProductExitCode(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=TestMainHelperProcess")
+	cmd.Env = append(os.Environ(), "APIH_TEST_MAIN_HELPER=1")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("main process error = %v, want *exec.ExitError", err)
+	}
+	if got, want := exitErr.ExitCode(), errs.ExitConfiguration; got != want {
+		t.Fatalf("main process exit code = %d, want %d", got, want)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("main process stdout = %q, want empty output", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), ErrInvalidPath.Error()) {
+		t.Fatalf("main process stderr = %q, want ErrInvalidPath", stderr.String())
+	}
+}
+
+func TestMainHelperProcess(t *testing.T) {
+	if os.Getenv("APIH_TEST_MAIN_HELPER") != "1" {
+		return
+	}
+	main()
 }

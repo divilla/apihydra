@@ -1,7 +1,9 @@
 package reporter
 
 import (
+	"apih/skeleton/internal/domain"
 	"bytes"
+	"context"
 	"errors"
 	"testing"
 )
@@ -18,14 +20,14 @@ func TestWorkingDirectoryUsesInjectedWriter(t *testing.T) {
 	}
 }
 
-func TestErrorUsesUnifiedRedAndRemovesEmbeddedColors(t *testing.T) {
+func TestValidationMethodsUseNonfatalReportingContract(t *testing.T) {
 	var output bytes.Buffer
 	report := NewReporter(&output)
 
-	if err := report.Error(errors.New("before \x1b[32mgreen\x1b[0m after")); err != nil {
-		t.Fatalf("Error() error = %v", err)
+	if err := report.ValidationTypes(context.Background(), &domain.Step{}, errors.New("type mismatch")); err != nil {
+		t.Fatalf("ValidationTypes() error = %v", err)
 	}
-	if got, want := output.String(), "\x1b[31mbefore green after\x1b[0m\n"; got != want {
-		t.Fatalf("Error() output = %q, want %q", got, want)
+	if err := report.ValidationExpected(context.Background(), &domain.Step{}, errors.New("expected mismatch")); err != nil {
+		t.Fatalf("ValidationExpected() error = %v", err)
 	}
 }

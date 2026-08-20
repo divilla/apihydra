@@ -62,11 +62,16 @@ Stages run in ascending order. For one active stage, StepRunner starts one
 goroutine per directory and waits for every started goroutine before returning
 or advancing to the next stage.
 
-The first directory error recorded for a stage retains its error and supplied
-non-zero code and cancels the shared execution context. If that directory
-supplied code `0`, StepRunner derives a code through `errs.Code` with
+The first fatal directory error recorded for a stage retains its error and
+supplied non-zero code and cancels the shared execution context. If that
+directory supplied code `0`, StepRunner derives a code through `errs.Code` with
 `ExitInternal` fallback and preserves the derived code, including `0`. Sibling
 goroutines are still joined, and later stages do not start.
+
+A directory may return `errs.ExitValidation` with a nil error after reporting
+its validation failures. The scheduler retains the first non-zero status,
+joins the stage, and continues through later stages. A later fatal error takes
+precedence over an earlier validation status.
 
 If the shared context is canceled between otherwise successful stages,
 execution returns `ExitInternal` and a built error matching
@@ -96,7 +101,8 @@ are interpolated before the request is executed.
 
 StepRunner sends detected validation failures to its Reporter. After traversal
 finishes with at least one validation mismatch, `Execute` returns
-`errs.ExitValidation` and an error matching `ErrValidation`.
+`errs.ExitValidation, nil`. Validation failures therefore affect final process
+status without becoming fatal diagnostics or canceling remaining work.
 
 The skeleton does not define URL construction, HTTP-status treatment, the
 mapping of individual validation errors to Reporter methods, success reporting,
@@ -123,7 +129,7 @@ error formatting. Those contracts remain with their owning specs.
 6. Per-step execution uses the seven phases in the reference order, assigns the
    Curl response body to `Step.Response.Body`, and interpolates expected values
    before Curl runs.
-7. Completed validation mismatch traversal returns code `101` and
-   `ErrValidation`.
+7. Completed validation mismatch traversal continues through remaining work
+   and returns code `101` with a nil error.
 8. Debug, presentation, sorting, and per-validator payload rules absent from
    the skeleton are not introduced here.

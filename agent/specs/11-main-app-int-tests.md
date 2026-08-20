@@ -48,14 +48,15 @@ func run(
 
 `main`:
 
-1. constructs one Reporter backed by `os.Stdout` and a distinct Reporter backed
-   by `os.Stderr`;
-2. invokes `run(context.Background(), os.Args, outputReport)` exactly once;
-3. passes a returned non-nil error to the stderr Reporter's `Error` method; and
-4. calls `os.Exit` with the exact code returned by `run`.
+1. configures the standard logger without timestamp flags and with `os.Stderr`;
+2. constructs one Reporter backed by `os.Stdout`;
+3. invokes `run(context.Background(), os.Args, outputReport)` exactly once;
+4. passes a returned non-nil error to `log.Print`; and
+5. calls `os.Exit` with the exact code returned by `run`.
 
-As in the skeleton, `main` ignores an error returned by the diagnostic
-Reporter. No other production package may own process exit.
+`log.Fatal` and `log.Fatalf` are not used because both force exit code `1`.
+Reporter never owns stderr. No other production package may own fatal
+diagnostic logging or process exit.
 
 ## Working-directory selection
 
@@ -124,8 +125,10 @@ skeleton.
    `errs.ExitSuccess` after reporting the working directory.
 3. Reporter output failures return `errs.ExitInternal` and preserve the writer
    failure.
-4. The application stops after `Resolver.ResolveSteps` and introduces no public
+4. Fatal errors are logged to stderr and retain the exact product exit code
+   returned by `run`.
+5. The application stops after `Resolver.ResolveSteps` and introduces no public
    contract, CLI option, execution composition, or behavior absent from the
    skeleton.
-5. `go test ./cmd/cli`, `go test ./...`, `go test -race ./...`, and
+6. `go test ./cmd/cli`, `go test ./...`, `go test -race ./...`, and
    `git diff --check` pass.

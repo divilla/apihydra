@@ -25,11 +25,12 @@ command-wrapper packages are not part of the reference architecture.
 ## Dependency boundaries
 
 Shared workflow values belong to `internal/domain`. The current skeleton keeps
-package dependencies acyclic and enforces three production boundaries:
+package dependencies acyclic and enforces four production boundaries:
 
 - external command execution belongs to `pkg/runner`;
 - contextual error composition belongs to `pkg/errs`;
-- terminal writes belong to `internal/reporter`.
+- execution-output writes belong to `internal/reporter`;
+- fatal standard-error diagnostics belong to `cmd/cli`.
 
 `cmd/cli` is the composition root and the only reference package that calls
 `os.Exit`. `bat` and `BatDiff` are absent.
@@ -76,10 +77,11 @@ not duplicate orchestration rules.
 
 ## Reporter and commands
 
-[`Reporter`](specs/09-reporter.md) owns the terminal-output API and the exact
-working-directory and fatal-diagnostic behavior implemented by the skeleton.
-Its other reporting methods remain stubbed and are specified only to the extent
-of their reference comments.
+[`Reporter`](specs/09-reporter.md) owns the execution-output API and the exact
+working-directory behavior implemented by the skeleton. It never owns fatal
+standard-error diagnostics; `cmd/cli` logs those before process exit. The
+remaining reporting methods are specified only to the extent of their
+reference comments.
 
 [`pkg/runner`](specs/01-runner-pkg.md) owns Curl, JQProject, JQExtract,
 JQPretty, and GitDiff. Their signatures and reference comments are binding;
@@ -96,8 +98,8 @@ codes. The PRD owns the shared meanings of codes `0`, `101`, `102`, and `103`.
 
 1. `skeleton/` remains the binding architecture and API.
 2. Shared carriers remain in `internal/domain`.
-3. Contextual errors, external commands, and terminal writes remain in their
-   owner packages.
+3. Contextual errors, external commands, execution output, and fatal diagnostic
+   logging remain in their owner packages.
 4. Package specs do not create parallel APIs or restate another spec's
    requirements.
 5. Behavior absent from the skeleton remains an implementation choice, not a

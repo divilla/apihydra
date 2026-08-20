@@ -25,11 +25,19 @@ func TestPackageBoundaries(t *testing.T) {
 		)
 	})
 
-	t.Run("terminal writes belong to reporter", func(t *testing.T) {
+	t.Run("execution output belongs to reporter", func(t *testing.T) {
 		assertPatternsAbsentOutside(
 			t,
 			filepath.FromSlash("internal/reporter"),
-			[]string{"fmt.Fprint(", "fmt.Fprintf(", "fmt.Fprintln(", "log.Print(", "log.Printf(", "log.Println("},
+			[]string{"fmt.Fprint(", "fmt.Fprintf(", "fmt.Fprintln("},
+		)
+	})
+
+	t.Run("fatal diagnostics belong to cli", func(t *testing.T) {
+		assertPatternsAbsentOutside(
+			t,
+			filepath.FromSlash("cmd/cli"),
+			[]string{"log.Print(", "log.Printf(", "log.Println("},
 		)
 	})
 

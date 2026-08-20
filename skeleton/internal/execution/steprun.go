@@ -47,8 +47,8 @@ func (s *StepRunner) Prepare(
 // VariableProcessor.CaptureResponseVariables in that order. Validation failures
 // are reported through s.report. The response body returned by runner.Curl is
 // assigned to step.Response.Body for validation and capture. After all work
-// finishes, Execute returns exit code 101 and ErrValidation when one or more
-// validations failed.
+// finishes, Execute returns exit code 101 and a nil error when one or more
+// validations failed. Validation status does not cancel remaining work.
 func (s *StepRunner) Execute(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -64,7 +64,7 @@ func (s *StepRunner) Execute(
 		return exitCode, err
 	}
 
-	return errs.ExitSuccess, nil
+	return exitCode, nil
 }
 
 type (
@@ -152,18 +152,22 @@ func executeStages(
 ) (int, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	var firstStatusCode int
 
 	for _, stage := range dirs {
 		exitCode, err := executeStage(ctx, cancel, stage, process)
 		if err != nil {
 			return exitCode, err
 		}
+		if firstStatusCode == errs.ExitSuccess && exitCode != errs.ExitSuccess {
+			firstStatusCode = exitCode
+		}
 		if err := ctx.Err(); err != nil {
 			return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrExecutionCanceled, err)
 		}
 	}
 
-	return errs.ExitSuccess, nil
+	return firstStatusCode, nil
 }
 
 func executeStage(
@@ -173,7 +177,9 @@ func executeStage(
 	process directoryProcessor,
 ) (int, error) {
 	var wg sync.WaitGroup
-	var firstExitCode int
+	var firstStatusCode int
+	var firstStatusOnce sync.Once
+	var firstErrorCode int
 	var firstErr error
 	var firstErrOnce sync.Once
 
@@ -182,21 +188,30 @@ func executeStage(
 		go func() {
 			defer wg.Done()
 			exitCode, err := process(ctx, dir)
-			if err != nil {
-				firstErrOnce.Do(func() {
-					if exitCode == errs.ExitSuccess {
-						exitCode = errs.Code(err, errs.ExitInternal)
-					}
-					firstExitCode = exitCode
-					firstErr = err
-					cancel()
-				})
+			if err == nil {
+				if exitCode != errs.ExitSuccess {
+					firstStatusOnce.Do(func() {
+						firstStatusCode = exitCode
+					})
+				}
+				return
 			}
+			firstErrOnce.Do(func() {
+				if exitCode == errs.ExitSuccess {
+					exitCode = errs.Code(err, errs.ExitInternal)
+				}
+				firstErrorCode = exitCode
+				firstErr = err
+				cancel()
+			})
 		}()
 	}
 
 	wg.Wait()
-	return firstExitCode, firstErr
+	if firstErr != nil {
+		return firstErrorCode, firstErr
+	}
+	return firstStatusCode, nil
 }
 
 func (s *StepRunner) processDir(ctx context.Context, dir *domain.Directory) (int, error) {

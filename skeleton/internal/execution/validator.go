@@ -6,7 +6,9 @@ import (
 	"errors"
 )
 
-// ErrValidation reports that ValidateTypes or ValidateExpected found at least one mismatch.
+// ErrValidation reports that ValidateTypes or ValidateExpected found at least
+// one nonfatal mismatch. StepRunner reports these mismatches and converts them
+// to validation exit status instead of returning them as its final error.
 var ErrValidation = errors.New("validation error")
 var ErrValidatorFatal = errors.New("fatal validator error")
 
