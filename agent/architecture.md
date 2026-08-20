@@ -14,7 +14,7 @@ contracts. This document describes package relationships only.
 cmd/cli/                    process composition and exit
 internal/domain/            shared Suite/Directory/File/definition/step models
 internal/definition/        Loader, Decoder, Resolver
-internal/execution/         KeyValueStore, VariableProcessor, Validator, Executor
+internal/execution/         KeyValueStore, Binder, Validator, Executor
 internal/reporting/         human-readable terminal output
 pkg/errs/                   contextual errors and exit-code metadata
 pkg/runner/                 external-command operations
@@ -71,7 +71,7 @@ The current CLI composition order is owned by the PRD.
 `internal/execution` contains:
 
 - [`KeyValueStore`](specs/006-key-value-store-service.md)
-- [`VariableProcessor`](specs/007-variable-processor.md)
+- [`Binder`](specs/007-binder.md)
 - [`Validator`](specs/008-validator-service.md)
 - [`Executor`](specs/010-executor.md)
 

@@ -88,9 +88,9 @@ func run(ctx context.Context, args []string, reporter *reporting.Reporter) (int,
 	}
 
 	kvs := execution.NewKeyValueStore()
-	varProc := execution.NewVariableProcessor(kvs)
+	binder := execution.NewBinder(kvs)
 	validator := execution.NewValidator()
-	executor := execution.NewExecutor(varProc, validator, reporter)
+	executor := execution.NewExecutor(binder, validator, reporter)
 	exitCode, err := executor.ValidateDirectories(suite)
 	if err != nil {
 		return exitCode, err

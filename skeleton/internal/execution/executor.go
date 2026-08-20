@@ -19,21 +19,21 @@ var ErrExecutionCanceled = errors.New("execution canceled")
 // Executor prepares, schedules, executes, validates, and reports runtime
 // steps.
 type Executor struct {
-	varProc *VariableProcessor
-	val     *Validator
-	report  *reporting.Reporter
+	binder *Binder
+	val    *Validator
+	report *reporting.Reporter
 }
 
 // NewExecutor retains the collaborators used during execution.
 func NewExecutor(
-	variableProcessor *VariableProcessor,
+	binder *Binder,
 	validator *Validator,
 	report *reporting.Reporter,
 ) *Executor {
 	return &Executor{
-		varProc: variableProcessor,
-		val:     validator,
-		report:  report,
+		binder: binder,
+		val:    validator,
+		report: report,
 	}
 }
 
@@ -73,12 +73,12 @@ func (e *Executor) Prepare(
 
 // Execute processes the directory tree in stages, running directories in the
 // same stage concurrently. For every runtime step, it calls
-// VariableProcessor.LoadVariables, VariableProcessor.InterpolateRequestBody,
-// VariableProcessor.InterpolateResponseExpectedBody, runner.Curl,
+// Binder.LoadVariables, Binder.InterpolateRequestBody,
+// Binder.InterpolateResponseExpectedBody, runner.Curl,
 // Validator.ValidateTypes, Validator.ValidateStatus, Validator.ValidateBody,
-// and VariableProcessor.CaptureResponseVariables in that order. A non-empty
+// and Binder.CaptureResponseVariables in that order. A non-empty
 // failed string from ValidateTypes, an ErrValidation from ValidateStatus, and a
-// non-empty diff from ValidateBody are reported through s.report. The response
+// non-empty diff from ValidateBody are reported through e.report. The response
 // status and body returned by runner.Curl are assigned to
 // step.Response.ActualStatus and step.Response.ActualBody for validation and
 // capture. After all work finishes, Execute returns exit code 101 and a nil

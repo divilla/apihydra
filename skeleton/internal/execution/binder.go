@@ -6,22 +6,22 @@ import (
 	"apih/skeleton/internal/domain"
 )
 
-// VariableProcessor loads, interpolates, and captures step variables through
+// Binder loads, interpolates, and captures step variables through
 // one shared KeyValueStore.
-type VariableProcessor struct {
+type Binder struct {
 	kvs *KeyValueStore
 }
 
-// NewVariableProcessor returns a processor that reads from and writes to kvs.
-func NewVariableProcessor(kvs *KeyValueStore) *VariableProcessor {
-	return &VariableProcessor{
+// NewBinder returns a binder that reads from and writes to kvs.
+func NewBinder(kvs *KeyValueStore) *Binder {
+	return &Binder{
 		kvs: kvs,
 	}
 }
 
-// LoadVariables stores every variable declared in step.Vars in the processor's
+// LoadVariables stores every variable declared in step.Vars in the binder's
 // key-value store.
-func (p *VariableProcessor) LoadVariables(
+func (b *Binder) LoadVariables(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
@@ -30,8 +30,8 @@ func (p *VariableProcessor) LoadVariables(
 }
 
 // InterpolateRequestBody replaces $var and ${var} placeholders in
-// step.Request.Body with values from the processor's key-value store.
-func (p *VariableProcessor) InterpolateRequestBody(
+// step.Request.Body with values from the binder's key-value store.
+func (b *Binder) InterpolateRequestBody(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
@@ -40,8 +40,8 @@ func (p *VariableProcessor) InterpolateRequestBody(
 }
 
 // InterpolateResponseExpectedBody replaces $var and ${var} placeholders in
-// step.Response.ExpectedBody with values from the processor's key-value store.
-func (p *VariableProcessor) InterpolateResponseExpectedBody(
+// step.Response.ExpectedBody with values from the binder's key-value store.
+func (b *Binder) InterpolateResponseExpectedBody(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
@@ -51,8 +51,8 @@ func (p *VariableProcessor) InterpolateResponseExpectedBody(
 
 // CaptureResponseVariables evaluates every selector in step.Response.Capture
 // against step.Response.ActualBody with runner.JQExtract and stores each result
-// in the processor's key-value store under its corresponding capture name.
-func (p *VariableProcessor) CaptureResponseVariables(
+// in the binder's key-value store under its corresponding capture name.
+func (b *Binder) CaptureResponseVariables(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {

@@ -142,8 +142,8 @@ selected working directory, creates
 7. `Resolver.ResolveDefaults`
 8. `Resolver.ResolveSteps`
 
-After definition resolution, `run` creates one `KeyValueStore`,
-`VariableProcessor`, and `Validator`, then creates an `Executor` with those
+After definition resolution, `run` creates one `KeyValueStore`, `Binder`, and
+`Validator`, then creates an `Executor` with those
 collaborators and the same Reporter used for working-directory output. It then:
 
 1. calls `Executor.ValidateDirectories(suite)` and returns its exit code and
@@ -184,7 +184,7 @@ Each package guide points to its binding skeleton contract:
 | Decoder | [`004-decoder-service.md`](specs/004-decoder-service.md) |
 | Resolver | [`005-resolver-service.md`](specs/005-resolver-service.md) |
 | KeyValueStore | [`006-key-value-store-service.md`](specs/006-key-value-store-service.md) |
-| VariableProcessor | [`007-variable-processor.md`](specs/007-variable-processor.md) |
+| Binder | [`007-binder.md`](specs/007-binder.md) |
 | Validator | [`008-validator-service.md`](specs/008-validator-service.md) |
 | Reporter methods and output fixed by the reference implementation | [`009-reporter-service.md`](specs/009-reporter-service.md) |
 | Preparation, execution phase order, tree validation, and stage scheduling | [`010-executor.md`](specs/010-executor.md) |
@@ -216,7 +216,7 @@ The following are not product requirements:
   normalization, or header canonicalization;
 - variable-name grammar within the documented `$var` and `${var}` forms,
   escaping, serialization, replacement precedence, or scope beyond the
-  injected VariableProcessor store;
+  injected Binder store;
 - response-type tokens/modifiers, type-filter or projection-selector
   construction, status rules beyond the documented `ExpectedStatus`
   comparison, or body-validation rules beyond the documented normalized
