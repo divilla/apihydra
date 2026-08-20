@@ -17,7 +17,7 @@ func TestValidatorSplitAPIPlaceholders(t *testing.T) {
 	}{
 		"types": {
 			call: func() {
-				validator.ValidateTypes(context.Background(), step)
+				_, _ = validator.ValidateTypes(context.Background(), step)
 			},
 			wantPanic: "Validator.ValidateTypes is not implemented",
 		},

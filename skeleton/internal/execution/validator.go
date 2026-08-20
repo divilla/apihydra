@@ -6,9 +6,9 @@ import (
 	"errors"
 )
 
-// ErrValidation reports that ValidateTypes or ValidateStatus found at least
-// one nonfatal mismatch. StepRunner reports these mismatches and converts them
-// to validation exit status instead of returning them as its final error.
+// ErrValidation classifies a nonfatal validation mismatch represented as an
+// error. StepRunner reports these mismatches and converts them to validation
+// exit status instead of returning them as its final error.
 var ErrValidation = errors.New("validation error")
 
 // ErrValidatorFatal classifies a failure that prevents validation from
@@ -46,13 +46,15 @@ func (v *Validator) ValidateBody(
 	panic("Validator.ValidateBody is not implemented")
 }
 
-// ValidateTypes validates step.Response.ActualBody against the type declarations
-// in step.Response.ExpectedTypes. Its result may contain multiple validation
-// errors so callers can report every detected type mismatch.
+// ValidateTypes builds a jq filter from step.Response.ExpectedTypes that selects
+// declarations whose values in step.Response.ActualBody do not have an allowed
+// type. It returns the output from runner.JQFilter. An empty failed result means
+// every type validated; a non-empty result is a nonfatal validation mismatch.
+// An error means filtering failed.
 func (v *Validator) ValidateTypes(
 	ctx context.Context,
 	step *domain.Step,
-) []error {
+) (string, error) {
 	// TODO: implement
 	panic("Validator.ValidateTypes is not implemented")
 }

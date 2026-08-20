@@ -48,8 +48,9 @@ nonfatal validation failures.
    and error without being replaced by later results.
 6. Per-step execution uses the eight phases in the reference order, assigns the
    Curl response status and body to `Step.Response.ActualStatus` and
-   `Step.Response.ActualBody`, and interpolates expected values before Curl
-   runs.
+   `Step.Response.ActualBody`, interpolates expected values before Curl runs,
+   and sends a non-empty `ValidateTypes` failed string to
+   `Reporter.ValidationTypes`.
 7. Completed validation mismatch traversal continues through remaining work
    and returns code `101` with a nil error.
 8. Debug, presentation, sorting, and per-validator payload rules absent from

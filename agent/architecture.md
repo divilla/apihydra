@@ -83,9 +83,9 @@ execution-output API and exact working-directory behavior. Reporter never owns
 fatal standard-error diagnostics; `cmd/cli` logs those before process exit.
 
 The [`pkg/runner`](specs/001-runner-pkg.md) skeleton contract defines Curl,
-JQProject, JQExtract, JQPretty, and GitDiff. Command-line construction and
-result-normalization details absent from that contract are not architectural
-requirements.
+JQProject, JQExtract, JQFilter, JQPretty, and GitDiff. Command-line construction
+and result-normalization details absent from that contract are not
+architectural requirements.
 
 ## Errors and exits
 

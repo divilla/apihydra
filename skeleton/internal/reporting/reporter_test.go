@@ -24,7 +24,7 @@ func TestValidationMethodsUseNonfatalReportingContract(t *testing.T) {
 	var output bytes.Buffer
 	report := NewReporter(&output)
 
-	if err := report.ValidationTypes(context.Background(), &domain.Step{}, errors.New("type mismatch")); err != nil {
+	if err := report.ValidationTypes(context.Background(), &domain.Step{}, `{"type":"string"}`); err != nil {
 		t.Fatalf("ValidationTypes() error = %v", err)
 	}
 	if err := report.ValidationStatus(context.Background(), &domain.Step{}, errors.New("status mismatch")); err != nil {

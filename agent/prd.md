@@ -112,8 +112,10 @@ presence or arbitrary-value wrappers.
 For every non-zero `ExpectedStatus`, `ActualStatus` must equal it.
 `runner.Curl` supplies the two actual response values at runtime.
 Validator treats response types, status, and body as separate validation
-phases. Body inequality is represented by a non-empty diff string rather than
-as the fatal error result of `ValidateBody`.
+phases. Type validation builds a jq filter from `ExpectedTypes`, evaluates it
+against `ActualBody` through `runner.JQFilter`, and represents mismatches with a
+non-empty failed string. Body inequality is likewise represented by a non-empty
+diff string rather than as the fatal error result of `ValidateBody`.
 
 The JSON names on declarative and runtime step fields match their YAML names.
 `Definition` is omitted from JSON and `Index` is encoded as `index`.
@@ -203,9 +205,10 @@ The following are not product requirements:
 - variable-name grammar within the documented `$var` and `${var}` forms,
   escaping, serialization, replacement precedence, or scope beyond the
   injected VariableProcessor store;
-- response-type tokens/modifiers, projection-selector construction, status
-  rules beyond the documented `ExpectedStatus` comparison, or body-validation
-  rules beyond the documented normalized expected-response comparison;
+- response-type tokens/modifiers, type-filter or projection-selector
+  construction, status rules beyond the documented `ExpectedStatus`
+  comparison, or body-validation rules beyond the documented normalized
+  expected-response comparison;
 - exact curl, jq, or Git argument vectors and command-result normalization;
 - success, validation-failure, or debug layouts not implemented or tested in
   `skeleton/`;

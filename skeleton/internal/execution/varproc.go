@@ -39,14 +39,14 @@ func (p *VariableProcessor) InterpolateRequestBody(
 	panic("VariableProcessor.InterpolateRequestBody is not implemented")
 }
 
-// InterpolateResponseExpected replaces $var and ${var} placeholders in
+// InterpolateResponseExpectedBody replaces $var and ${var} placeholders in
 // step.Response.ExpectedBody with values from the processor's key-value store.
-func (p *VariableProcessor) InterpolateResponseExpected(
+func (p *VariableProcessor) InterpolateResponseExpectedBody(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
 	// TODO: implement
-	panic("VariableProcessor.InterpolateResponseExpected is not implemented")
+	panic("VariableProcessor.InterpolateResponseExpectedBody is not implemented")
 }
 
 // CaptureResponseVariables evaluates every selector in step.Response.Capture

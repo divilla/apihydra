@@ -38,6 +38,11 @@ func JQExtract(ctx context.Context, selector string, input string) (string, int,
 	return "", 0, nil
 }
 
+// JQFilter evaluates filter against input and returns the filtered output.
+func JQFilter(ctx context.Context, filter, input string) (string, int, error) {
+	return "", 0, nil
+}
+
 // JQPretty returns input as recursively key-sorted, pretty JSON.
 func JQPretty(ctx context.Context, input string) (string, int, error) {
 	return "", 0, nil

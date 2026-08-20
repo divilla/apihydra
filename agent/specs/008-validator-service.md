@@ -21,6 +21,7 @@ The reference does not define:
 
 - expected-type declaration tokens, modifiers, zero values, or optionality;
 - selector syntax, ordering, stream behavior, or aggregation format;
+- how `ValidateTypes` constructs its `runner.JQFilter` filter;
 - how `ValidateBody` constructs the `runner.JQProject` selector;
 - interpretation of malformed or non-object expected responses;
 - the relationship between validator errors and Reporter-owned static errors;
@@ -35,10 +36,13 @@ until they are added to the protected skeleton.
 
 1. Exported names, signatures, static error text, and explicit not-implemented
    placeholders match the reference.
-2. Type validation compares `ActualBody` with `ExpectedTypes`. Status validation
-   accepts every `ActualStatus` when `ExpectedStatus` is zero and requires exact
-   equality otherwise. Body validation returns an empty diff for equal
-   normalized bodies and the `GitDiff` result for unequal bodies.
-3. Validator does not print, schedule work, or choose the process exit code.
-4. No validation language, comparison algorithm, external-tool dependency, or
+2. Type validation builds a filter from `ExpectedTypes`, evaluates it against
+   `ActualBody` with `runner.JQFilter`, and returns `(failed string, error)`.
+   Empty `failed` means all types validate; non-empty `failed` is a nonfatal
+   mismatch; `error` means filtering failed.
+3. Status validation accepts every `ActualStatus` when `ExpectedStatus` is zero
+   and requires exact equality otherwise. Body validation returns an empty diff
+   for equal normalized bodies and the `GitDiff` result for unequal bodies.
+4. Validator does not print, schedule work, or choose the process exit code.
+5. No validation language, comparison algorithm, external-tool dependency, or
    failure payload absent from the skeleton is specified here.

@@ -16,8 +16,8 @@ execution remains in this package.
 
 `JQProject` and `JQExtract` are distinct operations: projection preserves a
 selected object shape for document comparison, while extraction returns the
-selected value for capture. `GitDiff` replaces any legacy `BatDiff`/`bat`
-boundary.
+selected value for capture. `JQFilter` is the generic filtering boundary used
+by type validation. `GitDiff` replaces any legacy `BatDiff`/`bat` boundary.
 
 ## Deliberately unspecified
 
@@ -26,7 +26,8 @@ It therefore does not fix:
 
 - executable names or argument vectors;
 - use of stdin, temporary files, or environment variables;
-- sorting beyond the `JQProject` and `JQPretty` result descriptions;
+- sorting beyond the `JQProject` and `JQPretty` result descriptions, including
+  `JQFilter` output formatting;
 - treatment of empty inputs, jq streams, or semantic non-zero statuses;
 - stdout/stderr inclusion in errors;
 - startup, cancellation, and operational exit-code normalization;
@@ -39,8 +40,9 @@ product requirements until represented by the skeleton.
 
 1. Exported names, signatures, and static error text match the reference.
 2. Each function stays within the operation boundary defined by the reference.
-3. `JQProject` and `JQPretty` return comparable normalized JSON, while
-   `GitDiff` preserves the color behavior required by the reference contract.
+3. `JQFilter` evaluates its filter against its input, `JQProject` and
+   `JQPretty` return comparable normalized JSON, and `GitDiff` preserves the
+   color behavior required by the reference contract.
 4. No external command is invoked by another production package.
 5. No `BatDiff`, `bat` dependency, shell policy, or command-line contract is
    invented here.

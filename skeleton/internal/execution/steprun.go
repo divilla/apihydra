@@ -74,14 +74,16 @@ func (s *StepRunner) Prepare(
 // Execute processes the directory tree in stages, running directories in the
 // same stage concurrently. For every runtime step, it calls
 // VariableProcessor.LoadVariables, VariableProcessor.InterpolateRequestBody,
-// VariableProcessor.InterpolateResponseExpected, runner.Curl,
+// VariableProcessor.InterpolateResponseExpectedBody, runner.Curl,
 // Validator.ValidateTypes, Validator.ValidateStatus, Validator.ValidateBody,
-// and VariableProcessor.CaptureResponseVariables in that order. Validation
-// failures are reported through s.report. The response status and body returned
-// by runner.Curl are assigned to step.Response.ActualStatus and
-// step.Response.ActualBody for validation and capture. After all work finishes,
-// Execute returns exit code 101 and a nil error when one or more validations
-// failed. Validation status does not cancel remaining work.
+// and VariableProcessor.CaptureResponseVariables in that order. A non-empty
+// failed string from ValidateTypes, an ErrValidation from ValidateStatus, and a
+// non-empty diff from ValidateBody are reported through s.report. The response
+// status and body returned by runner.Curl are assigned to
+// step.Response.ActualStatus and step.Response.ActualBody for validation and
+// capture. After all work finishes, Execute returns exit code 101 and a nil
+// error when one or more validations failed. Validation status does not cancel
+// remaining work.
 func (s *StepRunner) Execute(
 	ctx context.Context,
 	stages [][]*domain.Directory,

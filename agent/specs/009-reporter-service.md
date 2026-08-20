@@ -30,7 +30,8 @@ selected or scheduled.
 2. Working-directory output is byte-exact and write failures preserve their
    causes.
 3. Reporter has no stderr or process-termination responsibility.
-4. Stubbed methods remain within their documented reporting boundaries and do
+4. `ValidationTypes` accepts the failed string returned by type validation;
+   stubbed methods remain within their documented reporting boundaries and do
    not acquire execution or validation responsibilities.
 5. `ValidationBody` preserves colored diff payloads as required by the
    reference contract.

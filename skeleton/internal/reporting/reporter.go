@@ -58,10 +58,10 @@ func (r *Reporter) Success(ctx context.Context, directory *domain.Directory) err
 	return nil
 }
 
-// ValidationTypes writes one nonfatal response-type validation failure to the
-// injected standard-output writer. It returns only reporting failures; the
-// validation failure itself does not terminate execution.
-func (r *Reporter) ValidationTypes(ctx context.Context, step *domain.Step, failure error) error {
+// ValidationTypes writes the failed output from nonfatal response-type
+// validation to the injected standard-output writer. It returns only reporting
+// failures; the validation failure itself does not terminate execution.
+func (r *Reporter) ValidationTypes(ctx context.Context, step *domain.Step, failed string) error {
 	// TODO: implement
 	return nil
 }
