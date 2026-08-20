@@ -33,12 +33,14 @@ work.
 
 ## Preparation
 
-`Prepare` prepares the suite's resolved steps for execution. Variable loading
-and interpolation are not preparation phases; they run per runtime step inside
-`Execute`.
+`Prepare` traverses the suite's directories and deep-copies each directory's
+`ResolvedSteps` into `RuntimeSteps` so execution-time mutations cannot affect
+the resolved steps. All mutable slices and maps are copied. Each copied
+`Step.Definition` retains the original pointer as read-only provenance.
 
-The skeleton does not define traversal, runtime-copy policy, preparation
-transactionality, or the exact mutations performed by `Prepare`.
+Variable loading and interpolation are not preparation phases; they run per
+runtime step inside `Execute`. The skeleton does not define traversal order,
+preparation transactionality, or cancellation behavior.
 
 ## Directory-tree validation
 
@@ -119,7 +121,9 @@ error formatting. Those contracts remain with their owning specs.
 
 1. Public names, signatures, constructor state, and static error text match the
    reference.
-2. `Prepare` does not load or interpolate variables.
+2. `Prepare` deep-copies `ResolvedSteps` into `RuntimeSteps`, including all
+   mutable slices and maps, preserves the original `Step.Definition` pointers,
+   does not mutate `ResolvedSteps`, and does not load or interpolate variables.
 3. Every invalid tree shape covered by the reference returns configuration code
    and `ErrInvalidDirectoryTree` without panic.
 4. Same-stage directories may overlap, all are joined, and later stages wait

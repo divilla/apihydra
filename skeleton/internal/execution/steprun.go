@@ -31,7 +31,11 @@ func NewStepRunner(
 	}
 }
 
-// Prepare prepares the suite's resolved steps for execution.
+// Prepare deep-copies every directory's ResolvedSteps into RuntimeSteps so
+// execution can mutate runtime steps without modifying resolved steps. All
+// mutable slices and maps are copied; Step.Definition retains its original
+// provenance pointer.
+// Variable loading and interpolation are runtime phases performed by Execute.
 func (s *StepRunner) Prepare(
 	ctx context.Context,
 	suite *domain.Suite,
