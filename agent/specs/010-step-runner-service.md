@@ -73,8 +73,8 @@ group.
 The first fatal directory error recorded for a stage retains its error and
 supplied non-zero code and cancels the shared execution context. If that
 directory supplied code `0`, StepRunner derives a code through `errs.Code` with
-`ExitInternal` fallback and preserves the derived code, including `0`. Sibling
-goroutines are still joined, and later stages do not start.
+`ExitInternal` fallback and normalizes a derived code `0` to `ExitInternal`.
+Sibling goroutines are still joined, and later stages do not start.
 
 A directory may return `errs.ExitValidation` with a nil error after reporting
 its validation failures. The scheduler retains the first non-zero status,

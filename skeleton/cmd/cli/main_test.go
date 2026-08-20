@@ -42,8 +42,8 @@ func TestRunReturnsSuccessAfterDefinitionPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
-	if exitCode != errs.ExitSuccess {
-		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitSuccess)
+	if exitCode != 0 {
+		t.Fatalf("run() exit code = %d, want 0", exitCode)
 	}
 	if output.Len() == 0 {
 		t.Fatal("run() did not report the working directory")

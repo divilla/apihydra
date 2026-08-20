@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestCollectDirsSupportsArbitraryValidDepth(t *testing.T) {
+func TestValidateDirectoriesAndPlanStagesSupportArbitraryValidDepth(t *testing.T) {
 	root := &domain.Directory{Stage: 0, Path: "/"}
 	parent := root
 	for stage := 1; stage <= 255; stage++ {
@@ -23,12 +23,16 @@ func TestCollectDirsSupportsArbitraryValidDepth(t *testing.T) {
 		parent = child
 	}
 
-	dc := newDirsValidator(&domain.Suite{Root: root})
-	err := dc.validateRoot()
+	suite := &domain.Suite{Root: root}
+	runner := NewStepRunner(nil, nil, nil)
+	exitCode, err := runner.ValidateDirectories(suite)
 	if err != nil {
-		t.Fatalf("dirsCollector.collect() error = %v", err)
+		t.Fatalf("ValidateDirectories() error = %v", err)
 	}
-	dirs := dc.stagedDirs
+	if exitCode != 0 {
+		t.Fatalf("ValidateDirectories() exit code = %d, want 0", exitCode)
+	}
+	dirs := runner.PlanStages(suite)
 	if got, want := len(dirs), 256; got != want {
 		t.Fatalf("len(dirs) = %d, want %d", got, want)
 	}
@@ -37,7 +41,7 @@ func TestCollectDirsSupportsArbitraryValidDepth(t *testing.T) {
 	}
 }
 
-func TestCollectDirsRejectsInvalidTrees(t *testing.T) {
+func TestValidateDirectoriesRejectsInvalidTrees(t *testing.T) {
 	validRoot := func() *domain.Directory {
 		return &domain.Directory{Stage: 0, Path: "/"}
 	}
@@ -93,10 +97,13 @@ func TestCollectDirsRejectsInvalidTrees(t *testing.T) {
 
 	for name, suite := range tests {
 		t.Run(name, func(t *testing.T) {
-			dc := newDirsValidator(suite())
-			err := dc.validateRoot()
+			runner := NewStepRunner(nil, nil, nil)
+			exitCode, err := runner.ValidateDirectories(suite())
+			if exitCode != errs.ExitConfiguration {
+				t.Fatalf("ValidateDirectories() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
+			}
 			if !errors.Is(err, ErrInvalidDirectoryTree) {
-				t.Fatalf("dirsCollector.collect() error = %v, want ErrInvalidDirectoryTree", err)
+				t.Fatalf("ValidateDirectories() error = %v, want ErrInvalidDirectoryTree", err)
 			}
 		})
 	}
@@ -122,7 +129,7 @@ func TestExecuteStagesCancelsAndJoinsActiveStageOnError(t *testing.T) {
 		case later:
 			laterStarted.Store(true)
 		}
-		return errs.ExitSuccess, nil
+		return 0, nil
 	}
 
 	exitCode, err := executeStages(
@@ -146,33 +153,28 @@ func TestExecuteStagesCancelsAndJoinsActiveStageOnError(t *testing.T) {
 	}
 }
 
-func TestExecuteReturnsConfigurationExitCodeForInvalidTree(t *testing.T) {
-	runner := NewStepRunner(nil, nil, nil)
-
-	exitCode, err := runner.Execute(context.Background(), &domain.Suite{})
-	if exitCode != errs.ExitConfiguration {
-		t.Fatalf("Execute() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
-	}
-	if !errors.Is(err, ErrInvalidDirectoryTree) {
-		t.Fatalf("Execute() error = %v, want ErrInvalidDirectoryTree", err)
-	}
-}
-
 func TestExecuteStagesNeverReturnsSuccessWithError(t *testing.T) {
-	wantErr := errors.New("uncoded error")
-
-	exitCode, err := executeStages(
-		context.Background(),
-		[][]*domain.Directory{{{Stage: 0, Path: "/"}}},
-		func(context.Context, *domain.Directory) (int, error) {
-			return errs.ExitSuccess, wantErr
-		},
-	)
-	if exitCode != errs.ExitInternal {
-		t.Fatalf("executeStages() exit code = %d, want %d", exitCode, errs.ExitInternal)
+	tests := map[string]error{
+		"uncoded error":    errors.New("uncoded error"),
+		"zero-coded error": errs.WithExitCode(0, errors.New("zero-coded error")),
 	}
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("executeStages() error = %v, want %v", err, wantErr)
+
+	for name, wantErr := range tests {
+		t.Run(name, func(t *testing.T) {
+			exitCode, err := executeStages(
+				context.Background(),
+				[][]*domain.Directory{{{Stage: 0, Path: "/"}}},
+				func(context.Context, *domain.Directory) (int, error) {
+					return 0, wantErr
+				},
+			)
+			if exitCode != errs.ExitInternal {
+				t.Fatalf("executeStages() exit code = %d, want %d", exitCode, errs.ExitInternal)
+			}
+			if !errors.Is(err, wantErr) {
+				t.Fatalf("executeStages() error = %v, want %v", err, wantErr)
+			}
+		})
 	}
 }
 
@@ -209,7 +211,7 @@ func TestExecuteStagesContinuesAfterValidationStatus(t *testing.T) {
 			if dir.Stage == 0 {
 				return errs.ExitValidation, nil
 			}
-			return errs.ExitSuccess, nil
+			return 0, nil
 		},
 	)
 	if exitCode != errs.ExitValidation {

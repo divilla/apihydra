@@ -8,7 +8,6 @@ import (
 )
 
 const (
-	ExitSuccess       = 0
 	ExitValidation    = 101
 	ExitConfiguration = 102
 	ExitInternal      = 103
@@ -68,7 +67,7 @@ func (e *ExitError) ExitCode() int {
 
 func Code(err error, fallback int) int {
 	if err == nil {
-		return ExitSuccess
+		return 0
 	}
 
 	var coder ExitCoder
@@ -88,7 +87,7 @@ func StepDefinitionError(step *domain.StepsDefinition, yamlPath string, errStati
 
 func StepExecutionError(step *domain.Step, yamlPath string, errStatic, errOriginal error) error {
 	exitCode := Code(errOriginal, ExitInternal)
-	if exitCode == ExitSuccess {
+	if exitCode == 0 {
 		exitCode = ExitInternal
 	}
 	return Build(exitCode, errStatic, errOriginal, definitionDetails(stepFile(step), yamlPath))

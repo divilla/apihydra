@@ -138,9 +138,9 @@ does not own fatal diagnostics or process exit.
 
 The product reserves:
 
-| Constant | Code | Meaning |
+| Outcome or constant | Code | Meaning |
 | --- | ---: | --- |
-| `errs.ExitSuccess` | `0` | Success. |
+| Success (no constant) | `0` | Success. |
 | `errs.ExitValidation` | `101` | Execution completed with one or more validation failures reported to stdout; the result is not a fatal error. |
 | `errs.ExitConfiguration` | `102` | Invocation or configuration failure. |
 | `errs.ExitInternal` | `103` | Internal failure. |

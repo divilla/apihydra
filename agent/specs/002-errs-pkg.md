@@ -50,7 +50,7 @@ error. Both identities remain available to `errors.Is` and `errors.As`.
 
 `Code` returns:
 
-- `ExitSuccess` for nil;
+- literal `0` for nil;
 - the first discoverable `ExitCoder.ExitCode()` for a coded error;
 - `fallback` for a non-nil uncoded error.
 

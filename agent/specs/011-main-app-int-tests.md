@@ -137,7 +137,7 @@ handling without adding production test seams absent from the skeleton.
 1. `cmd/cli/main.go` is identical to `skeleton/cmd/cli/main.go` after replacing
    `apih/skeleton/` import prefixes with `apih/`.
 2. Invalid selected paths return `errs.ExitConfiguration` and no working
-   directory output; a successful main flow returns `errs.ExitSuccess` after
+   directory output; a successful main flow returns `0` after
    reporting the working directory.
 3. Reporter output failures return `errs.ExitInternal` and preserve the writer
    failure.

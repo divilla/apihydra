@@ -187,7 +187,7 @@ func executeStages(
 		if err != nil {
 			return exitCode, err
 		}
-		if firstStatusCode == errs.ExitSuccess && exitCode != errs.ExitSuccess {
+		if firstStatusCode == 0 && exitCode != 0 {
 			firstStatusCode = exitCode
 		}
 		if err := ctx.Err(); err != nil {
@@ -217,7 +217,7 @@ func executeStage(
 			defer wg.Done()
 			exitCode, err := process(ctx, dir)
 			if err == nil {
-				if exitCode != errs.ExitSuccess {
+				if exitCode != 0 {
 					firstStatusOnce.Do(func() {
 						firstStatusCode = exitCode
 					})
@@ -225,8 +225,11 @@ func executeStage(
 				return
 			}
 			firstErrOnce.Do(func() {
-				if exitCode == errs.ExitSuccess {
+				if exitCode == 0 {
 					exitCode = errs.Code(err, errs.ExitInternal)
+					if exitCode == 0 {
+						exitCode = errs.ExitInternal
+					}
 				}
 				firstErrorCode = exitCode
 				firstErr = err
@@ -250,5 +253,5 @@ func (s *StepRunner) processDir(ctx context.Context, dir *domain.Directory) (int
 	// TODO: implement
 	_ = s
 	_ = dir
-	return errs.ExitSuccess, nil
+	return 0, nil
 }

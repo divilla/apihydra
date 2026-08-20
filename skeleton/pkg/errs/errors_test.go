@@ -22,8 +22,8 @@ func TestCode(t *testing.T) {
 	if got := Code(errors.New("uncoded"), ExitInternal); got != ExitInternal {
 		t.Fatalf("Code() fallback = %d, want %d", got, ExitInternal)
 	}
-	if got := Code(nil, ExitInternal); got != ExitSuccess {
-		t.Fatalf("Code(nil) = %d, want %d", got, ExitSuccess)
+	if got := Code(nil, ExitInternal); got != 0 {
+		t.Fatalf("Code(nil) = %d, want 0", got)
 	}
 }
 
@@ -62,7 +62,7 @@ func TestProductExitCodeContract(t *testing.T) {
 		got  int
 		want int
 	}{
-		"success":       {ExitSuccess, 0},
+		"success":       {0, 0},
 		"validation":    {ExitValidation, 101},
 		"configuration": {ExitConfiguration, 102},
 		"internal":      {ExitInternal, 103},
