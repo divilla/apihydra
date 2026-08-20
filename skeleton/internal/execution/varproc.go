@@ -5,10 +5,14 @@ import (
 	"context"
 )
 
-type VariableProcessor struct{}
+type VariableProcessor struct {
+	kvs *KeyValueStore
+}
 
-func NewVariableProcessor() *VariableProcessor {
-	return &VariableProcessor{}
+func NewVariableProcessor(kvs *KeyValueStore) *VariableProcessor {
+	return &VariableProcessor{
+		kvs: kvs,
+	}
 }
 
 // Load iterates over *domain.Step.Vars and triggers execution.KeyValueStore.Set
@@ -17,6 +21,7 @@ func (p *VariableProcessor) Load(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
+	// func is to be implemented
 	return 0, nil
 }
 
@@ -26,6 +31,7 @@ func (p *VariableProcessor) ParseRequestBody(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
+	// func is to be implemented
 	return 0, nil
 }
 
@@ -35,6 +41,7 @@ func (p *VariableProcessor) ParseResponseExpected(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
+	// func is to be implemented
 	return 0, nil
 }
 
@@ -45,5 +52,6 @@ func (p *VariableProcessor) Capture(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
+	// func is to be implemented
 	return 0, nil
 }

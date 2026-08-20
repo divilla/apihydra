@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 var ErrCommand = errors.New("command error")
@@ -22,8 +23,8 @@ func JQFilter(ctx context.Context, selector, input string) (string, int, error) 
 
 // JQSelect returns one recursively key-sorted, pretty JSON document containing
 // the requested members.
-func JQSelect(ctx context.Context, selectors []string, input string) (string, int, error) {
-	return "", 0, nil
+func JQSelect(ctx context.Context, selector string, input string) (string, int, error) {
+	return JQFilter(ctx, fmt.Sprintf("{%s}", selector), input)
 }
 
 // JQPretty returns recursively key-sorted, pretty JSON with jq's original
