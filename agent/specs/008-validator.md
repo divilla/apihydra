@@ -4,7 +4,7 @@
 
 - Binding reference: `skeleton/internal/execution/validator.go`
 - Shared step model and exit codes: [`prd.md`](../prd.md)
-- Phase orchestration: [`10-step-runner.md`](10-step-runner.md)
+- Phase orchestration: [`10-step-runner.md`](010-step-runner.md)
 - Status: skeleton-aligned specification
 
 This specification owns the Validator API. StepRunner owns invocation order

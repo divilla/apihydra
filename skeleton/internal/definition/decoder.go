@@ -19,6 +19,7 @@ func (l *Decoder) DecodeFiles(
 	ctx context.Context,
 	suite *domain.Suite,
 ) error {
+	// TODO: implement
 	return nil
 }
 
@@ -28,6 +29,7 @@ func (l *Decoder) ValidateDefaultsDefinitions(
 	ctx context.Context,
 	suite *domain.Suite,
 ) error {
+	// TODO: implement
 	return nil
 }
 
@@ -37,5 +39,6 @@ func (l *Decoder) ValidateStepsDefinitions(
 	ctx context.Context,
 	suite *domain.Suite,
 ) error {
+	// TODO: implement
 	return nil
 }

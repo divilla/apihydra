@@ -43,6 +43,7 @@ func (r *Reporter) WorkingDirectory(workDir string) error {
 // failures to the injected standard-output writer. It returns a reporting
 // error without terminating execution.
 func (r *Reporter) Success(ctx context.Context, directory *domain.Directory) error {
+	// TODO: implement
 	return nil
 }
 
@@ -50,6 +51,7 @@ func (r *Reporter) Success(ctx context.Context, directory *domain.Directory) err
 // injected standard-output writer. It returns only reporting failures; the
 // validation failure itself does not terminate execution.
 func (r *Reporter) ValidationTypes(ctx context.Context, step *domain.Step, failure error) error {
+	// TODO: implement
 	return nil
 }
 
@@ -59,6 +61,7 @@ func (r *Reporter) ValidationTypes(ctx context.Context, step *domain.Step, failu
 // reporting failures; the validation failure itself does not terminate
 // execution.
 func (r *Reporter) ValidationExpected(ctx context.Context, step *domain.Step, failure error) error {
+	// TODO: implement
 	return nil
 }
 
@@ -66,5 +69,6 @@ func (r *Reporter) ValidationExpected(ctx context.Context, step *domain.Step, fa
 // injected standard-output writer. It returns a reporting error without
 // terminating execution.
 func (r *Reporter) Debug(ctx context.Context, step *domain.Step) error {
+	// TODO: implement
 	return nil
 }

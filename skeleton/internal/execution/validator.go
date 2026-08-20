@@ -21,6 +21,7 @@ func (v *Validator) ValidateTypes(
 	ctx context.Context,
 	step *domain.Step,
 ) []error {
+	// TODO: implement
 	panic("Validator.ValidateTypes is not implemented")
 }
 
@@ -33,5 +34,6 @@ func (v *Validator) ValidateExpected(
 	ctx context.Context,
 	step *domain.Step,
 ) error {
+	// TODO: implement
 	panic("Validator.ValidateExpected is not implemented")
 }

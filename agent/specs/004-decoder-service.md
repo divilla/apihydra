@@ -4,7 +4,7 @@
 
 - Binding reference: `skeleton/internal/definition/decoder.go`
 - Shared domain and pipeline: [`prd.md`](../prd.md)
-- Contextual definition errors: [`02-errs-pkg.md`](02-errs-pkg.md)
+- Contextual definition errors: [`02-errs-pkg.md`](002-errs-pkg.md)
 - Status: skeleton-aligned specification
 
 This specification owns decoding classified files and validating the resulting

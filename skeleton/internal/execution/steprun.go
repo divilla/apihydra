@@ -36,6 +36,7 @@ func (s *StepRunner) Prepare(
 	ctx context.Context,
 	suite *domain.Suite,
 ) error {
+	// TODO: implement
 	return nil
 }
 
@@ -219,6 +220,7 @@ func (s *StepRunner) processDir(ctx context.Context, dir *domain.Directory) (int
 		return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrExecutionCanceled, err)
 	}
 
+	// TODO: implement
 	_ = s
 	_ = dir
 	return errs.ExitSuccess, nil

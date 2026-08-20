@@ -23,6 +23,7 @@ func (p *VariableProcessor) LoadVariables(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
+	// TODO: implement
 	panic("VariableProcessor.LoadVariables is not implemented")
 }
 
@@ -32,6 +33,7 @@ func (p *VariableProcessor) InterpolateRequestBody(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
+	// TODO: implement
 	panic("VariableProcessor.InterpolateRequestBody is not implemented")
 }
 
@@ -41,6 +43,7 @@ func (p *VariableProcessor) InterpolateResponseExpected(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
+	// TODO: implement
 	panic("VariableProcessor.InterpolateResponseExpected is not implemented")
 }
 
@@ -51,5 +54,6 @@ func (p *VariableProcessor) CaptureResponseVariables(
 	ctx context.Context,
 	step *domain.Step,
 ) (int, error) {
+	// TODO: implement
 	panic("VariableProcessor.CaptureResponseVariables is not implemented")
 }

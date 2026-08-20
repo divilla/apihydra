@@ -136,7 +136,7 @@ The product reserves:
 | `errs.ExitInternal` | `103` | Internal failure. |
 
 The construction and lookup semantics for coded errors are owned by
-[`02-errs-pkg.md`](specs/02-errs-pkg.md). Package specs must reference that
+[`02-errs-pkg.md`](specs/002-errs-pkg.md). Package specs must reference that
 contract instead of redefining contextual error formatting.
 
 ## Specification ownership
@@ -145,16 +145,16 @@ Package-local requirements are owned in one place:
 
 | Contract | Owning specification |
 | --- | --- |
-| External-command functions | [`01-runner-pkg.md`](specs/01-runner-pkg.md) |
-| Contextual errors | [`02-errs-pkg.md`](specs/02-errs-pkg.md) |
-| Loader | [`03-loader-service.md`](specs/03-loader-service.md) |
-| Decoder | [`04-decoder-service.md`](specs/04-decoder-service.md) |
-| Resolver | [`05-resolver-service.md`](specs/05-resolver-service.md) |
-| KeyValueStore | [`06-key-value-store-service.md`](specs/06-key-value-store-service.md) |
-| VariableProcessor | [`07-variable-processor.md`](specs/07-variable-processor.md) |
-| Validator | [`08-validator.md`](specs/08-validator.md) |
-| Preparation, execution phase order, tree validation, and stage scheduling | [`10-step-runner.md`](specs/10-step-runner.md) |
-| Reporter methods and output fixed by the reference implementation | [`09-reporter.md`](specs/09-reporter.md) |
+| External-command functions | [`01-runner-pkg.md`](specs/001-runner-pkg.md) |
+| Contextual errors | [`02-errs-pkg.md`](specs/002-errs-pkg.md) |
+| Loader | [`03-loader-service.md`](specs/003-loader-service.md) |
+| Decoder | [`04-decoder-service.md`](specs/004-decoder-service.md) |
+| Resolver | [`05-resolver-service.md`](specs/005-resolver-service.md) |
+| KeyValueStore | [`06-key-value-store-service.md`](specs/006-key-value-store-service.md) |
+| VariableProcessor | [`07-variable-processor.md`](specs/007-variable-processor.md) |
+| Validator | [`08-validator.md`](specs/008-validator.md) |
+| Preparation, execution phase order, tree validation, and stage scheduling | [`10-step-runner.md`](specs/010-step-runner.md) |
+| Reporter methods and output fixed by the reference implementation | [`09-reporter.md`](specs/009-reporter.md) |
 
 No spec restates another spec's normative behavior. A consumer spec references
 the owner and states only how its own API participates.
