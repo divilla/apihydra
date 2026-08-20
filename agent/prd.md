@@ -95,6 +95,21 @@ and `Debug`, plus source `Definition` and `Index`. Fields typed as
 `YAMLString` remain `YAMLString`; specs must not replace them with parallel
 presence or arbitrary-value wrappers.
 
+`Step.Response` carries expected and actual forms of both response values:
+
+- `ExpectedStatus` and `ActualStatus` are `int` values under the YAML and JSON
+  names `expected_status` and `actual_status`;
+- `ExpectedBody` is a `YAMLString` under `expected_body`, while `ActualBody` is
+  a `string` under `actual_body`.
+
+`ExpectedStatus` is one deterministic HTTP status. Its zero value is the
+`<any>` substitute: when `ExpectedStatus == 0`, every `ActualStatus` is valid.
+For every non-zero `ExpectedStatus`, `ActualStatus` must equal it.
+`runner.Curl` supplies the two actual response values at runtime.
+Validator treats response types, status, and body as separate validation
+phases. Body inequality is represented by a non-empty diff string rather than
+as the fatal error result of `ValidateBody`.
+
 The JSON names on declarative and runtime step fields match their YAML names.
 `Definition` is omitted from JSON and `Index` is encoded as `index`.
 `DirectoryStage`, `DirectoryPath`, and `FilePath` derive provenance through
@@ -181,9 +196,9 @@ The following are not product requirements:
 - variable-name grammar within the documented `$var` and `${var}` forms,
   escaping, serialization, replacement precedence, or scope beyond the
   injected VariableProcessor store;
-- response-type tokens/modifiers, projection-selector construction,
-  HTTP-status behavior, or validation rules beyond the documented normalized
-  expected-response comparison;
+- response-type tokens/modifiers, projection-selector construction, status
+  rules beyond the documented `ExpectedStatus` comparison, or body-validation
+  rules beyond the documented normalized expected-response comparison;
 - exact curl, jq, or Git argument vectors and command-result normalization;
 - success, validation-failure, or debug layouts not implemented or tested in
   `skeleton/`;

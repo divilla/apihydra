@@ -38,7 +38,7 @@ func (p *VariableProcessor) InterpolateRequestBody(
 }
 
 // InterpolateResponseExpected replaces $var and ${var} placeholders in
-// step.Response.Expected with values from the processor's key-value store.
+// step.Response.ExpectedBody with values from the processor's key-value store.
 func (p *VariableProcessor) InterpolateResponseExpected(
 	ctx context.Context,
 	step *domain.Step,
@@ -48,8 +48,8 @@ func (p *VariableProcessor) InterpolateResponseExpected(
 }
 
 // CaptureResponseVariables evaluates every selector in step.Response.Capture
-// against step.Response.Body with runner.JQExtract and stores each result in the
-// processor's key-value store under its corresponding capture name.
+// against step.Response.ActualBody with runner.JQExtract and stores each result
+// in the processor's key-value store under its corresponding capture name.
 func (p *VariableProcessor) CaptureResponseVariables(
 	ctx context.Context,
 	step *domain.Step,

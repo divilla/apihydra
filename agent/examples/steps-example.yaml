@@ -25,12 +25,12 @@ spec:
             "title": "Example title"
           }
       response:
-        status: [200, 201]
+        expected_status: 201
         capture:
           change_id: example-capture-expression
         types:
           example.selector: [example-type]
-        expected: |
+        expected_body: |
           {
             "agent_edit": false,
             "change_phase": "backlog",

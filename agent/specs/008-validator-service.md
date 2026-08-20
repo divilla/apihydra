@@ -19,27 +19,32 @@ var ErrValidatorFatal = errors.New("fatal validator error")
 type Validator struct{}
 
 func (v *Validator) ValidateTypes(ctx context.Context, step *domain.Step) []error
-func (v *Validator) ValidateExpected(ctx context.Context, step *domain.Step) error
+func (v *Validator) ValidateStatus(ctx context.Context, step *domain.Step) error
+func (v *Validator) ValidateBody(ctx context.Context, step *domain.Step) (string, error)
 ```
 
-The zero-value Validator has no retained state in the reference. Both skeleton
-method bodies panic with an explicit not-implemented message; those placeholders
-define no runtime result.
+The zero-value Validator has no retained state in the reference. All three
+skeleton method bodies panic with an explicit not-implemented message; those
+placeholders define no runtime result.
 
 ## Validation boundaries
 
-`ValidateTypes` validates the runtime step's response body against
+`ValidateTypes` validates `Step.Response.ActualBody` against
 `Step.Response.Types`. Its slice result permits reporting more than one error.
 
-`ValidateExpected` validates the runtime step's response body against
-`Step.Response.Expected` and returns at most one error. It normalizes the
-documents by projecting `Step.Response.Body` with `runner.JQProject` and
-formatting `Step.Response.Expected` with `runner.JQPretty`, then compares the
-normalized expected and actual documents with `runner.GitDiff`.
+`ValidateStatus` validates `ActualStatus` against `ExpectedStatus`.
+`ExpectedStatus == 0` accepts every `ActualStatus`; otherwise `ActualStatus`
+must equal `ExpectedStatus`.
 
-`ErrValidation` classifies one or more nonfatal mismatches found by either
-validation operation. StepRunner reports those mismatches and converts them to
-validation exit status rather than returning them as its final error.
+`ValidateBody` validates `ActualBody` against `ExpectedBody`. It projects
+`ActualBody` with `runner.JQProject`, formats `ExpectedBody` with
+`runner.JQPretty`, and compares the normalized documents with `runner.GitDiff`.
+Equal bodies return `"", nil`; unequal bodies return the calculated diff string.
+
+`ErrValidation` classifies one or more nonfatal mismatches found by
+`ValidateTypes` or `ValidateStatus`. A non-empty `ValidateBody` diff is also a
+nonfatal validation mismatch. StepRunner reports those mismatches and converts
+them to validation exit status rather than returning them as its final error.
 `ErrValidatorFatal` exists as a separate static classification, but the
 skeleton does not define which conditions must use it.
 
@@ -49,10 +54,11 @@ The reference does not define:
 
 - response-type declaration tokens, modifiers, zero values, or optionality;
 - selector syntax, ordering, stream behavior, or aggregation format;
-- how `ValidateExpected` constructs the `runner.JQProject` selector;
+- how `ValidateBody` constructs the `runner.JQProject` selector;
 - interpretation of malformed or non-object expected responses;
 - the relationship between validator errors and Reporter-owned static errors;
-- HTTP-status validation;
+- status rules beyond the `ExpectedStatus == 0` wildcard and exact non-zero
+  comparison;
 - malformed-input, command-failure, or cancellation classification.
 
 Those behaviors must not appear as requirements or required test matrices
@@ -62,9 +68,10 @@ until they are added to the protected skeleton.
 
 1. Exported names, signatures, static error text, and explicit not-implemented
    placeholders match the reference.
-2. Type validation consumes its corresponding shared Step response fields.
-   Expected validation compares `JQPretty`-normalized expected JSON with the
-   `JQProject`-normalized runtime response through `GitDiff`.
+2. Type validation consumes `ActualBody`. Status validation accepts every
+   `ActualStatus` when `ExpectedStatus` is zero and requires exact equality
+   otherwise. Body validation returns an empty diff for equal normalized bodies
+   and the `GitDiff` result for unequal bodies.
 3. Validator does not print, schedule work, or choose the process exit code.
 4. No validation language, comparison algorithm, external-tool dependency, or
    failure payload absent from the skeleton is specified here.

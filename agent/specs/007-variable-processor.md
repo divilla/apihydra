@@ -38,8 +38,8 @@ The phases have these responsibilities:
 | --- | --- |
 | `LoadVariables` | Store every `Step.Vars` entry in the processor's `KeyValueStore`. |
 | `InterpolateRequestBody` | Replace `$var` and `${var}` placeholders in `Step.Request.Body` with values from the store. |
-| `InterpolateResponseExpected` | Replace `$var` and `${var}` placeholders in `Step.Response.Expected` with values from the store. |
-| `CaptureResponseVariables` | Evaluate every `Step.Response.Capture` selector against `Step.Response.Body` with `runner.JQExtract`, then store the extracted value under its capture name. |
+| `InterpolateResponseExpected` | Replace `$var` and `${var}` placeholders in `Step.Response.ExpectedBody` with values from the store. |
+| `CaptureResponseVariables` | Evaluate every `Step.Response.Capture` selector against `Step.Response.ActualBody` with `runner.JQExtract`, then store the extracted value under its capture name. |
 
 The call order is owned by the StepRunner specification and is not repeated
 here.

@@ -16,17 +16,19 @@ scheduling or validation algorithms.
 ```go
 var ErrReporter = errors.New("reporting error")
 var ErrTypeValidation = errors.New("type validation failed for")
-var ErrExpectedValidation = errors.New("response does not match expected")
+var ErrStatusValidation = errors.New("response status does not match expected")
+var ErrBodyValidation = errors.New("response body does not match expected")
 
 func NewReporter(output io.Writer) *Reporter
 func (r *Reporter) WorkingDirectory(workDir string) error
 func (r *Reporter) Success(ctx context.Context, directory *domain.Directory) error
 func (r *Reporter) ValidationTypes(ctx context.Context, step *domain.Step, failure error) error
-func (r *Reporter) ValidationExpected(ctx context.Context, step *domain.Step, failure error) error
+func (r *Reporter) ValidationStatus(ctx context.Context, step *domain.Step, failure error) error
+func (r *Reporter) ValidationBody(ctx context.Context, step *domain.Step, diff string) error
 func (r *Reporter) Debug(ctx context.Context, step *domain.Step) error
 ```
 
-`ValidationTypes` and `ValidationExpected` mirror the corresponding Validator
+The three validation reporting methods mirror the corresponding Validator
 operations. Reporter has no fatal-error or standard-error method.
 
 ## Construction and output ownership
@@ -61,9 +63,10 @@ only these boundaries:
   failures; its formatting is intentionally left to the implementation.
 - `ValidationTypes` writes one nonfatal response-type validation failure to the
   injected stdout writer.
-- `ValidationExpected` writes one nonfatal expected-response failure to the
-  injected stdout writer and preserves any command colors carried by the
-  failure when rendering the output block.
+- `ValidationStatus` writes one nonfatal response-status validation failure to
+  the injected stdout writer.
+- `ValidationBody` writes one nonfatal response-body validation diff to the
+  injected stdout writer and preserves any command colors carried by the diff.
 - `Debug` reports the final runtime state of a selected debug step.
 
 These methods return only reporting failures. A validation mismatch is output,
@@ -82,7 +85,7 @@ It also does not define how a debug step is selected or scheduled.
 3. Reporter has no stderr or process-termination responsibility.
 4. Stubbed methods remain within their documented reporting boundaries and do
    not acquire execution or validation responsibilities.
-5. ValidationExpected preserves colored diff payloads as required by its
+5. ValidationBody preserves colored diff payloads as required by its
    reference comment.
 6. No unimplemented layout, Runner integration, debug scheduling, or success
    policy is asserted as a requirement.

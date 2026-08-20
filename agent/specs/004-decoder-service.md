@@ -44,8 +44,8 @@ decoded entry in `StepsDefinitions`.
 
 The exact field rules are not present in the skeleton. In particular, this
 spec does not define required fields, scalar presence rules, variable syntax,
-response-type tokens, jq syntax, HTTP-status behavior, or a non-empty suite
-rule.
+response-type tokens, jq syntax, or a non-empty suite rule. The shared
+`ExpectedStatus` zero-value rule belongs to the PRD rather than Decoder.
 
 When an implementation creates contextual definition errors, their
 construction is governed by `02-errs-pkg.md`; this spec does not duplicate its

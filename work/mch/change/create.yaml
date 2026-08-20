@@ -14,7 +14,7 @@ spec:
             "def": "API tester Def"
           }
       response:
-        expected: |
+        expected_body: |
           {
             "agent_edit": false,
             "change_phase": "backlo",

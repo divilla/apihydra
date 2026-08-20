@@ -65,12 +65,13 @@ func (s *StepRunner) Prepare(
 // same stage concurrently. For every runtime step, it calls
 // VariableProcessor.LoadVariables, VariableProcessor.InterpolateRequestBody,
 // VariableProcessor.InterpolateResponseExpected, runner.Curl,
-// Validator.ValidateTypes, Validator.ValidateExpected, and
-// VariableProcessor.CaptureResponseVariables in that order. Validation failures
-// are reported through s.report. The response body returned by runner.Curl is
-// assigned to step.Response.Body for validation and capture. After all work
-// finishes, Execute returns exit code 101 and a nil error when one or more
-// validations failed. Validation status does not cancel remaining work.
+// Validator.ValidateTypes, Validator.ValidateStatus, Validator.ValidateBody,
+// and VariableProcessor.CaptureResponseVariables in that order. Validation
+// failures are reported through s.report. The response status and body returned
+// by runner.Curl are assigned to step.Response.ActualStatus and
+// step.Response.ActualBody for validation and capture. After all work finishes,
+// Execute returns exit code 101 and a nil error when one or more validations
+// failed. Validation status does not cancel remaining work.
 func (s *StepRunner) Execute(
 	ctx context.Context,
 	stages [][]*domain.Directory,

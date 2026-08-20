@@ -101,22 +101,26 @@ For each executed step, the skeleton comment fixes this phase order:
 3. `VariableProcessor.InterpolateResponseExpected`
 4. `runner.Curl`
 5. `Validator.ValidateTypes`
-6. `Validator.ValidateExpected`
-7. `VariableProcessor.CaptureResponseVariables`
+6. `Validator.ValidateStatus`
+7. `Validator.ValidateBody`
+8. `VariableProcessor.CaptureResponseVariables`
 
-The response body returned by `runner.Curl` becomes `Step.Response.Body` for
-the validation and capture phases that follow it. Expected-response variables
-are interpolated before the request is executed.
+The response status and body returned by `runner.Curl` become
+`Step.Response.ActualStatus` and `Step.Response.ActualBody` for the validation
+and capture phases that follow. Expected-response variables are interpolated
+before the request is executed. The PRD owns the `ExpectedStatus == 0`
+wildcard rule; Validator owns the comparison.
 
-StepRunner sends detected validation failures to its Reporter. After traversal
-finishes with at least one validation mismatch, `Execute` returns
+StepRunner sends each type or status validation failure and each non-empty body
+diff to its corresponding Reporter method. After traversal finishes with at
+least one validation mismatch, `Execute` returns
 `errs.ExitValidation, nil`. Validation failures therefore affect final process
 status without becoming fatal diagnostics or canceling remaining work.
 
-The skeleton does not define URL construction, HTTP-status treatment, the
-mapping of individual validation errors to Reporter methods, success reporting,
-debug selection/stopping, or precedence between multiple nonfatal failures.
-Those details remain outside this spec.
+The skeleton does not define URL construction, status rules beyond the PRD's
+expected/actual comparison, success reporting, debug selection/stopping, or
+precedence between multiple nonfatal failures. Those details remain outside
+this spec.
 
 ## Boundaries
 
@@ -140,9 +144,10 @@ error formatting. Those contracts remain with their owning specs.
 5. A fatal stage error cancels shared work and prevents later stages. The first
    fatal result replaces provisional validation and retains its associated code
    and error without being replaced by later results.
-6. Per-step execution uses the seven phases in the reference order, assigns the
-   Curl response body to `Step.Response.Body`, and interpolates expected values
-   before Curl runs.
+6. Per-step execution uses the eight phases in the reference order, assigns the
+   Curl response status and body to `Step.Response.ActualStatus` and
+   `Step.Response.ActualBody`, and interpolates expected values before Curl
+   runs.
 7. Completed validation mismatch traversal continues through remaining work
    and returns code `101` with a nil error.
 8. Debug, presentation, sorting, and per-validator payload rules absent from

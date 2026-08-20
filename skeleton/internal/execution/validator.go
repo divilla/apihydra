@@ -6,7 +6,7 @@ import (
 	"errors"
 )
 
-// ErrValidation reports that ValidateTypes or ValidateExpected found at least
+// ErrValidation reports that ValidateTypes or ValidateStatus found at least
 // one nonfatal mismatch. StepRunner reports these mismatches and converts them
 // to validation exit status instead of returning them as its final error.
 var ErrValidation = errors.New("validation error")
@@ -18,8 +18,8 @@ func NewValidator() *Validator {
 	return &Validator{}
 }
 
-// ValidateTypes validates step.Response.Body against the type declarations in
-// step.Response.Types. Its result may contain multiple validation errors so
+// ValidateTypes validates step.Response.ActualBody against the type declarations
+// in step.Response.Types. Its result may contain multiple validation errors so
 // callers can report every detected type mismatch.
 func (v *Validator) ValidateTypes(
 	ctx context.Context,
@@ -29,15 +29,25 @@ func (v *Validator) ValidateTypes(
 	panic("Validator.ValidateTypes is not implemented")
 }
 
-// ValidateExpected validates step.Response.Body against
-// step.Response.Expected. It projects and orders the actual response with
-// runner.JQProject, formats and orders the expected response with
-// runner.JQPretty, and compares the normalized documents with runner.GitDiff.
-// It returns at most one validation error.
-func (v *Validator) ValidateExpected(
+// ValidateStatus validates ActualStatus against ExpectedStatus.
+// ExpectedStatus 0 accepts any ActualStatus; otherwise ActualStatus must equal
+// ExpectedStatus.
+func (v *Validator) ValidateStatus(
 	ctx context.Context,
 	step *domain.Step,
 ) error {
 	// TODO: implement
-	panic("Validator.ValidateExpected is not implemented")
+	panic("Validator.ValidateStatus is not implemented")
+}
+
+// ValidateBody validates ActualBody against ExpectedBody. ActualBody parsed
+// with runner.JQProject must equal ExpectedBody parsed with runner.JQPretty.
+// If they differ, it returns the diff calculated by runner.GitDiff. If they are
+// equal, it returns "", nil.
+func (v *Validator) ValidateBody(
+	ctx context.Context,
+	step *domain.Step,
+) (string, error) {
+	// TODO: implement
+	panic("Validator.ValidateBody is not implemented")
 }

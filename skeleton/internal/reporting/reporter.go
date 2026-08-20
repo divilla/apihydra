@@ -12,7 +12,8 @@ import (
 
 var ErrReporter = errors.New("reporting error")
 var ErrTypeValidation = errors.New("type validation failed for")
-var ErrExpectedValidation = errors.New("response does not match expected")
+var ErrStatusValidation = errors.New("response status does not match expected")
+var ErrBodyValidation = errors.New("response body does not match expected")
 
 // Reporter owns all human-readable execution output. The writer is normally
 // os.Stdout and may be replaced by a buffer or another writer in tests.
@@ -55,12 +56,19 @@ func (r *Reporter) ValidationTypes(ctx context.Context, step *domain.Step, failu
 	return nil
 }
 
-// ValidationExpected writes one nonfatal expected-response validation failure
-// to the injected standard-output writer. Any command colors carried by
-// failure are preserved when the output block is rendered. It returns only
-// reporting failures; the validation failure itself does not terminate
-// execution.
-func (r *Reporter) ValidationExpected(ctx context.Context, step *domain.Step, failure error) error {
+// ValidationStatus writes one nonfatal response-status validation failure to
+// the injected standard-output writer. It returns only reporting failures; the
+// validation failure itself does not terminate execution.
+func (r *Reporter) ValidationStatus(ctx context.Context, step *domain.Step, failure error) error {
+	// TODO: implement
+	return nil
+}
+
+// ValidationBody writes one nonfatal response-body validation diff to the
+// injected standard-output writer. Any command colors carried by diff are
+// preserved when the output block is rendered. It returns only reporting
+// failures; the validation failure itself does not terminate execution.
+func (r *Reporter) ValidationBody(ctx context.Context, step *domain.Step, diff string) error {
 	// TODO: implement
 	return nil
 }
