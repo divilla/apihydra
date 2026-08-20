@@ -1,4 +1,4 @@
-package reporter
+package reporting
 
 import (
 	"apih/skeleton/internal/domain"

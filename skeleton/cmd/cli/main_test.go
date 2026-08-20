@@ -1,7 +1,7 @@
 package main
 
 import (
-	"apih/skeleton/internal/reporter"
+	"apih/skeleton/internal/reporting"
 	"apih/skeleton/pkg/errs"
 	"bytes"
 	"context"
@@ -23,7 +23,7 @@ func (w failingWriter) Write([]byte) (int, error) {
 func TestRunReturnsConfigurationExitCodeForInvalidPath(t *testing.T) {
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), []string{"apih", "path-that-does-not-exist"}, reporter.NewReporter(&output))
+	exitCode, err := run(context.Background(), []string{"apih", "path-that-does-not-exist"}, reporting.NewReporter(&output))
 	if exitCode != errs.ExitConfiguration {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
 	}
@@ -38,7 +38,7 @@ func TestRunReturnsConfigurationExitCodeForInvalidPath(t *testing.T) {
 func TestRunReturnsSuccessAfterDefinitionPipeline(t *testing.T) {
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), []string{"apih"}, reporter.NewReporter(&output))
+	exitCode, err := run(context.Background(), []string{"apih"}, reporting.NewReporter(&output))
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -53,7 +53,7 @@ func TestRunReturnsSuccessAfterDefinitionPipeline(t *testing.T) {
 func TestRunReturnsInternalExitCodeForOutputFailure(t *testing.T) {
 	wantErr := errors.New("output failed")
 
-	exitCode, err := run(context.Background(), []string{"apih"}, reporter.NewReporter(failingWriter{err: wantErr}))
+	exitCode, err := run(context.Background(), []string{"apih"}, reporting.NewReporter(failingWriter{err: wantErr}))
 	if exitCode != errs.ExitInternal {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitInternal)
 	}

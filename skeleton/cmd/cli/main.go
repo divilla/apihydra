@@ -3,7 +3,8 @@ package main
 import (
 	"apih/skeleton/internal/definition"
 	"apih/skeleton/internal/domain"
-	"apih/skeleton/internal/reporter"
+	"apih/skeleton/internal/execution"
+	"apih/skeleton/internal/reporting"
 	"apih/skeleton/pkg/errs"
 	"context"
 	"errors"
@@ -19,14 +20,14 @@ func main() {
 	log.SetFlags(0)
 	log.SetOutput(os.Stderr)
 
-	exitCode, err := run(context.Background(), os.Args, reporter.NewReporter(os.Stdout))
+	exitCode, err := run(context.Background(), os.Args, reporting.NewReporter(os.Stdout))
 	if err != nil {
 		log.Print(err)
 	}
 	os.Exit(exitCode)
 }
 
-func run(ctx context.Context, args []string, report *reporter.Reporter) (int, error) {
+func run(ctx context.Context, args []string, report *reporting.Reporter) (int, error) {
 	workDir, err := os.Getwd()
 	if err != nil {
 		return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrWorkingDirectory, err)
@@ -83,5 +84,17 @@ func run(ctx context.Context, args []string, report *reporter.Reporter) (int, er
 		return errs.ExitConfiguration, err
 	}
 
-	return errs.ExitSuccess, nil
+	reporter := reporting.NewReporter(os.Stdout)
+	kvs := execution.NewKeyValueStore()
+	varProc := execution.NewVariableProcessor(kvs)
+	validator := execution.NewValidator()
+	stepRunner := execution.NewStepRunner(varProc, validator, reporter)
+	exitCode, err := stepRunner.ValidateDirectories(suite)
+	if err != nil {
+		return exitCode, err
+	}
+	stepRunner.Prepare(suite)
+	stagesPlan := stepRunner.PlanStages(suite)
+
+	return stepRunner.Execute(ctx, stagesPlan)
 }

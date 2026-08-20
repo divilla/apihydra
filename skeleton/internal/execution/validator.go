@@ -14,6 +14,10 @@ var ErrValidatorFatal = errors.New("fatal validator error")
 
 type Validator struct{}
 
+func NewValidator() *Validator {
+	return &Validator{}
+}
+
 // ValidateTypes validates step.Response.Body against the type declarations in
 // step.Response.Types. Its result may contain multiple validation errors so
 // callers can report every detected type mismatch.

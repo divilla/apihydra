@@ -25,10 +25,10 @@ func TestPackageBoundaries(t *testing.T) {
 		)
 	})
 
-	t.Run("execution output belongs to reporter", func(t *testing.T) {
+	t.Run("execution output belongs to reporting", func(t *testing.T) {
 		assertPatternsAbsentOutside(
 			t,
-			filepath.FromSlash("internal/reporter"),
+			filepath.FromSlash("internal/reporting"),
 			[]string{"fmt.Fprint(", "fmt.Fprintf(", "fmt.Fprintln("},
 		)
 	})

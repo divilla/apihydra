@@ -2,7 +2,7 @@ package execution
 
 import (
 	"apih/skeleton/internal/domain"
-	"apih/skeleton/internal/reporter"
+	"apih/skeleton/internal/reporting"
 	"apih/skeleton/pkg/errs"
 	"context"
 	"errors"
@@ -16,13 +16,13 @@ var ErrExecutionCanceled = errors.New("execution canceled")
 type StepRunner struct {
 	varProc *VariableProcessor
 	val     *Validator
-	report  *reporter.Reporter
+	report  *reporting.Reporter
 }
 
 func NewStepRunner(
 	variableProcessor *VariableProcessor,
 	validator *Validator,
-	report *reporter.Reporter,
+	report *reporting.Reporter,
 ) *StepRunner {
 	return &StepRunner{
 		varProc: variableProcessor,
@@ -32,7 +32,6 @@ func NewStepRunner(
 }
 
 func (s *StepRunner) ValidateDirectories(
-	ctx context.Context,
 	suite *domain.Suite,
 ) (int, error) {
 	dc := newDirsValidator(suite)
@@ -43,7 +42,6 @@ func (s *StepRunner) ValidateDirectories(
 }
 
 func (s *StepRunner) PlanStages(
-	ctx context.Context,
 	suite *domain.Suite,
 ) [][]*domain.Directory {
 	maxStages := findMaxStage(suite.Root, 0)
@@ -58,11 +56,9 @@ func (s *StepRunner) PlanStages(
 // provenance pointer.
 // Variable loading and interpolation are runtime phases performed by Execute.
 func (s *StepRunner) Prepare(
-	ctx context.Context,
 	suite *domain.Suite,
-) error {
+) {
 	// TODO: implement
-	return nil
 }
 
 // Execute processes the directory tree in stages, running directories in the

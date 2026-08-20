@@ -14,7 +14,7 @@ scheduling or validation algorithms.
 ## Public API
 
 ```go
-var ErrReporter = errors.New("reporter error")
+var ErrReporter = errors.New("reporting error")
 var ErrTypeValidation = errors.New("type validation failed for")
 var ErrExpectedValidation = errors.New("response does not match expected")
 
