@@ -90,13 +90,13 @@ func run(ctx context.Context, args []string, reporter *reporting.Reporter) (int,
 	kvs := execution.NewKeyValueStore()
 	varProc := execution.NewVariableProcessor(kvs)
 	validator := execution.NewValidator()
-	stepRunner := execution.NewStepRunner(varProc, validator, reporter)
-	exitCode, err := stepRunner.ValidateDirectories(suite)
+	executor := execution.NewExecutor(varProc, validator, reporter)
+	exitCode, err := executor.ValidateDirectories(suite)
 	if err != nil {
 		return exitCode, err
 	}
-	stepRunner.Prepare(suite)
-	stagesPlan := stepRunner.PlanStages(suite)
+	executor.Prepare(suite)
+	stagesPlan := executor.PlanStages(suite)
 
-	return stepRunner.Execute(ctx, stagesPlan)
+	return executor.Execute(ctx, stagesPlan)
 }

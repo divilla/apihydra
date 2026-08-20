@@ -14,7 +14,7 @@ contracts. This document describes package relationships only.
 cmd/cli/                    process composition and exit
 internal/domain/            shared Suite/Directory/File/definition/step models
 internal/definition/        Loader, Decoder, Resolver
-internal/execution/         KeyValueStore, VariableProcessor, Validator, StepRunner
+internal/execution/         KeyValueStore, VariableProcessor, Validator, Executor
 internal/reporting/         human-readable terminal output
 pkg/errs/                   contextual errors and exit-code metadata
 pkg/runner/                 external-command operations
@@ -73,9 +73,9 @@ The current CLI composition order is owned by the PRD.
 - [`KeyValueStore`](specs/006-key-value-store-service.md)
 - [`VariableProcessor`](specs/007-variable-processor.md)
 - [`Validator`](specs/008-validator-service.md)
-- [`StepRunner`](specs/010-step-runner-service.md)
+- [`Executor`](specs/010-executor.md)
 
-The StepRunner skeleton contract defines preparation scope, execution phase
+The Executor skeleton contract defines preparation scope, execution phase
 order, tree validation, and stage scheduling. The execution guides do not
 duplicate those orchestration rules.
 

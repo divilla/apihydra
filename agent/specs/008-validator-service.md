@@ -6,15 +6,15 @@
 - Reference tests: [`skeleton/internal/execution/validator_test.go`](../../skeleton/internal/execution/validator_test.go)
 - Shared step model and exit codes: [`prd.md`](../prd.md)
 - Shared domain types: [`000-domain-types.md`](000-domain-types.md)
-- Phase orchestration: [`010-step-runner-service.md`](010-step-runner-service.md)
+- Phase orchestration: [`010-executor.md`](010-executor.md)
 - Status: skeleton-aligned implementation guide
 
 ## Reference contract
 
 The binding skeleton defines Validator's API, comparison contracts, and error
 classifications. This guide does not reproduce them. Separate type, status,
-and body operations let StepRunner report every nonfatal mismatch through the
-corresponding Reporter method. StepRunner defines invocation order and
+and body operations let Executor report every nonfatal mismatch through the
+corresponding Reporter method. Executor defines invocation order and
 suite-level result handling.
 
 ## Deliberately unspecified

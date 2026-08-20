@@ -10,7 +10,7 @@
 - Definition guides: [`003-loader-service.md`](003-loader-service.md),
   [`004-decoder-service.md`](004-decoder-service.md), and
   [`005-resolver-service.md`](005-resolver-service.md)
-- Execution guide: [`010-step-runner-service.md`](010-step-runner-service.md)
+- Execution guide: [`010-executor.md`](010-executor.md)
 - Status: skeleton-aligned implementation guide
 
 ## Reference contract

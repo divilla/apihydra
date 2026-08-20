@@ -1,9 +1,9 @@
-# `internal/execution` StepRunner
+# `internal/execution` Executor
 
 ## Status and ownership
 
-- Binding reference: [`skeleton/internal/execution/steprun.go`](../../skeleton/internal/execution/steprun.go)
-- Reference tests: [`skeleton/internal/execution/steprun_test.go`](../../skeleton/internal/execution/steprun_test.go)
+- Binding reference: [`skeleton/internal/execution/executor.go`](../../skeleton/internal/execution/executor.go)
+- Reference tests: [`skeleton/internal/execution/executor_test.go`](../../skeleton/internal/execution/executor_test.go)
 - Shared domain and exit codes: [`prd.md`](../prd.md)
 - Shared domain types: [`000-domain-types.md`](000-domain-types.md)
 - Reporter methods: [`009-reporter-service.md`](009-reporter-service.md)
@@ -11,7 +11,7 @@
 
 ## Reference contract
 
-The binding skeleton implementation, comments, and tests define StepRunner's
+The binding skeleton implementation, comments, and tests define Executor's
 API, preparation scope, tree validation, stage scheduling, execution order, and
 result precedence. This guide does not reproduce them. Keeping validation,
 planning, and preparation separate rejects malformed trees before scheduling
@@ -19,7 +19,7 @@ and preserves resolved definitions while runtime steps are mutated.
 
 ## Boundaries
 
-StepRunner coordinates its collaborators. It does not own variable syntax,
+Executor coordinates its collaborators. It does not own variable syntax,
 validation algorithms, command implementation, output layout, or contextual
 error formatting. Those contracts remain with their owning skeleton packages.
 
@@ -33,15 +33,15 @@ nonfatal validation failures.
 
 ## Required implementation and tests
 
-- Production output: `internal/execution/steprun.go` retains the implemented
+- Production output: `internal/execution/executor.go` retains the implemented
   tree validation and scheduler and replaces the `Prepare` and `processDir`
   TODO bodies with the binding deep-copy and eight-phase execution behavior.
-- Test output: `internal/execution/steprun_test.go` retains the reference tests
+- Test output: `internal/execution/executor_test.go` retains the reference tests
   and adds coverage for deep-copy isolation, every phase and mutation, all
   validation-reporting paths, collaborator failures, success/debug reporting
   chosen within the contract, and context cancellation.
 - Each acceptance criterion is traced to at least one meaningful unit test, and
-  StepRunner unit-test statement coverage remains greater than 95% under the
+  Executor unit-test statement coverage remains greater than 95% under the
   race detector.
 
 ## Acceptance criteria

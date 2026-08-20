@@ -24,15 +24,15 @@ func TestValidateDirectoriesAndPlanStagesSupportArbitraryValidDepth(t *testing.T
 	}
 
 	suite := &domain.Suite{Root: root}
-	runner := NewStepRunner(nil, nil, nil)
-	exitCode, err := runner.ValidateDirectories(suite)
+	executor := NewExecutor(nil, nil, nil)
+	exitCode, err := executor.ValidateDirectories(suite)
 	if err != nil {
 		t.Fatalf("ValidateDirectories() error = %v", err)
 	}
 	if exitCode != 0 {
 		t.Fatalf("ValidateDirectories() exit code = %d, want 0", exitCode)
 	}
-	dirs := runner.PlanStages(suite)
+	dirs := executor.PlanStages(suite)
 	if got, want := len(dirs), 256; got != want {
 		t.Fatalf("len(dirs) = %d, want %d", got, want)
 	}
@@ -97,8 +97,8 @@ func TestValidateDirectoriesRejectsInvalidTrees(t *testing.T) {
 
 	for name, suite := range tests {
 		t.Run(name, func(t *testing.T) {
-			runner := NewStepRunner(nil, nil, nil)
-			exitCode, err := runner.ValidateDirectories(suite())
+			executor := NewExecutor(nil, nil, nil)
+			exitCode, err := executor.ValidateDirectories(suite())
 			if exitCode != errs.ExitConfiguration {
 				t.Fatalf("ValidateDirectories() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
 			}

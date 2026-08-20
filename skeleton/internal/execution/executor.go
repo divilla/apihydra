@@ -16,21 +16,21 @@ var ErrInvalidDirectoryTree = errors.New("invalid directory tree")
 // ErrExecutionCanceled classifies cancellation of staged execution.
 var ErrExecutionCanceled = errors.New("execution canceled")
 
-// StepRunner prepares, schedules, executes, validates, and reports runtime
+// Executor prepares, schedules, executes, validates, and reports runtime
 // steps.
-type StepRunner struct {
+type Executor struct {
 	varProc *VariableProcessor
 	val     *Validator
 	report  *reporting.Reporter
 }
 
-// NewStepRunner retains the collaborators used during execution.
-func NewStepRunner(
+// NewExecutor retains the collaborators used during execution.
+func NewExecutor(
 	variableProcessor *VariableProcessor,
 	validator *Validator,
 	report *reporting.Reporter,
-) *StepRunner {
-	return &StepRunner{
+) *Executor {
+	return &Executor{
 		varProc: variableProcessor,
 		val:     validator,
 		report:  report,
@@ -39,7 +39,7 @@ func NewStepRunner(
 
 // ValidateDirectories verifies the root, parent links, stages, and uniqueness of
 // every directory reachable from suite.Root.
-func (s *StepRunner) ValidateDirectories(
+func (e *Executor) ValidateDirectories(
 	suite *domain.Suite,
 ) (int, error) {
 	dc := newDirsValidator(suite)
@@ -51,7 +51,7 @@ func (s *StepRunner) ValidateDirectories(
 
 // PlanStages groups a validated directory tree by stage while preserving each
 // directory pointer.
-func (s *StepRunner) PlanStages(
+func (e *Executor) PlanStages(
 	suite *domain.Suite,
 ) [][]*domain.Directory {
 	maxStages := findMaxStage(suite.Root, 0)
@@ -65,7 +65,7 @@ func (s *StepRunner) PlanStages(
 // mutable slices and maps are copied; Step.Definition retains its original
 // provenance pointer.
 // Variable loading and interpolation are runtime phases performed by Execute.
-func (s *StepRunner) Prepare(
+func (e *Executor) Prepare(
 	suite *domain.Suite,
 ) {
 	// TODO: implement
@@ -84,11 +84,11 @@ func (s *StepRunner) Prepare(
 // capture. After all work finishes, Execute returns exit code 101 and a nil
 // error when one or more validations failed. Validation status does not cancel
 // remaining work.
-func (s *StepRunner) Execute(
+func (e *Executor) Execute(
 	ctx context.Context,
 	stages [][]*domain.Directory,
 ) (int, error) {
-	exitCode, err := executeStages(ctx, stages, s.processDir)
+	exitCode, err := executeStages(ctx, stages, e.processDir)
 	if err != nil {
 		return exitCode, err
 	}
@@ -259,13 +259,13 @@ func executeStage(
 	return result.code, result.err
 }
 
-func (s *StepRunner) processDir(ctx context.Context, dir *domain.Directory) (int, error) {
+func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrExecutionCanceled, err)
 	}
 
 	// TODO: implement
-	_ = s
+	_ = e
 	_ = dir
 	return 0, nil
 }

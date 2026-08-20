@@ -7,7 +7,7 @@ import (
 )
 
 // ErrValidation classifies a nonfatal validation mismatch represented as an
-// error. StepRunner reports these mismatches and converts them to validation
+// error. Executor reports these mismatches and converts them to validation
 // exit status instead of returning them as its final error.
 var ErrValidation = errors.New("validation error")
 

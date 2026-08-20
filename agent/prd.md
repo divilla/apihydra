@@ -143,14 +143,14 @@ selected working directory, creates
 8. `Resolver.ResolveSteps`
 
 After definition resolution, `run` creates one `KeyValueStore`,
-`VariableProcessor`, and `Validator`, then creates a `StepRunner` with those
+`VariableProcessor`, and `Validator`, then creates an `Executor` with those
 collaborators and the same Reporter used for working-directory output. It then:
 
-1. calls `StepRunner.ValidateDirectories(suite)` and returns its exit code and
+1. calls `Executor.ValidateDirectories(suite)` and returns its exit code and
    error if validation fails;
-2. calls `StepRunner.Prepare(suite)`;
-3. obtains the execution plan with `StepRunner.PlanStages(suite)`; and
-4. returns `StepRunner.Execute(ctx, stagesPlan)` unchanged.
+2. calls `Executor.Prepare(suite)`;
+3. obtains the execution plan with `Executor.PlanStages(suite)`; and
+4. returns `Executor.Execute(ctx, stagesPlan)` unchanged.
 
 When `run` returns an error, `main` writes it to `os.Stderr` with the standard
 logger and then calls `os.Exit` with the exact code returned by `run`. Reporter
@@ -187,7 +187,7 @@ Each package guide points to its binding skeleton contract:
 | VariableProcessor | [`007-variable-processor.md`](specs/007-variable-processor.md) |
 | Validator | [`008-validator-service.md`](specs/008-validator-service.md) |
 | Reporter methods and output fixed by the reference implementation | [`009-reporter-service.md`](specs/009-reporter-service.md) |
-| Preparation, execution phase order, tree validation, and stage scheduling | [`010-step-runner-service.md`](specs/010-step-runner-service.md) |
+| Preparation, execution phase order, tree validation, and stage scheduling | [`010-executor.md`](specs/010-executor.md) |
 | CLI composition and process behavior | [`011-main-app-int-tests.md`](specs/011-main-app-int-tests.md) |
 | Black-box application verification | [`012-integration-tests.md`](specs/012-integration-tests.md) |
 

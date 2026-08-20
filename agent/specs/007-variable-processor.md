@@ -6,13 +6,13 @@
 - Reference tests: [`skeleton/internal/execution/varproc_test.go`](../../skeleton/internal/execution/varproc_test.go)
 - Shared step model: [`prd.md`](../prd.md#defaults-and-steps)
 - Shared domain types: [`000-domain-types.md`](000-domain-types.md)
-- Phase orchestration: [`010-step-runner-service.md`](010-step-runner-service.md)
+- Phase orchestration: [`010-executor.md`](010-executor.md)
 - Status: skeleton-aligned implementation guide
 
 ## Reference contract
 
 The binding skeleton defines VariableProcessor's API, collaborator, and phase
-contracts. This guide does not reproduce them. The StepRunner skeleton contract
+contracts. This guide does not reproduce them. The Executor skeleton contract
 defines when the phases run, while KeyValueStore defines duplicate-storage
 behavior and Runner defines capture extraction.
 
@@ -51,7 +51,7 @@ does not redefine it.
    the reference; production methods do not retain zero-value TODO bodies.
 2. Each method remains limited to its documented variable phase, shared Step
    data, and the injected `KeyValueStore`.
-3. Phase ordering is not duplicated from the StepRunner skeleton contract.
+3. Phase ordering is not duplicated from the Executor skeleton contract.
 4. Capture delegates value extraction to `runner.JQExtract`; VariableProcessor
    does not execute external commands directly.
 5. No variable grammar or error policy absent from the skeleton is introduced.
