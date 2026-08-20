@@ -92,7 +92,7 @@ type Step struct {
 		ActualStatus   int                   `yaml:"actual_status" json:"actual_status"`
 		ExpectedBody   YAMLString            `yaml:"expected_body" json:"expected_body"`
 		ActualBody     string                `yaml:"actual_body" json:"actual_body"`
-		Types          map[string][]string   `yaml:"types" json:"types"`
+		ExpectedTypes  map[string][]string   `yaml:"expected_types" json:"expected_types"`
 		Capture        map[string]YAMLString `yaml:"capture" json:"capture"`
 	} `yaml:"response" json:"response"`
 	Debug      bool             `yaml:"debug" json:"debug"`

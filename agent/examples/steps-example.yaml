@@ -28,7 +28,7 @@ spec:
         expected_status: 201
         capture:
           change_id: example-capture-expression
-        types:
+        expected_types:
           example.selector: [example-type]
         expected_body: |
           {

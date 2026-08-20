@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -17,6 +18,8 @@ spec:
     - response:
         expected_status: 201
         expected_body: '{"created":true}'
+        expected_types:
+          .created: [boolean]
 `)
 
 	var definition StepsDefinition
@@ -28,6 +31,9 @@ spec:
 	}
 	if got, want := definition.Spec.Steps[0].Response.ExpectedBody, YAMLString(`{"created":true}`); got != want {
 		t.Fatalf("ExpectedBody = %q, want %q", got, want)
+	}
+	if got, want := definition.Spec.Steps[0].Response.ExpectedTypes[".created"], []string{"boolean"}; !slices.Equal(got, want) {
+		t.Fatalf("ExpectedTypes[.created] = %v, want %v", got, want)
 	}
 	if got := definition.Spec.Steps[0].Response.ActualStatus; got != 0 {
 		t.Fatalf("ActualStatus = %d, want zero before execution", got)
@@ -47,13 +53,16 @@ spec:
 	if !strings.Contains(got, `"expected_body":"{\"created\":true}"`) {
 		t.Fatalf("JSON = %s, want expected_body", got)
 	}
+	if !strings.Contains(got, `"expected_types":{".created":["boolean"]}`) {
+		t.Fatalf("JSON = %s, want expected_types", got)
+	}
 	if !strings.Contains(got, `"actual_status":0`) {
 		t.Fatalf("JSON = %s, want numeric actual_status", got)
 	}
 	if !strings.Contains(got, `"actual_body":""`) {
 		t.Fatalf("JSON = %s, want actual_body", got)
 	}
-	if strings.Contains(got, `"status"`) || strings.Contains(got, `"expected"`) {
+	if strings.Contains(got, `"status"`) || strings.Contains(got, `"expected"`) || strings.Contains(got, `"types"`) {
 		t.Fatalf("JSON = %s, contains legacy response field", got)
 	}
 }

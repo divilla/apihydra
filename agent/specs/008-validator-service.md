@@ -30,7 +30,8 @@ placeholders define no runtime result.
 ## Validation boundaries
 
 `ValidateTypes` validates `Step.Response.ActualBody` against
-`Step.Response.Types`. Its slice result permits reporting more than one error.
+`Step.Response.ExpectedTypes`. Its slice result permits reporting more than one
+error.
 
 `ValidateStatus` validates `ActualStatus` against `ExpectedStatus`.
 `ExpectedStatus == 0` accepts every `ActualStatus`; otherwise `ActualStatus`
@@ -52,7 +53,7 @@ skeleton does not define which conditions must use it.
 
 The reference does not define:
 
-- response-type declaration tokens, modifiers, zero values, or optionality;
+- expected-type declaration tokens, modifiers, zero values, or optionality;
 - selector syntax, ordering, stream behavior, or aggregation format;
 - how `ValidateBody` constructs the `runner.JQProject` selector;
 - interpretation of malformed or non-object expected responses;
@@ -68,10 +69,10 @@ until they are added to the protected skeleton.
 
 1. Exported names, signatures, static error text, and explicit not-implemented
    placeholders match the reference.
-2. Type validation consumes `ActualBody`. Status validation accepts every
-   `ActualStatus` when `ExpectedStatus` is zero and requires exact equality
-   otherwise. Body validation returns an empty diff for equal normalized bodies
-   and the `GitDiff` result for unequal bodies.
+2. Type validation compares `ActualBody` with `ExpectedTypes`. Status validation
+   accepts every `ActualStatus` when `ExpectedStatus` is zero and requires exact
+   equality otherwise. Body validation returns an empty diff for equal
+   normalized bodies and the `GitDiff` result for unequal bodies.
 3. Validator does not print, schedule work, or choose the process exit code.
 4. No validation language, comparison algorithm, external-tool dependency, or
    failure payload absent from the skeleton is specified here.

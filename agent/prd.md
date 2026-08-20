@@ -100,7 +100,9 @@ presence or arbitrary-value wrappers.
 - `ExpectedStatus` and `ActualStatus` are `int` values under the YAML and JSON
   names `expected_status` and `actual_status`;
 - `ExpectedBody` is a `YAMLString` under `expected_body`, while `ActualBody` is
-  a `string` under `actual_body`.
+  a `string` under `actual_body`;
+- `ExpectedTypes` is a `map[string][]string` under `expected_types` and declares
+  the expected types selected from `ActualBody`.
 
 `ExpectedStatus` is one deterministic HTTP status. Its zero value is the
 `<any>` substitute: when `ExpectedStatus == 0`, every `ActualStatus` is valid.

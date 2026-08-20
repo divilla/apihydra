@@ -18,17 +18,6 @@ func NewValidator() *Validator {
 	return &Validator{}
 }
 
-// ValidateTypes validates step.Response.ActualBody against the type declarations
-// in step.Response.Types. Its result may contain multiple validation errors so
-// callers can report every detected type mismatch.
-func (v *Validator) ValidateTypes(
-	ctx context.Context,
-	step *domain.Step,
-) []error {
-	// TODO: implement
-	panic("Validator.ValidateTypes is not implemented")
-}
-
 // ValidateStatus validates ActualStatus against ExpectedStatus.
 // ExpectedStatus 0 accepts any ActualStatus; otherwise ActualStatus must equal
 // ExpectedStatus.
@@ -50,4 +39,15 @@ func (v *Validator) ValidateBody(
 ) (string, error) {
 	// TODO: implement
 	panic("Validator.ValidateBody is not implemented")
+}
+
+// ValidateTypes validates step.Response.ActualBody against the type declarations
+// in step.Response.ExpectedTypes. Its result may contain multiple validation
+// errors so callers can report every detected type mismatch.
+func (v *Validator) ValidateTypes(
+	ctx context.Context,
+	step *domain.Step,
+) []error {
+	// TODO: implement
+	panic("Validator.ValidateTypes is not implemented")
 }
