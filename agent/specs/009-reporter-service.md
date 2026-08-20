@@ -2,79 +2,26 @@
 
 ## Status and ownership
 
-- Binding reference: `skeleton/internal/reporting/reporter.go`
-- Reference tests: `skeleton/internal/reporting/reporter_test.go`
+- Binding reference: [`skeleton/internal/reporting/reporter.go`](../../skeleton/internal/reporting/reporter.go)
+- Reference tests: [`skeleton/internal/reporting/reporter_test.go`](../../skeleton/internal/reporting/reporter_test.go)
 - Execution-output boundary: [`prd.md`](../prd.md#package-ownership)
-- Status: skeleton-aligned specification
+- Status: skeleton-aligned implementation guide
 
-This specification owns Reporter construction and the output behavior fixed by
-the reference implementation or method comments. It does not define execution
-scheduling or validation algorithms.
+## Reference contract
 
-## Public API
+The binding skeleton implementation, comments, and tests define Reporter's API
+and output contract. This guide does not reproduce them. Reporter owns
+human-readable execution output through its injected writer; fatal diagnostics
+and process exit remain in `cmd/cli`. The validation reporting methods mirror
+Validator's separate type, status, and body operations without taking ownership
+of validation itself.
 
-```go
-var ErrReporter = errors.New("reporting error")
-var ErrTypeValidation = errors.New("type validation failed for")
-var ErrStatusValidation = errors.New("response status does not match expected")
-var ErrBodyValidation = errors.New("response body does not match expected")
+## Deliberately unspecified
 
-func NewReporter(output io.Writer) *Reporter
-func (r *Reporter) WorkingDirectory(workDir string) error
-func (r *Reporter) Success(ctx context.Context, directory *domain.Directory) error
-func (r *Reporter) ValidationTypes(ctx context.Context, step *domain.Step, failure error) error
-func (r *Reporter) ValidationStatus(ctx context.Context, step *domain.Step, failure error) error
-func (r *Reporter) ValidationBody(ctx context.Context, step *domain.Step, diff string) error
-func (r *Reporter) Debug(ctx context.Context, step *domain.Step) error
-```
-
-The three validation reporting methods mirror the corresponding Validator
-operations. Reporter has no fatal-error or standard-error method.
-
-## Construction and output ownership
-
-`NewReporter` retains the supplied `io.Writer`. The CLI constructs one Reporter
-for stdout. Reporter never writes directly to stderr and never terminates the
-process. Every Reporter method returns a reporting failure to its caller.
-Fatal diagnostic logging belongs to `cmd/cli`.
-
-Reporter contains a mutex for serializing access to its writer. The exact state
-transitions and output layouts for the remaining stub methods are not yet
-specified.
-
-## `WorkingDirectory`
-
-For a non-nil Reporter and writer, `WorkingDirectory` writes exactly:
-
-```text
-Working Directory: <workDir>
-
-```
-
-A nil Reporter/writer or failed write returns a built internal error matching
-`ErrReporter`; writer errors remain available through the error chain.
-
-## Stubbed reporting operations
-
-The remaining reference methods currently return nil. Their comments establish
-only these boundaries:
-
-- `Success` reports a directory whose execution completed without validation
-  failures; its formatting is intentionally left to the implementation.
-- `ValidationTypes` writes one nonfatal response-type validation failure to the
-  injected stdout writer.
-- `ValidationStatus` writes one nonfatal response-status validation failure to
-  the injected stdout writer.
-- `ValidationBody` writes one nonfatal response-body validation diff to the
-  injected stdout writer and preserves any command colors carried by the diff.
-- `Debug` reports the final runtime state of a selected debug step.
-
-These methods return only reporting failures. A validation mismatch is output,
-not returned as a Reporter error, and does not terminate execution.
-
-The skeleton does not specify their exact text, icons, spacing, path rendering,
-JSON payloads, calls to Runner, failure-class validation, or error behavior.
-It also does not define how a debug step is selected or scheduled.
+For the stubbed methods, the skeleton does not specify exact text, icons,
+spacing, path rendering, JSON payloads, calls to Runner, failure-class
+validation, or error behavior. It also does not define how a debug step is
+selected or scheduled.
 
 ## Acceptance criteria
 
@@ -85,7 +32,7 @@ It also does not define how a debug step is selected or scheduled.
 3. Reporter has no stderr or process-termination responsibility.
 4. Stubbed methods remain within their documented reporting boundaries and do
    not acquire execution or validation responsibilities.
-5. ValidationBody preserves colored diff payloads as required by its
-   reference comment.
+5. `ValidationBody` preserves colored diff payloads as required by the
+   reference contract.
 6. No unimplemented layout, Runner integration, debug scheduling, or success
    policy is asserted as a requirement.

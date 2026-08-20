@@ -10,15 +10,21 @@ import (
 	"sync"
 )
 
+// ErrInvalidDirectoryTree classifies a malformed Suite directory tree.
 var ErrInvalidDirectoryTree = errors.New("invalid directory tree")
+
+// ErrExecutionCanceled classifies cancellation of staged execution.
 var ErrExecutionCanceled = errors.New("execution canceled")
 
+// StepRunner prepares, schedules, executes, validates, and reports runtime
+// steps.
 type StepRunner struct {
 	varProc *VariableProcessor
 	val     *Validator
 	report  *reporting.Reporter
 }
 
+// NewStepRunner retains the collaborators used during execution.
 func NewStepRunner(
 	variableProcessor *VariableProcessor,
 	validator *Validator,
@@ -31,6 +37,8 @@ func NewStepRunner(
 	}
 }
 
+// ValidateDirectories verifies the root, parent links, stages, and uniqueness of
+// every directory reachable from suite.Root.
 func (s *StepRunner) ValidateDirectories(
 	suite *domain.Suite,
 ) (int, error) {
@@ -41,6 +49,8 @@ func (s *StepRunner) ValidateDirectories(
 	return 0, nil
 }
 
+// PlanStages groups a validated directory tree by stage while preserving each
+// directory pointer.
 func (s *StepRunner) PlanStages(
 	suite *domain.Suite,
 ) [][]*domain.Directory {

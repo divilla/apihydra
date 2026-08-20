@@ -5,16 +5,17 @@ import (
 	"context"
 )
 
+// Decoder decodes and validates classified definition files.
 type Decoder struct{}
 
+// NewDecoder returns a stateless Decoder.
 func NewDecoder() *Decoder {
 	return &Decoder{}
 }
 
-// DecodeFiles traverses directory structure from suite.Root,
-// decoding *directory.DefaultsFile into directory.DefaultsDefinition and decoding *directory.StepsFiles
-// into directory.StepsDefinitions. DecodeFiles mutates only
-// domain.Directory.DefaultsDefinition and domain.Directory.StepsDefinitions
+// DecodeFiles traverses suite.Root, decoding each DefaultsFile and StepsFiles
+// entry into the corresponding Directory definition fields. It mutates only
+// Directory.DefaultsDefinition and Directory.StepsDefinitions.
 func (l *Decoder) DecodeFiles(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -23,8 +24,8 @@ func (l *Decoder) DecodeFiles(
 	return nil
 }
 
-// ValidateDefaultsDefinitions traverses directory structure from suite.Root,
-// validating *directory.DefaultsDefinition. App exits on error.
+// ValidateDefaultsDefinitions traverses suite.Root and validates each
+// Directory.DefaultsDefinition, returning an error on failure.
 func (l *Decoder) ValidateDefaultsDefinitions(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -33,8 +34,8 @@ func (l *Decoder) ValidateDefaultsDefinitions(
 	return nil
 }
 
-// ValidateStepsDefinitions traverses directory structure from suite.Root,
-// iterating and validating *directory.StepsDefinitions. App exits on error.
+// ValidateStepsDefinitions traverses suite.Root and validates every entry in
+// Directory.StepsDefinitions, returning an error on failure.
 func (l *Decoder) ValidateStepsDefinitions(
 	ctx context.Context,
 	suite *domain.Suite,

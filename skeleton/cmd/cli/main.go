@@ -13,7 +13,10 @@ import (
 	"path/filepath"
 )
 
+// ErrInvalidPath classifies an invalid working-directory argument.
 var ErrInvalidPath = errors.New("invalid path")
+
+// ErrWorkingDirectory classifies failure to read the current working directory.
 var ErrWorkingDirectory = errors.New("working directory error")
 
 func main() {

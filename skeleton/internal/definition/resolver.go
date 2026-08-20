@@ -5,15 +5,16 @@ import (
 	"context"
 )
 
+// Resolver combines decoded definitions into executable step values.
 type Resolver struct{}
 
+// NewResolver returns a stateless Resolver.
 func NewResolver() *Resolver {
 	return &Resolver{}
 }
 
-// ResolveDefaults traverses directory structure from suite.Root and
-// populates directory.ResolvedDefaults with values merged from
-// self directory.DefaultsDefinition and parent directory.DefaultsDefinition
+// ResolveDefaults traverses suite.Root and populates each ResolvedDefaults with
+// values merged from the directory's and parent directory's DefaultsDefinition.
 func (l *Resolver) ResolveDefaults(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -22,9 +23,8 @@ func (l *Resolver) ResolveDefaults(
 	return nil
 }
 
-// ResolveSteps traverses directory structure from suite.Root and
-// populates directory.ResolvedSteps with values merged from
-// self directory.StepsDefinition and directory.DefaultsDefinition
+// ResolveSteps traverses suite.Root and populates each ResolvedSteps with values
+// merged from the directory's StepsDefinitions and DefaultsDefinition.
 func (l *Resolver) ResolveSteps(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -33,8 +33,8 @@ func (l *Resolver) ResolveSteps(
 	return nil
 }
 
-// ValidateStepsDefinitions traverses directory structure from suite.Root,
-// iterating and validating *directory.StepsDefinitions. App exits on error.
+// ValidateStepsDefinitions traverses suite.Root and validates every entry in
+// Directory.StepsDefinitions, returning an error on failure.
 func (l *Resolver) ValidateStepsDefinitions(
 	ctx context.Context,
 	suite *domain.Suite,

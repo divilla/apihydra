@@ -13,10 +13,13 @@ const (
 	ExitInternal      = 103
 )
 
+// ExitCoder exposes the process exit code attached to an error.
 type ExitCoder interface {
 	ExitCode() int
 }
 
+// ExitError retains a process code, static classification, optional cause, and
+// contextual details.
 type ExitError struct {
 	code        int
 	errStatic   error
@@ -24,10 +27,13 @@ type ExitError struct {
 	details     []any
 }
 
+// WithExitCode attaches code to err while preserving its identity.
 func WithExitCode(code int, err error) error {
 	return Build(code, err, nil)
 }
 
+// Build constructs a coded contextual error, or returns nil when errStatic is
+// nil.
 func Build(code int, errStatic, errOriginal error, details ...any) error {
 	if errStatic == nil {
 		return nil
@@ -65,6 +71,8 @@ func (e *ExitError) ExitCode() int {
 	return e.code
 }
 
+// Code returns an attached exit code, zero for nil, or fallback for an uncoded
+// error.
 func Code(err error, fallback int) int {
 	if err == nil {
 		return 0
@@ -77,14 +85,20 @@ func Code(err error, fallback int) int {
 	return fallback
 }
 
+// DefaultsDefinitionError adds defaults-file and YAML-path provenance to a
+// configuration error.
 func DefaultsDefinitionError(defaults *domain.DefaultsDefinition, yamlPath string, errStatic, errOriginal error) error {
 	return Build(ExitConfiguration, errStatic, errOriginal, definitionDetails(defaultsFile(defaults), yamlPath))
 }
 
+// StepDefinitionError adds steps-file and YAML-path provenance to a
+// configuration error.
 func StepDefinitionError(step *domain.StepsDefinition, yamlPath string, errStatic, errOriginal error) error {
 	return Build(ExitConfiguration, errStatic, errOriginal, definitionDetails(stepsFile(step), yamlPath))
 }
 
+// StepExecutionError adds step provenance and preserves a nonzero code from the
+// original error, using ExitInternal otherwise.
 func StepExecutionError(step *domain.Step, yamlPath string, errStatic, errOriginal error) error {
 	exitCode := Code(errOriginal, ExitInternal)
 	if exitCode == 0 {

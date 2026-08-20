@@ -2,47 +2,17 @@
 
 ## Status and ownership
 
-- Binding reference: `skeleton/internal/execution/varproc.go`
+- Binding reference: [`skeleton/internal/execution/varproc.go`](../../skeleton/internal/execution/varproc.go)
 - Shared step model: [`prd.md`](../prd.md#defaults-and-steps)
-- Phase orchestration: [`10-step-runner.md`](010-step-runner-service.md)
-- Status: skeleton-aligned specification
+- Phase orchestration: [`010-step-runner-service.md`](010-step-runner-service.md)
+- Status: skeleton-aligned implementation guide
 
-This specification owns the VariableProcessor API and the step field associated
-with each phase. StepRunner owns when the phases are called.
+## Reference contract
 
-## Public API
-
-```go
-type VariableProcessor struct {
-    kvs *KeyValueStore
-}
-
-func NewVariableProcessor(kvs *KeyValueStore) *VariableProcessor
-func (p *VariableProcessor) LoadVariables(ctx context.Context, step *domain.Step) (int, error)
-func (p *VariableProcessor) InterpolateRequestBody(ctx context.Context, step *domain.Step) (int, error)
-func (p *VariableProcessor) InterpolateResponseExpected(ctx context.Context, step *domain.Step) (int, error)
-func (p *VariableProcessor) CaptureResponseVariables(ctx context.Context, step *domain.Step) (int, error)
-```
-
-The names and signatures are exact. The skeleton method bodies panic with an
-explicit not-implemented message; those placeholders define no runtime result.
-
-## Construction and phases
-
-`NewVariableProcessor` retains the supplied `KeyValueStore`. All four phases
-read from or write to that same store.
-
-The phases have these responsibilities:
-
-| Method | Responsibility |
-| --- | --- |
-| `LoadVariables` | Store every `Step.Vars` entry in the processor's `KeyValueStore`. |
-| `InterpolateRequestBody` | Replace `$var` and `${var}` placeholders in `Step.Request.Body` with values from the store. |
-| `InterpolateResponseExpected` | Replace `$var` and `${var}` placeholders in `Step.Response.ExpectedBody` with values from the store. |
-| `CaptureResponseVariables` | Evaluate every `Step.Response.Capture` selector against `Step.Response.ActualBody` with `runner.JQExtract`, then store the extracted value under its capture name. |
-
-The call order is owned by the StepRunner specification and is not repeated
-here.
+The binding skeleton defines VariableProcessor's API, collaborator, and phase
+contracts. This guide does not reproduce them. The StepRunner skeleton contract
+defines when the phases run, while KeyValueStore defines duplicate-storage
+behavior and Runner defines capture extraction.
 
 ## Deliberately unspecified
 
@@ -58,7 +28,7 @@ The skeleton does not define:
 - success/failure code selection for these methods;
 - cancellation behavior beyond accepting a context.
 
-Duplicate storage behavior is inherited from `KeyValueStore.Set`; this spec
+Duplicate storage behavior is inherited from `KeyValueStore.Set`; this guide
 does not redefine it.
 
 ## Acceptance criteria
@@ -67,7 +37,7 @@ does not redefine it.
    match the reference.
 2. Each method remains limited to its documented variable phase, shared Step
    data, and the injected `KeyValueStore`.
-3. Phase ordering is not duplicated from StepRunner.
+3. Phase ordering is not duplicated from the StepRunner skeleton contract.
 4. Capture delegates value extraction to `runner.JQExtract`; VariableProcessor
    does not execute external commands directly.
 5. No variable grammar or error policy absent from the skeleton is introduced.

@@ -5,15 +5,16 @@ import (
 	"context"
 )
 
+// Loader discovers directories and definition files.
 type Loader struct{}
 
+// NewLoader returns a stateless Loader.
 func NewLoader() *Loader {
 	return &Loader{}
 }
 
-// LoadDirectoryStructure traverses directory structure from suite.WorkDir
-// building *domain.Directory structure. *domain.Directory.Path is relative
-// to suite.WorkDir, so suite.Root.Path = "/".
+// LoadDirectoryStructure traverses suite.WorkDir and builds suite.Root.
+// Directory paths are relative to suite.WorkDir, and the root path is "/".
 func (l *Loader) LoadDirectoryStructure(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -25,9 +26,8 @@ func (l *Loader) LoadDirectoryStructure(
 	return nil
 }
 
-// LoadDirectoryFiles traverses directory structure from suite.Root
-// populating each domain.Directory.Files with all directory *.yaml and *.yml files.
-// LoadDirectoryFiles mutates only *domain.Directory.Files slice
+// LoadDirectoryFiles traverses suite.Root and populates only each Directory.Files
+// slice with that directory's .yaml and .yml files.
 func (l *Loader) LoadDirectoryFiles(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -36,10 +36,9 @@ func (l *Loader) LoadDirectoryFiles(
 	return nil
 }
 
-// DecodeBaseDefinitions traverses directory structure from suite.Root,
-// trying to decode each directory's Files into domain.BaseDefinition.
-// On success it updates File.Kind and populates each directory's DefaultsFile
-// and StepsFiles.
+// DecodeBaseDefinitions traverses suite.Root and attempts to decode each File
+// as a BaseDefinition. Successful decodes set File.Kind and populate the owning
+// Directory's DefaultsFile and StepsFiles fields.
 func (l *Loader) DecodeBaseDefinitions(
 	ctx context.Context,
 	suite *domain.Suite,

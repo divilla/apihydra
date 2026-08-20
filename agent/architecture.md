@@ -2,10 +2,11 @@
 
 ## Authority
 
-The binding architecture and API live in `skeleton/`. The shared product
-contract is [`prd.md`](prd.md), and package-local requirements live
-in `specs/`. This document describes package relationships only; it does not
-duplicate service behavior.
+The binding architecture, API, and package-local behavior live in `skeleton/`.
+The shared product contract is [`prd.md`](prd.md), and package guides live in
+`specs/`. The guides add rationale, boundaries, unspecified behavior, and
+acceptance criteria without reproducing skeleton declarations or method
+contracts. This document describes package relationships only.
 
 ## Package layout
 
@@ -50,7 +51,7 @@ WorkDir
 ```
 
 The field schema and provenance helpers are owned by the PRD. Mutation behavior
-is owned by the applicable package spec.
+is defined by the applicable skeleton code and comments.
 
 ## Definition services
 
@@ -71,22 +72,20 @@ The current CLI composition order is owned by the PRD.
 - [`Validator`](specs/008-validator-service.md)
 - [`StepRunner`](specs/010-step-runner-service.md)
 
-StepRunner owns preparation scope, execution phase order, tree validation, and
-stage scheduling. The other execution specs define only their own APIs and do
-not duplicate orchestration rules.
+The StepRunner skeleton contract defines preparation scope, execution phase
+order, tree validation, and stage scheduling. The execution guides do not
+duplicate those orchestration rules.
 
 ## Reporter and commands
 
-[`Reporter`](specs/009-reporter-service.md) owns the execution-output API and the exact
-working-directory behavior implemented by the skeleton. It never owns fatal
-standard-error diagnostics; `cmd/cli` logs those before process exit. The
-remaining reporting methods are specified only to the extent of their
-reference comments.
+The [`Reporter`](specs/009-reporter-service.md) skeleton contract defines the
+execution-output API and exact working-directory behavior. Reporter never owns
+fatal standard-error diagnostics; `cmd/cli` logs those before process exit.
 
-[`pkg/runner`](specs/001-runner-pkg.md) owns Curl, JQProject, JQExtract,
-JQPretty, and GitDiff. Their signatures and reference comments are binding;
-command-line construction and result-normalization details not described by
-those comments are not yet architectural requirements.
+The [`pkg/runner`](specs/001-runner-pkg.md) skeleton contract defines Curl,
+JQProject, JQExtract, JQPretty, and GitDiff. Command-line construction and
+result-normalization details absent from that contract are not architectural
+requirements.
 
 ## Errors and exits
 
@@ -100,7 +99,6 @@ codes. The PRD owns the shared meanings of codes `0`, `101`, `102`, and `103`.
 2. Shared carriers remain in `internal/domain`.
 3. Contextual errors, external commands, execution output, and fatal diagnostic
    logging remain in their owner packages.
-4. Package specs do not create parallel APIs or restate another spec's
-   requirements.
+4. Package guides do not create parallel APIs or restate skeleton contracts.
 5. Behavior absent from the skeleton remains an implementation choice, not a
    product or architecture commitment.

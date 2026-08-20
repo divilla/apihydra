@@ -2,52 +2,18 @@
 
 ## Status and ownership
 
-- Binding reference: `skeleton/internal/execution/validator.go`
+- Binding reference: [`skeleton/internal/execution/validator.go`](../../skeleton/internal/execution/validator.go)
 - Shared step model and exit codes: [`prd.md`](../prd.md)
-- Phase orchestration: [`10-step-runner.md`](010-step-runner-service.md)
-- Status: skeleton-aligned specification
+- Phase orchestration: [`010-step-runner-service.md`](010-step-runner-service.md)
+- Status: skeleton-aligned implementation guide
 
-This specification owns the Validator API. StepRunner owns invocation order
-and suite-level treatment of detected validation failures.
+## Reference contract
 
-## Public API
-
-```go
-var ErrValidation = errors.New("validation error")
-var ErrValidatorFatal = errors.New("fatal validator error")
-
-type Validator struct{}
-
-func (v *Validator) ValidateTypes(ctx context.Context, step *domain.Step) []error
-func (v *Validator) ValidateStatus(ctx context.Context, step *domain.Step) error
-func (v *Validator) ValidateBody(ctx context.Context, step *domain.Step) (string, error)
-```
-
-The zero-value Validator has no retained state in the reference. All three
-skeleton method bodies panic with an explicit not-implemented message; those
-placeholders define no runtime result.
-
-## Validation boundaries
-
-`ValidateTypes` validates `Step.Response.ActualBody` against
-`Step.Response.ExpectedTypes`. Its slice result permits reporting more than one
-error.
-
-`ValidateStatus` validates `ActualStatus` against `ExpectedStatus`.
-`ExpectedStatus == 0` accepts every `ActualStatus`; otherwise `ActualStatus`
-must equal `ExpectedStatus`.
-
-`ValidateBody` validates `ActualBody` against `ExpectedBody`. It projects
-`ActualBody` with `runner.JQProject`, formats `ExpectedBody` with
-`runner.JQPretty`, and compares the normalized documents with `runner.GitDiff`.
-Equal bodies return `"", nil`; unequal bodies return the calculated diff string.
-
-`ErrValidation` classifies one or more nonfatal mismatches found by
-`ValidateTypes` or `ValidateStatus`. A non-empty `ValidateBody` diff is also a
-nonfatal validation mismatch. StepRunner reports those mismatches and converts
-them to validation exit status rather than returning them as its final error.
-`ErrValidatorFatal` exists as a separate static classification, but the
-skeleton does not define which conditions must use it.
+The binding skeleton defines Validator's API, comparison contracts, and error
+classifications. This guide does not reproduce them. Separate type, status,
+and body operations let StepRunner report every nonfatal mismatch through the
+corresponding Reporter method. StepRunner defines invocation order and
+suite-level result handling.
 
 ## Deliberately unspecified
 

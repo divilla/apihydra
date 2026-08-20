@@ -6,6 +6,8 @@ import (
 	"apih/skeleton/internal/domain"
 )
 
+// VariableProcessor loads, interpolates, and captures step variables through
+// one shared KeyValueStore.
 type VariableProcessor struct {
 	kvs *KeyValueStore
 }

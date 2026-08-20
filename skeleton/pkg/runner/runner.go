@@ -5,10 +5,19 @@ import (
 	"errors"
 )
 
+// ErrCommand classifies an external-command failure.
 var ErrCommand = errors.New("command error")
+
+// ErrCurl classifies an HTTP request command failure.
 var ErrCurl = errors.New("curl error")
+
+// ErrJQSelector classifies a jq selector failure.
 var ErrJQSelector = errors.New("jq selector error")
+
+// ErrJQPretty classifies a jq formatting failure.
 var ErrJQPretty = errors.New("jq pretty error")
+
+// ErrGitDiff classifies a Git diff failure.
 var ErrGitDiff = errors.New("git diff error")
 
 // Curl executes an HTTP request and returns its response body and status code.

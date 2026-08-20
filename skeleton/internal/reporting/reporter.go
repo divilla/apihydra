@@ -10,9 +10,16 @@ import (
 	"sync"
 )
 
+// ErrReporter classifies a failure to write execution output.
 var ErrReporter = errors.New("reporting error")
+
+// ErrTypeValidation labels a reported response-type mismatch.
 var ErrTypeValidation = errors.New("type validation failed for")
+
+// ErrStatusValidation labels a reported response-status mismatch.
 var ErrStatusValidation = errors.New("response status does not match expected")
+
+// ErrBodyValidation labels a reported response-body mismatch.
 var ErrBodyValidation = errors.New("response body does not match expected")
 
 // Reporter owns all human-readable execution output. The writer is normally
@@ -24,10 +31,13 @@ type Reporter struct {
 	mu     sync.Mutex
 }
 
+// NewReporter returns a Reporter that serializes writes to output.
 func NewReporter(output io.Writer) *Reporter {
 	return &Reporter{output: output}
 }
 
+// WorkingDirectory writes the selected working directory to the injected
+// writer.
 func (r *Reporter) WorkingDirectory(workDir string) error {
 	if r == nil || r.output == nil {
 		return errs.Build(errs.ExitInternal, ErrReporter, nil, "output is nil")

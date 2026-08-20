@@ -10,10 +10,15 @@ import (
 // one nonfatal mismatch. StepRunner reports these mismatches and converts them
 // to validation exit status instead of returning them as its final error.
 var ErrValidation = errors.New("validation error")
+
+// ErrValidatorFatal classifies a failure that prevents validation from
+// continuing.
 var ErrValidatorFatal = errors.New("fatal validator error")
 
+// Validator compares actual response values with a step's expectations.
 type Validator struct{}
 
+// NewValidator returns a stateless Validator.
 func NewValidator() *Validator {
 	return &Validator{}
 }

@@ -2,70 +2,19 @@
 
 ## Status and ownership
 
-- Binding reference: `skeleton/pkg/errs/errors.go`
+- Binding reference: [`skeleton/pkg/errs/errors.go`](../../skeleton/pkg/errs/errors.go)
 - Shared product contract: [`prd.md`](../prd.md)
-- Status: skeleton-aligned specification
+- Status: skeleton-aligned implementation guide
 
-This specification owns contextual error construction. The PRD owns the
-meaning of the four product exit codes; originating packages own their static
-error classifications.
+## Reference contract
 
-## Public API
+The binding skeleton defines contextual error construction, lookup, formatting,
+unwrapping, and provenance behavior. This guide does not reproduce those
+declarations or algorithms. The PRD owns the meaning of the product exit codes;
+originating packages own their static error classifications.
 
-```go
-type ExitCoder interface {
-    ExitCode() int
-}
-
-func Build(code int, errStatic, errOriginal error, details ...any) error
-func WithExitCode(code int, err error) error
-func Code(err error, fallback int) int
-func DefaultsDefinitionError(defaults *domain.DefaultsDefinition, yamlPath string,
-    errStatic, errOriginal error) error
-func StepDefinitionError(step *domain.StepsDefinition, yamlPath string,
-    errStatic, errOriginal error) error
-func StepExecutionError(step *domain.Step, yamlPath string,
-    errStatic, errOriginal error) error
-```
-
-`ExitError` is the concrete private-state implementation of `error` and
-`ExitCoder` exposed by these constructors.
-
-## Construction and lookup
-
-`Build` returns nil when `errStatic` is nil. Otherwise it retains the supplied
-code, static error, optional original error, and detail values.
-
-`ExitError.Error` joins non-empty components with `": "` in this order:
-
-1. static error text;
-2. `fmt.Sprint(details...)`;
-3. original error text.
-
-`ExitError.Unwrap` returns the static error and, when present, the original
-error. Both identities remain available to `errors.Is` and `errors.As`.
-`ExitCode` returns the retained code.
-
-`WithExitCode(code, err)` delegates to `Build(code, err, nil)`.
-
-`Code` returns:
-
-- literal `0` for nil;
-- the first discoverable `ExitCoder.ExitCode()` for a coded error;
-- `fallback` for a non-nil uncoded error.
-
-## Provenance helpers
-
-`DefaultsDefinitionError` and `StepDefinitionError` always use
-`ExitConfiguration`. `StepExecutionError` uses the original error's attached
-code with `ExitInternal` as fallback; an attached success code is replaced by
-`ExitInternal`.
-
-The helpers safely derive optional details through the reference provenance
-chain. A source file contributes `file <path>`, a non-empty YAML path
-contributes `yaml path <path>`, and both are joined with `, `. Missing
-definitions, files, or step provenance omit unavailable details without
-panicking.
+Centralizing contextual composition here keeps error identities and exit-code
+metadata consistent without duplicating presentation logic in callers.
 
 ## Boundary
 

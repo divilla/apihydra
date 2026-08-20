@@ -8,9 +8,12 @@
 - Binding reference: `skeleton/`
 
 The checked-in skeleton is the authority for architecture, names, APIs, data,
-and behavior. This PRD owns only the shared product contract identified below.
-Package-local behavior belongs to the corresponding file in `agent/specs/`.
-A specification may narrow an implementation choice only when the skeleton
+and behavior. Its declarations, implementations, tests, and contract comments
+define package-local behavior once, next to the referenced code. This PRD owns
+only the shared product contract identified below. Files in `agent/specs/`
+link to the skeleton and add rationale, boundaries, deliberately unspecified
+behavior, and acceptance criteria without reproducing the local contract. A
+specification may narrow an implementation choice only when the skeleton
 already fixes that choice; it may not create behavior missing from the
 skeleton.
 
@@ -163,28 +166,30 @@ The product reserves:
 | `errs.ExitInternal` | `103` | Internal failure. |
 
 The construction and lookup semantics for coded errors are owned by
-[`02-errs-pkg.md`](specs/002-errs-pkg.md). Package specs must reference that
+[`002-errs-pkg.md`](specs/002-errs-pkg.md). Package guides must reference that
 contract instead of redefining contextual error formatting.
 
-## Specification ownership
+## Specification guides
 
-Package-local requirements are owned in one place:
+Each package guide points to its binding skeleton contract:
 
-| Contract | Owning specification |
+| Contract | Implementation guide |
 | --- | --- |
-| External-command functions | [`01-runner-pkg.md`](specs/001-runner-pkg.md) |
-| Contextual errors | [`02-errs-pkg.md`](specs/002-errs-pkg.md) |
-| Loader | [`03-loader-service.md`](specs/003-loader-service.md) |
-| Decoder | [`04-decoder-service.md`](specs/004-decoder-service.md) |
-| Resolver | [`05-resolver-service.md`](specs/005-resolver-service.md) |
-| KeyValueStore | [`06-key-value-store-service.md`](specs/006-key-value-store-service.md) |
-| VariableProcessor | [`07-variable-processor.md`](specs/007-variable-processor.md) |
-| Validator | [`08-validator.md`](specs/008-validator-service.md) |
-| Preparation, execution phase order, tree validation, and stage scheduling | [`10-step-runner.md`](specs/010-step-runner-service.md) |
-| Reporter methods and output fixed by the reference implementation | [`09-reporter.md`](specs/009-reporter-service.md) |
+| External-command functions | [`001-runner-pkg.md`](specs/001-runner-pkg.md) |
+| Contextual errors | [`002-errs-pkg.md`](specs/002-errs-pkg.md) |
+| Loader | [`003-loader-service.md`](specs/003-loader-service.md) |
+| Decoder | [`004-decoder-service.md`](specs/004-decoder-service.md) |
+| Resolver | [`005-resolver-service.md`](specs/005-resolver-service.md) |
+| KeyValueStore | [`006-key-value-store-service.md`](specs/006-key-value-store-service.md) |
+| VariableProcessor | [`007-variable-processor.md`](specs/007-variable-processor.md) |
+| Validator | [`008-validator-service.md`](specs/008-validator-service.md) |
+| Preparation, execution phase order, tree validation, and stage scheduling | [`010-step-runner-service.md`](specs/010-step-runner-service.md) |
+| Reporter methods and output fixed by the reference implementation | [`009-reporter-service.md`](specs/009-reporter-service.md) |
 
-No spec restates another spec's normative behavior. A consumer spec references
-the owner and states only how its own API participates.
+The guides do not reproduce public declarations, method contracts, or reference
+implementations. A consumer guide references the applicable skeleton contract
+and states only rationale, boundaries, unspecified behavior, and acceptance
+criteria relevant to its own package.
 
 ## Not specified by the skeleton
 
@@ -224,6 +229,7 @@ updated to match.
 3. Shared workflow state uses `internal/domain` rather than parallel carriers.
 4. Command execution, contextual error composition, execution output, and
    fatal diagnostic logging remain within their owner packages.
-5. Every package-local behavior is specified once and referenced by consumers.
-6. No behavior listed as unspecified is asserted by a package spec.
+5. Every package-local behavior is defined once in the skeleton and referenced
+   by the PRD, architecture, and specification guides.
+6. No behavior listed as unspecified is asserted by a package guide.
 7. `go test ./...`, `go test -race ./...`, and `git diff --check` pass.
