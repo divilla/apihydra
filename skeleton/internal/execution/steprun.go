@@ -173,6 +173,22 @@ func (d *stagedDirs) setStages(dir *domain.Directory) {
 
 type directoryProcessor func(context.Context, *domain.Directory) (int, error)
 
+type processResult struct {
+	mu   sync.Mutex
+	code int
+	err  error
+}
+
+func (r *processResult) setResult(code int, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if code > r.code {
+		r.code = code
+		r.err = err
+	}
+}
+
 func executeStages(
 	ctx context.Context,
 	dirs [][]*domain.Directory,
@@ -205,44 +221,22 @@ func executeStage(
 	process directoryProcessor,
 ) (int, error) {
 	var wg sync.WaitGroup
-	var firstStatusCode int
-	var firstStatusOnce sync.Once
-	var firstErrorCode int
-	var firstErr error
-	var firstErrOnce sync.Once
+	var result processResult
 
 	for _, dir := range dirs {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			exitCode, err := process(ctx, dir)
-			if err == nil {
-				if exitCode != 0 {
-					firstStatusOnce.Do(func() {
-						firstStatusCode = exitCode
-					})
-				}
-				return
-			}
-			firstErrOnce.Do(func() {
-				if exitCode == 0 {
-					exitCode = errs.Code(err, errs.ExitInternal)
-					if exitCode == 0 {
-						exitCode = errs.ExitInternal
-					}
-				}
-				firstErrorCode = exitCode
-				firstErr = err
+			result.setResult(exitCode, err)
+			if err != nil {
 				cancel()
-			})
+			}
 		}()
 	}
 
 	wg.Wait()
-	if firstErr != nil {
-		return firstErrorCode, firstErr
-	}
-	return firstStatusCode, nil
+	return result.code, result.err
 }
 
 func (s *StepRunner) processDir(ctx context.Context, dir *domain.Directory) (int, error) {

@@ -111,7 +111,7 @@ func TestValidateDirectoriesRejectsInvalidTrees(t *testing.T) {
 
 func TestExecuteStagesCancelsAndJoinsActiveStageOnError(t *testing.T) {
 	wantErr := errors.New("fatal execution error")
-	wantExitCode := 23
+	wantExitCode := errs.ExitInternal
 	failing := &domain.Directory{Stage: 0, Path: "/failing"}
 	sibling := &domain.Directory{Stage: 0, Path: "/sibling"}
 	later := &domain.Directory{Stage: 1, Path: "/later"}
@@ -154,27 +154,36 @@ func TestExecuteStagesCancelsAndJoinsActiveStageOnError(t *testing.T) {
 }
 
 func TestExecuteStagesNeverReturnsSuccessWithError(t *testing.T) {
-	tests := map[string]error{
-		"uncoded error":    errors.New("uncoded error"),
-		"zero-coded error": errs.WithExitCode(0, errors.New("zero-coded error")),
-	}
+	wantErr := errors.New("uncoded error")
 
-	for name, wantErr := range tests {
-		t.Run(name, func(t *testing.T) {
-			exitCode, err := executeStages(
-				context.Background(),
-				[][]*domain.Directory{{{Stage: 0, Path: "/"}}},
-				func(context.Context, *domain.Directory) (int, error) {
-					return 0, wantErr
-				},
-			)
-			if exitCode != errs.ExitInternal {
-				t.Fatalf("executeStages() exit code = %d, want %d", exitCode, errs.ExitInternal)
-			}
-			if !errors.Is(err, wantErr) {
-				t.Fatalf("executeStages() error = %v, want %v", err, wantErr)
-			}
-		})
+	exitCode, err := executeStages(
+		context.Background(),
+		[][]*domain.Directory{{{Stage: 0, Path: "/"}}},
+		func(context.Context, *domain.Directory) (int, error) {
+			return 0, wantErr
+		},
+	)
+	if exitCode != errs.ExitInternal {
+		t.Fatalf("executeStages() exit code = %d, want %d", exitCode, errs.ExitInternal)
+	}
+	if !errors.Is(err, ErrExecutionCanceled) {
+		t.Fatalf("executeStages() error = %v, want ErrExecutionCanceled", err)
+	}
+}
+
+func TestProcessResultKeepsHighestCodeAndAssociatedError(t *testing.T) {
+	wantErr := errors.New("highest code")
+	var result processResult
+
+	result.setResult(errs.ExitValidation, errors.New("lower code"))
+	result.setResult(errs.ExitInternal, wantErr)
+	result.setResult(errs.ExitConfiguration, errors.New("later lower code"))
+
+	if result.code != errs.ExitInternal {
+		t.Fatalf("result code = %d, want %d", result.code, errs.ExitInternal)
+	}
+	if !errors.Is(result.err, wantErr) {
+		t.Fatalf("result error = %v, want %v", result.err, wantErr)
 	}
 }
 

@@ -70,10 +70,9 @@ order. For one active group, StepRunner starts one goroutine per directory and
 waits for every started goroutine before returning or advancing to the next
 group.
 
-The first fatal directory error recorded for a stage retains its error and
-supplied non-zero code and cancels the shared execution context. If that
-directory supplied code `0`, StepRunner derives a code through `errs.Code` with
-`ExitInternal` fallback and normalizes a derived code `0` to `ExitInternal`.
+One mutex-protected process result retains the highest directory code recorded
+for a stage and its associated error. Codes equal to or lower than the retained
+code do not replace it. A directory error cancels the shared execution context.
 Sibling goroutines are still joined, and later stages do not start.
 
 A directory may return `errs.ExitValidation` with a nil error after reporting
@@ -136,8 +135,8 @@ error formatting. Those contracts remain with their owning specs.
 4. `PlanStages` groups a successfully validated tree by stage, same-stage
    directories may overlap during `Execute`, all are joined, and later stages
    wait for the barrier.
-5. The first recorded fatal stage error cancels shared work, prevents later
-   stages, and returns the code derived by the reference implementation.
+5. A fatal stage error cancels shared work and prevents later stages, while the
+   stage result retains the highest recorded code and its associated error.
 6. Per-step execution uses the seven phases in the reference order, assigns the
    Curl response body to `Step.Response.Body`, and interpolates expected values
    before Curl runs.
