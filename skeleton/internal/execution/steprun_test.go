@@ -23,8 +23,8 @@ func TestCollectDirsSupportsArbitraryValidDepth(t *testing.T) {
 		parent = child
 	}
 
-	dc := newDirsCollector(&domain.Suite{Root: root})
-	err := dc.collect()
+	dc := newDirsValidator(&domain.Suite{Root: root})
+	err := dc.validateRoot()
 	if err != nil {
 		t.Fatalf("dirsCollector.collect() error = %v", err)
 	}
@@ -93,8 +93,8 @@ func TestCollectDirsRejectsInvalidTrees(t *testing.T) {
 
 	for name, suite := range tests {
 		t.Run(name, func(t *testing.T) {
-			dc := newDirsCollector(suite())
-			err := dc.collect()
+			dc := newDirsValidator(suite())
+			err := dc.validateRoot()
 			if !errors.Is(err, ErrInvalidDirectoryTree) {
 				t.Fatalf("dirsCollector.collect() error = %v, want ErrInvalidDirectoryTree", err)
 			}

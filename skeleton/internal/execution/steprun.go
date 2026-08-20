@@ -31,6 +31,27 @@ func NewStepRunner(
 	}
 }
 
+func (s *StepRunner) ValidateDirectories(
+	ctx context.Context,
+	suite *domain.Suite,
+) (int, error) {
+	dc := newDirsValidator(suite)
+	if err := dc.validateRoot(); err != nil {
+		return errs.ExitConfiguration, err
+	}
+	return 0, nil
+}
+
+func (s *StepRunner) PlanStages(
+	ctx context.Context,
+	suite *domain.Suite,
+) [][]*domain.Directory {
+	maxStages := findMaxStage(suite.Root, 0)
+	sd := newStagedDirs(maxStages)
+	sd.setStages(suite.Root)
+	return sd.stagedDirs
+}
+
 // Prepare deep-copies every directory's ResolvedSteps into RuntimeSteps so
 // execution can mutate runtime steps without modifying resolved steps. All
 // mutable slices and maps are copied; Step.Definition retains its original
@@ -56,15 +77,9 @@ func (s *StepRunner) Prepare(
 // validations failed. Validation status does not cancel remaining work.
 func (s *StepRunner) Execute(
 	ctx context.Context,
-	suite *domain.Suite,
+	stages [][]*domain.Directory,
 ) (int, error) {
-	dc := newDirsCollector(suite)
-	if err := dc.collect(); err != nil {
-		return errs.ExitConfiguration, err
-	}
-	dirs := dc.stagedDirs
-
-	exitCode, err := executeStages(ctx, dirs, s.processDir)
+	exitCode, err := executeStages(ctx, stages, s.processDir)
 	if err != nil {
 		return exitCode, err
 	}
@@ -73,22 +88,23 @@ func (s *StepRunner) Execute(
 }
 
 type (
-	dirsCollector struct {
+	dirsValidator struct {
 		suite        *domain.Suite
 		isChildCount map[*domain.Directory]int
-		stagedDirs   [][]*domain.Directory
-		maxStage     int
+	}
+	stagedDirs struct {
+		stagedDirs [][]*domain.Directory
 	}
 )
 
-func newDirsCollector(suite *domain.Suite) *dirsCollector {
-	return &dirsCollector{
+func newDirsValidator(suite *domain.Suite) *dirsValidator {
+	return &dirsValidator{
 		suite:        suite,
 		isChildCount: make(map[*domain.Directory]int),
 	}
 }
 
-func (d *dirsCollector) collect() error {
+func (d *dirsValidator) validateRoot() error {
 	if d.suite == nil {
 		return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, "domain.Suite is nil")
 	}
@@ -104,16 +120,14 @@ func (d *dirsCollector) collect() error {
 	}
 
 	d.isChildCount[root] = 1
-	if err := d.traverseChildren(root); err != nil {
+	if err := d.validateChildren(root); err != nil {
 		return err
 	}
-	d.stagedDirs = make([][]*domain.Directory, d.maxStage+1)
-	d.setStages(root)
 
 	return nil
 }
 
-func (d *dirsCollector) traverseChildren(parent *domain.Directory) error {
+func (d *dirsValidator) validateChildren(parent *domain.Directory) error {
 	for _, child := range parent.Children {
 		if child == nil {
 			return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, fmt.Sprintf("%s has nil child", parent.Path))
@@ -124,15 +138,12 @@ func (d *dirsCollector) traverseChildren(parent *domain.Directory) error {
 		if child.Stage != parent.Stage+1 {
 			return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, fmt.Sprintf("%s has invalid stage number", child.Path))
 		}
-		if child.Stage > d.maxStage {
-			d.maxStage = child.Stage
-		}
 
 		d.isChildCount[child]++
 		if d.isChildCount[child] > 1 {
 			return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, fmt.Sprintf("%s has multiple parents", child.Path))
 		}
-		if err := d.traverseChildren(child); err != nil {
+		if err := d.validateChildren(child); err != nil {
 			return err
 		}
 	}
@@ -140,7 +151,23 @@ func (d *dirsCollector) traverseChildren(parent *domain.Directory) error {
 	return nil
 }
 
-func (d *dirsCollector) setStages(dir *domain.Directory) {
+func findMaxStage(dir *domain.Directory, maxStage int) int {
+	if dir.Stage > maxStage {
+		maxStage = dir.Stage
+	}
+	for _, child := range dir.Children {
+		maxStage = findMaxStage(child, maxStage)
+	}
+	return maxStage
+}
+
+func newStagedDirs(maxStage int) *stagedDirs {
+	return &stagedDirs{
+		stagedDirs: make([][]*domain.Directory, maxStage+1),
+	}
+}
+
+func (d *stagedDirs) setStages(dir *domain.Directory) {
 	d.stagedDirs[dir.Stage] = append(d.stagedDirs[dir.Stage], dir)
 
 	for _, child := range dir.Children {
