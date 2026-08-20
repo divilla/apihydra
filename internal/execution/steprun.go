@@ -101,6 +101,9 @@ func collectDirs(suite *domain.Suite) ([][]*domain.Directory, error) {
 	if suite.Root == nil {
 		return nil, errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, "root is nil")
 	}
+	if suite.Root.Parent != nil {
+		return nil, errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, "root parent is not nil")
+	}
 	if suite.Root.Stage != 0 {
 		return nil, errs.Build(
 			errs.ExitConfiguration,

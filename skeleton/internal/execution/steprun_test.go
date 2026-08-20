@@ -23,10 +23,12 @@ func TestCollectDirsSupportsArbitraryValidDepth(t *testing.T) {
 		parent = child
 	}
 
-	dirs, err := collectDirs(&domain.Suite{Root: root})
+	dc := newDirsCollector(&domain.Suite{Root: root})
+	err := dc.collect()
 	if err != nil {
-		t.Fatalf("collectDirs() error = %v", err)
+		t.Fatalf("dirsCollector.collect() error = %v", err)
 	}
+	dirs := dc.stagedDirs
 	if got, want := len(dirs), 256; got != want {
 		t.Fatalf("len(dirs) = %d, want %d", got, want)
 	}
@@ -46,6 +48,15 @@ func TestCollectDirsRejectsInvalidTrees(t *testing.T) {
 		},
 		"nil root": func() *domain.Suite {
 			return &domain.Suite{}
+		},
+		"invalid root parent": func() *domain.Suite {
+			return &domain.Suite{
+				Root: &domain.Directory{
+					Stage:  0,
+					Path:   "/",
+					Parent: &domain.Directory{},
+				},
+			}
 		},
 		"invalid root stage": func() *domain.Suite {
 			return &domain.Suite{Root: &domain.Directory{Stage: -1, Path: "/"}}
@@ -82,9 +93,10 @@ func TestCollectDirsRejectsInvalidTrees(t *testing.T) {
 
 	for name, suite := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := collectDirs(suite())
+			dc := newDirsCollector(suite())
+			err := dc.collect()
 			if !errors.Is(err, ErrInvalidDirectoryTree) {
-				t.Fatalf("collectDirs() error = %v, want ErrInvalidDirectoryTree", err)
+				t.Fatalf("dirsCollector.collect() error = %v, want ErrInvalidDirectoryTree", err)
 			}
 		})
 	}

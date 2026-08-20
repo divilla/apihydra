@@ -6,6 +6,7 @@ import (
 	"apih/skeleton/pkg/errs"
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 )
 
@@ -48,10 +49,11 @@ func (s *StepRunner) Execute(
 	ctx context.Context,
 	suite *domain.Suite,
 ) (int, error) {
-	dirs, err := collectDirs(suite)
-	if err != nil {
+	dc := newDirsCollector(suite)
+	if err := dc.collect(); err != nil {
 		return errs.ExitConfiguration, err
 	}
+	dirs := dc.stagedDirs
 
 	exitCode, err := executeStages(ctx, dirs, s.processDir)
 	if err != nil {
@@ -61,74 +63,80 @@ func (s *StepRunner) Execute(
 	return errs.ExitSuccess, nil
 }
 
-func collectDirs(suite *domain.Suite) ([][]*domain.Directory, error) {
-	if suite == nil {
-		return nil, errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, "suite is nil")
+type (
+	dirsCollector struct {
+		suite        *domain.Suite
+		isChildCount map[*domain.Directory]int
+		stagedDirs   [][]*domain.Directory
+		maxStage     int
 	}
-	if suite.Root == nil {
-		return nil, errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, "root is nil")
+)
+
+func newDirsCollector(suite *domain.Suite) *dirsCollector {
+	return &dirsCollector{
+		suite:        suite,
+		isChildCount: make(map[*domain.Directory]int),
 	}
-	if suite.Root.Stage != 0 {
-		return nil, errs.Build(
-			errs.ExitConfiguration,
-			ErrInvalidDirectoryTree,
-			nil,
-			"root stage is ", suite.Root.Stage, ", expected 0",
-		)
+}
+
+func (d *dirsCollector) collect() error {
+	if d.suite == nil {
+		return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, "domain.Suite is nil")
 	}
-
-	dirs := make([][]*domain.Directory, 1)
-	seen := make(map[*domain.Directory]struct{})
-
-	var visit func(*domain.Directory, *domain.Directory) error
-	visit = func(dir, parent *domain.Directory) error {
-		if dir == nil {
-			return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, "nil child")
-		}
-		if _, ok := seen[dir]; ok {
-			return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, "repeated directory ", dir.Path)
-		}
-		seen[dir] = struct{}{}
-
-		if parent != nil {
-			if dir.Parent != parent {
-				return errs.Build(
-					errs.ExitConfiguration,
-					ErrInvalidDirectoryTree,
-					nil,
-					"directory ", dir.Path, " has an invalid parent",
-				)
-			}
-			if dir.Stage != parent.Stage+1 {
-				return errs.Build(
-					errs.ExitConfiguration,
-					ErrInvalidDirectoryTree,
-					nil,
-					"directory ", dir.Path, " has stage ", dir.Stage,
-					", expected ", parent.Stage+1,
-				)
-			}
-		}
-
-		for len(dirs) <= dir.Stage {
-			dirs = append(dirs, nil)
-		}
-		dirs[dir.Stage] = append(dirs[dir.Stage], dir)
-
-		for _, child := range dir.Children {
-			if err := visit(child, dir); err != nil {
-				return err
-			}
-		}
-
-		return nil
+	root := d.suite.Root
+	if root == nil {
+		return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, "domain.Suite.Root is nil")
+	}
+	if root.Parent != nil {
+		return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, "domain.Suite.Root.Parent is not nil")
+	}
+	if root.Stage != 0 {
+		return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, "domain.Suite.Root.Stage is not 0")
 	}
 
-	if err := visit(suite.Root, nil); err != nil {
-		return nil, err
+	d.isChildCount[root] = 1
+	if err := d.traverseChildren(root); err != nil {
+		return err
+	}
+	d.stagedDirs = make([][]*domain.Directory, d.maxStage+1)
+	d.setStages(root)
+
+	return nil
+}
+
+func (d *dirsCollector) traverseChildren(parent *domain.Directory) error {
+	for _, child := range parent.Children {
+		if child == nil {
+			return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, fmt.Sprintf("%s has nil child", parent.Path))
+		}
+		if child.Parent != parent {
+			return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, fmt.Sprintf("%s has invalid parent directory", child.Path))
+		}
+		if child.Stage != parent.Stage+1 {
+			return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, fmt.Sprintf("%s has invalid stage number", child.Path))
+		}
+		if child.Stage > d.maxStage {
+			d.maxStage = child.Stage
+		}
+
+		d.isChildCount[child]++
+		if d.isChildCount[child] > 1 {
+			return errs.Build(errs.ExitConfiguration, ErrInvalidDirectoryTree, nil, fmt.Sprintf("%s has multiple parents", child.Path))
+		}
+		if err := d.traverseChildren(child); err != nil {
+			return err
+		}
 	}
 
-	return dirs, nil
+	return nil
+}
+
+func (d *dirsCollector) setStages(dir *domain.Directory) {
+	d.stagedDirs[dir.Stage] = append(d.stagedDirs[dir.Stage], dir)
+
+	for _, child := range dir.Children {
+		d.setStages(child)
+	}
 }
 
 type directoryProcessor func(context.Context, *domain.Directory) (int, error)

@@ -162,6 +162,15 @@ func TestCollectDirsRejectsInvalidTrees(t *testing.T) {
 		"nil root": func() *domain.Suite {
 			return &domain.Suite{}
 		},
+		"invalid root parent": func() *domain.Suite {
+			return &domain.Suite{
+				Root: &domain.Directory{
+					Stage:  0,
+					Path:   "/",
+					Parent: &domain.Directory{},
+				},
+			}
+		},
 		"invalid root stage": func() *domain.Suite {
 			return &domain.Suite{Root: &domain.Directory{Stage: -1, Path: "/"}}
 		},
