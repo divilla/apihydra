@@ -22,7 +22,9 @@ func (v *Validator) ValidateTypes(ctx context.Context, step *domain.Step) []erro
 func (v *Validator) ValidateExpected(ctx context.Context, step *domain.Step) error
 ```
 
-The zero-value Validator has no retained state in the reference.
+The zero-value Validator has no retained state in the reference. Both skeleton
+method bodies panic with an explicit not-implemented message; those placeholders
+define no runtime result.
 
 ## Validation boundaries
 
@@ -56,7 +58,8 @@ until they are added to the protected skeleton.
 
 ## Acceptance criteria
 
-1. Exported names, signatures, and static error text match the reference.
+1. Exported names, signatures, static error text, and explicit not-implemented
+   placeholders match the reference.
 2. Type validation consumes its corresponding shared Step response fields.
    Expected validation compares `JQPretty`-normalized expected JSON with the
    `JQProject`-normalized runtime response through `GitDiff`.

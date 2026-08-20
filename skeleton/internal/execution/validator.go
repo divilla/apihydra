@@ -12,19 +12,24 @@ var ErrValidatorFatal = errors.New("fatal validator error")
 
 type Validator struct{}
 
+// ValidateTypes validates step.Response.Body against the type declarations in
+// step.Response.Types. Its result may contain multiple validation errors so
+// callers can report every detected type mismatch.
 func (v *Validator) ValidateTypes(
 	ctx context.Context,
 	step *domain.Step,
 ) []error {
-	return nil
+	panic("Validator.ValidateTypes is not implemented")
 }
 
-// ValidateExpected projects step.Response.Body with runner.JQProject, formats
-// step.Response.Expected with runner.JQPretty, and compares the normalized
-// documents with runner.GitDiff.
+// ValidateExpected validates step.Response.Body against
+// step.Response.Expected. It projects and orders the actual response with
+// runner.JQProject, formats and orders the expected response with
+// runner.JQPretty, and compares the normalized documents with runner.GitDiff.
+// It returns at most one validation error.
 func (v *Validator) ValidateExpected(
 	ctx context.Context,
 	step *domain.Step,
 ) error {
-	return nil
+	panic("Validator.ValidateExpected is not implemented")
 }
