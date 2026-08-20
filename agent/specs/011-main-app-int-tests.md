@@ -9,6 +9,7 @@
 - Definition collaborators: [`03-loader-service.md`](003-loader-service.md),
   [`04-decoder-service.md`](004-decoder-service.md), and
   [`05-resolver-service.md`](005-resolver-service.md)
+- Execution collaborator: [`10-step-runner-service.md`](010-step-runner-service.md)
 - Status: skeleton-aligned specification
 
 This specification owns the production composition root in `cmd/cli` and its
@@ -37,7 +38,7 @@ func main()
 func run(
     ctx context.Context,
     args []string,
-    report *reporter.Reporter,
+    reporter *reporting.Reporter,
 ) (int, error)
 ```
 
@@ -75,9 +76,9 @@ diagnostic logging or process exit.
 - Arguments after `args[1]` are not interpreted by the current reference.
 
 No working-directory line is written before selection and validation succeed.
-After successful selection, `run` calls `report.WorkingDirectory(workDir)`. A
-reporting failure is returned with `errs.ExitInternal` before any definition
-service is invoked.
+After successful selection, `run` calls
+`reporter.WorkingDirectory(workDir)`. A reporting failure is returned with
+`errs.ExitInternal` before any definition service is invoked.
 
 ## Definition pipeline
 
@@ -101,34 +102,50 @@ suite:
 8. `Resolver.ResolveSteps`
 
 The first phase error stops the pipeline and is returned unchanged with
-`errs.ExitConfiguration`. Successful completion of all eight phases returns
-`errs.ExitSuccess, nil`.
+`errs.ExitConfiguration`. Successful completion of all eight phases continues
+into execution composition.
 
-The current reference ends after definition resolution. It does not compose
-`internal/execution`, execute HTTP requests, add filtering or debug behavior,
-or introduce another pipeline phase.
+## Execution composition
+
+After definition resolution, `run` constructs these execution collaborators in
+order:
+
+1. `execution.NewKeyValueStore()`
+2. `execution.NewVariableProcessor(kvs)`
+3. `execution.NewValidator()`
+4. `execution.NewStepRunner(varProc, validator, reporter)`
+
+The same Reporter that wrote the working directory is supplied to StepRunner.
+`run` then calls `stepRunner.ValidateDirectories(suite)`. A validation failure
+returns that method's exit code and error unchanged. On success, `run` calls
+`stepRunner.Prepare(suite)`, obtains `stagesPlan` from
+`stepRunner.PlanStages(suite)`, and returns
+`stepRunner.Execute(ctx, stagesPlan)` unchanged.
+
+The CLI does not add filtering or debug-selection behavior around the execution
+services.
 
 ## Package tests
 
 Tests remain in `cmd/cli/*_test.go` and follow
 `skeleton/cmd/cli/main_test.go`, using production import paths. They verify
-invalid-path rejection, successful definition-pipeline completion, and output
-failure handling without adding production test seams absent from the
-skeleton.
+invalid-path rejection, successful main-flow completion, and output failure
+handling without adding production test seams absent from the skeleton.
 
 ## Acceptance criteria
 
 1. `cmd/cli/main.go` is identical to `skeleton/cmd/cli/main.go` after replacing
    `apih/skeleton/` import prefixes with `apih/`.
 2. Invalid selected paths return `errs.ExitConfiguration` and no working
-   directory output; a successful definition pipeline returns
-   `errs.ExitSuccess` after reporting the working directory.
+   directory output; a successful main flow returns `errs.ExitSuccess` after
+   reporting the working directory.
 3. Reporter output failures return `errs.ExitInternal` and preserve the writer
    failure.
 4. Fatal errors are logged to stderr and retain the exact product exit code
    returned by `run`.
-5. The application stops after `Resolver.ResolveSteps` and introduces no public
-   contract, CLI option, execution composition, or behavior absent from the
-   skeleton.
+5. After `Resolver.ResolveSteps`, the application constructs the execution
+   collaborators, validates the directory tree, prepares runtime steps, plans
+   stages, and executes the plan in the exact order represented by the
+   skeleton, without adding behavior absent from that reference.
 6. `go test ./cmd/cli`, `go test ./...`, `go test -race ./...`, and
    `git diff --check` pass.

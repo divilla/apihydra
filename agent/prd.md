@@ -21,9 +21,10 @@ decoding and validating those definitions, resolving inherited request
 defaults, preparing request steps, executing requests, and validating
 responses.
 
-The current reference CLI implements the definition pipeline only. Execution
-types and services are part of the reference API but are not yet composed by
-`cmd/cli`.
+The current reference CLI composes the complete flow: definition loading,
+decoding, validation, and resolution; directory-tree validation; runtime-step
+preparation and stage planning; and staged execution with response validation
+and reporting.
 
 ## Package ownership
 
@@ -36,7 +37,7 @@ hierarchy:
 | `internal/domain` | Shared suite, directory, file, definition, defaults, and step values. |
 | `internal/definition` | Directory/file loading, document classification, definition decoding and validation, and resolution. |
 | `internal/execution` | The key-value store, variable phases, response validation, step preparation, and staged execution. |
-| `internal/reporter` | Human-readable execution output through an injected standard-output writer. |
+| `internal/reporting` | Human-readable execution output through an injected standard-output writer. |
 | `pkg/errs` | Contextual error construction and exit-code metadata. |
 | `pkg/runner` | External-command operations. |
 
@@ -45,7 +46,7 @@ The architecture test makes four ownership rules enforceable:
 - production command execution is confined to `pkg/runner`;
 - production contextual error composition with `fmt.Errorf` or `errors.Join`
   is confined to `pkg/errs`;
-- production execution-output writes are confined to `internal/reporter`;
+- production execution-output writes are confined to `internal/reporting`;
 - fatal standard-error diagnostics are confined to `cmd/cli`.
 
 `bat` and a `BatDiff` API are expressly absent.
@@ -119,10 +120,19 @@ selected working directory, creates
 7. `Resolver.ResolveDefaults`
 8. `Resolver.ResolveSteps`
 
-The reference `run` returns success after step resolution. When `run` returns
-an error, `main` writes it to `os.Stderr` with the standard logger and then
-calls `os.Exit` with the exact code returned by `run`. Reporter does not own
-fatal diagnostics or process exit.
+After definition resolution, `run` creates one `KeyValueStore`,
+`VariableProcessor`, and `Validator`, then creates a `StepRunner` with those
+collaborators and the same Reporter used for working-directory output. It then:
+
+1. calls `StepRunner.ValidateDirectories(suite)` and returns its exit code and
+   error if validation fails;
+2. calls `StepRunner.Prepare(suite)`;
+3. obtains the execution plan with `StepRunner.PlanStages(suite)`; and
+4. returns `StepRunner.Execute(ctx, stagesPlan)` unchanged.
+
+When `run` returns an error, `main` writes it to `os.Stderr` with the standard
+logger and then calls `os.Exit` with the exact code returned by `run`. Reporter
+does not own fatal diagnostics or process exit.
 
 ## Exit-code contract
 
@@ -191,8 +201,9 @@ updated to match.
 
 1. Production packages compile against the exact reference names, types, and
    method signatures without adapters that create a competing API.
-2. The current CLI follows the eight definition phases in order and does not
-   compose the execution pipeline prematurely.
+2. The current CLI follows the eight definition phases in order, then validates
+   the directory tree, prepares runtime steps, plans stages, and executes that
+   plan in the order fixed by the skeleton.
 3. Shared workflow state uses `internal/domain` rather than parallel carriers.
 4. Command execution, contextual error composition, execution output, and
    fatal diagnostic logging remain within their owner packages.

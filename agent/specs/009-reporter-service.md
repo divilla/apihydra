@@ -1,9 +1,9 @@
-# `internal/reporter` Reporter
+# `internal/reporting` Reporter
 
 ## Status and ownership
 
-- Binding reference: `skeleton/internal/reporter/reporter.go`
-- Reference tests: `skeleton/internal/reporter/reporter_test.go`
+- Binding reference: `skeleton/internal/reporting/reporter.go`
+- Reference tests: `skeleton/internal/reporting/reporter_test.go`
 - Execution-output boundary: [`prd.md`](../prd.md#package-ownership)
 - Status: skeleton-aligned specification
 

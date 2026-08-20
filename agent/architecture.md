@@ -14,7 +14,7 @@ cmd/cli/                    process composition and exit
 internal/domain/            shared Suite/Directory/File/definition/step models
 internal/definition/        Loader, Decoder, Resolver
 internal/execution/         KeyValueStore, VariableProcessor, Validator, StepRunner
-internal/reporter/          human-readable terminal output
+internal/reporting/         human-readable terminal output
 pkg/errs/                   contextual errors and exit-code metadata
 pkg/runner/                 external-command operations
 ```
@@ -29,7 +29,7 @@ package dependencies acyclic and enforces four production boundaries:
 
 - external command execution belongs to `pkg/runner`;
 - contextual error composition belongs to `pkg/errs`;
-- execution-output writes belong to `internal/reporter`;
+- execution-output writes belong to `internal/reporting`;
 - fatal standard-error diagnostics belong to `cmd/cli`.
 
 `cmd/cli` is the composition root and the only reference package that calls

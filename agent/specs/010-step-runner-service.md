@@ -21,11 +21,13 @@ var ErrExecutionCanceled = errors.New("execution canceled")
 func NewStepRunner(
     variableProcessor *VariableProcessor,
     validator *Validator,
-    report *reporter.Reporter,
+    report *reporting.Reporter,
 ) *StepRunner
 
-func (s *StepRunner) Prepare(ctx context.Context, suite *domain.Suite) error
-func (s *StepRunner) Execute(ctx context.Context, suite *domain.Suite) (int, error)
+func (s *StepRunner) ValidateDirectories(suite *domain.Suite) (int, error)
+func (s *StepRunner) PlanStages(suite *domain.Suite) [][]*domain.Directory
+func (s *StepRunner) Prepare(suite *domain.Suite)
+func (s *StepRunner) Execute(ctx context.Context, stages [][]*domain.Directory) (int, error)
 ```
 
 `NewStepRunner` retains the three supplied collaborators without performing
@@ -39,14 +41,15 @@ the resolved steps. All mutable slices and maps are copied. Each copied
 `Step.Definition` retains the original pointer as read-only provenance.
 
 Variable loading and interpolation are not preparation phases; they run per
-runtime step inside `Execute`. The skeleton does not define traversal order,
-preparation transactionality, or cancellation behavior.
+runtime step inside `Execute`. The skeleton does not define traversal order or
+preparation transactionality. `Prepare` does not accept a context or return an
+error.
 
 ## Directory-tree validation
 
-Before processing directories, `Execute` collects the reachable tree by stage.
-The implemented reference rejects, with a built configuration error matching
-`ErrInvalidDirectoryTree`:
+Before planning or execution, the CLI calls `ValidateDirectories`. The
+implemented reference rejects, with configuration code and a built error
+matching `ErrInvalidDirectoryTree`:
 
 - a nil Suite or nil root;
 - a root whose stage is not `0`;
@@ -55,14 +58,17 @@ The implemented reference rejects, with a built configuration error matching
 - a child whose `Parent` is not the containing directory;
 - a child whose stage is not its parent's stage plus one.
 
-The collector supports arbitrary valid depth and preserves each directory
-pointer in the group indexed by its stage.
+Validation does not produce the execution plan. After successful validation,
+`PlanStages` finds the maximum stage reachable from `suite.Root`, allocates one
+group per stage, and preserves each directory pointer in the group indexed by
+its stage.
 
 ## Stage scheduling
 
-Stages run in ascending order. For one active stage, StepRunner starts one
-goroutine per directory and waits for every started goroutine before returning
-or advancing to the next stage.
+`Execute` receives the plan produced by `PlanStages`. Plan groups run in slice
+order. For one active group, StepRunner starts one goroutine per directory and
+waits for every started goroutine before returning or advancing to the next
+group.
 
 The first fatal directory error recorded for a stage retains its error and
 supplied non-zero code and cancels the shared execution context. If that
@@ -124,10 +130,12 @@ error formatting. Those contracts remain with their owning specs.
 2. `Prepare` deep-copies `ResolvedSteps` into `RuntimeSteps`, including all
    mutable slices and maps, preserves the original `Step.Definition` pointers,
    does not mutate `ResolvedSteps`, and does not load or interpolate variables.
-3. Every invalid tree shape covered by the reference returns configuration code
-   and `ErrInvalidDirectoryTree` without panic.
-4. Same-stage directories may overlap, all are joined, and later stages wait
-   for the barrier.
+3. `ValidateDirectories` returns configuration code and
+   `ErrInvalidDirectoryTree` without panic for every invalid tree shape covered
+   by the reference.
+4. `PlanStages` groups a successfully validated tree by stage, same-stage
+   directories may overlap during `Execute`, all are joined, and later stages
+   wait for the barrier.
 5. The first recorded fatal stage error cancels shared work, prevents later
    stages, and returns the code derived by the reference implementation.
 6. Per-step execution uses the seven phases in the reference order, assigns the

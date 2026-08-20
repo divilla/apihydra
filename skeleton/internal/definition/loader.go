@@ -19,6 +19,9 @@ func (l *Loader) LoadDirectoryStructure(
 	suite *domain.Suite,
 ) error {
 	// TODO: implement
+	suite.Root = &domain.Directory{
+		Path: "/",
+	}
 	return nil
 }
 

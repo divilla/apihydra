@@ -27,7 +27,7 @@ func main() {
 	os.Exit(exitCode)
 }
 
-func run(ctx context.Context, args []string, report *reporting.Reporter) (int, error) {
+func run(ctx context.Context, args []string, reporter *reporting.Reporter) (int, error) {
 	workDir, err := os.Getwd()
 	if err != nil {
 		return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrWorkingDirectory, err)
@@ -45,7 +45,7 @@ func run(ctx context.Context, args []string, report *reporting.Reporter) (int, e
 		}
 		workDir = path
 	}
-	if err := report.WorkingDirectory(workDir); err != nil {
+	if err := reporter.WorkingDirectory(workDir); err != nil {
 		return errs.ExitInternal, err
 	}
 
@@ -84,7 +84,6 @@ func run(ctx context.Context, args []string, report *reporting.Reporter) (int, e
 		return errs.ExitConfiguration, err
 	}
 
-	reporter := reporting.NewReporter(os.Stdout)
 	kvs := execution.NewKeyValueStore()
 	varProc := execution.NewVariableProcessor(kvs)
 	validator := execution.NewValidator()
