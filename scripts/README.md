@@ -25,6 +25,32 @@ scripts/commit-agent.pl "Implement runner"
 
 Both scripts resolve the repository root from their own location, so they can be invoked from any working directory. They refuse to run from a detached `HEAD`.
 
+## `codex-implement.pl`
+
+Implement a numbered specification on its change branch, then start the review
+loop:
+
+```shell
+scripts/codex-implement.pl agent/specs/000-domain-types.md
+```
+
+The specification filename must have the form `<number>-<name>.md`. The script
+derives `change/<number>-<name>` from it, checks out that local branch when it
+already exists, tracks the matching `origin` branch when only its remote-tracking
+ref exists, or creates it from the current commit otherwise. It requires a clean
+working tree so the automated commit cannot absorb unrelated changes.
+
+The implementation runs as
+`codex exec --json -o <temporary-result> '$change-code <specification>'` with
+the same elapsed-time, output-dot, activity-marker, success, failure, and
+interrupt behavior as `codex-review-loop.pl`. Raw JSON output is suppressed on
+success and printed on failure. When Codex succeeds, the script requires both a
+final response and repository changes, commits and pushes them as
+`Implement change <number>-<name>`, and invokes `codex-review-loop.pl` with the
+same specification. Committing before review is required because the review
+loop operates on a clean, committed branch range. Temporary output stays
+outside the repository and is removed on exit.
+
 ## `codex-review-loop.pl`
 
 Run Codex review-and-fix passes until the native review returns no comments:

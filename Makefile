@@ -30,6 +30,8 @@ integration-test: ## Run black-box CLI integration tests with production coverag
 
 tooling-test:
 	@scripts/makefile_test.sh
+	@scripts/codex-implement_unit_test.pl
+	@scripts/codex-implement_test.sh
 	@scripts/codex-review-loop_unit_test.pl
 	@scripts/codex-review-loop_test.sh
 
