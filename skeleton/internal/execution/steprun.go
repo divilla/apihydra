@@ -183,7 +183,14 @@ func (r *processResult) setResult(code int, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if code > r.code {
+	if code == 0 {
+		return
+	}
+	if r.code == 0 {
+		r.code = code
+		r.err = err
+	}
+	if r.code == errs.ExitValidation && err != nil {
 		r.code = code
 		r.err = err
 	}

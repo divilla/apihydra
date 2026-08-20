@@ -171,16 +171,17 @@ func TestExecuteStagesNeverReturnsSuccessWithError(t *testing.T) {
 	}
 }
 
-func TestProcessResultKeepsHighestCodeAndAssociatedError(t *testing.T) {
-	wantErr := errors.New("highest code")
+func TestProcessResultReplacesValidationWithFirstFatalResult(t *testing.T) {
+	wantCode := 19
+	wantErr := errors.New("first fatal error")
 	var result processResult
 
-	result.setResult(errs.ExitValidation, errors.New("lower code"))
-	result.setResult(errs.ExitInternal, wantErr)
-	result.setResult(errs.ExitConfiguration, errors.New("later lower code"))
+	result.setResult(errs.ExitValidation, nil)
+	result.setResult(wantCode, wantErr)
+	result.setResult(errs.ExitInternal, errors.New("later fatal error"))
 
-	if result.code != errs.ExitInternal {
-		t.Fatalf("result code = %d, want %d", result.code, errs.ExitInternal)
+	if result.code != wantCode {
+		t.Fatalf("result code = %d, want %d", result.code, wantCode)
 	}
 	if !errors.Is(result.err, wantErr) {
 		t.Fatalf("result error = %v, want %v", result.err, wantErr)
