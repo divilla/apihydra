@@ -8,3 +8,6 @@
 +31 -5 code - +50 -0 tests --- review fixes 03
 +13 -20 code - +71 -15 tests --- review fixes 04
 +3 -2 code - +4 -3 tests --- review fixes 05
+
+2026-24-08 14:39 002-errs-pkg
++140 -0 code - +232 -0 tests --- spec
