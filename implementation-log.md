@@ -11,3 +11,9 @@
 
 2026-24-08 14:39 002-errs-pkg
 +140 -0 code - +232 -0 tests --- spec
+
+2026-24-08 15:05 003-loader-service
++231 -0 code - +422 -0 tests --- spec
++9 -2 code - +34 -0 tests --- review fixes 01
++1 -1 code - +24 -0 tests --- review fixes 02
++6 -0 code - +12 -0 tests --- review fixes 03
