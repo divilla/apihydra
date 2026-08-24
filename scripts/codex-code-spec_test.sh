@@ -8,7 +8,7 @@ repo="$test_root/repo"
 remote="$test_root/origin.git"
 fake_bin="$test_root/bin"
 implementation_count="$test_root/implementation-count"
-mkdir -p "$repo/scripts" "$repo/agent/specs" "$repo/other" "$fake_bin"
+mkdir -p "$repo/scripts/lib/APIHydra" "$repo/agent/specs" "$repo/other" "$fake_bin"
 
 cleanup() {
 	rm -rf -- "$test_root"
@@ -16,6 +16,7 @@ cleanup() {
 trap cleanup EXIT
 
 cp "$script_dir/codex-code-spec.pl" "$repo/scripts/codex-code-spec.pl"
+cp "$script_dir/lib/APIHydra/Progress.pm" "$repo/scripts/lib/APIHydra/Progress.pm"
 printf '%s\n' '# Domain types' >"$repo/agent/specs/000-domain-types.md"
 printf '%s\n' '# Failing change' >"$repo/agent/specs/001-failing-change.md"
 printf '%s\n' '# Outside specification directory' >"$repo/other/plain.md"
@@ -117,9 +118,26 @@ run_implementation "$first_output"
 	$(git -C "$repo" rev-parse origin/change/000-domain-types) ]]
 [[ $(<"$implementation_count") == 1 ]]
 grep -Fxq 'Branch: change/000-domain-types' "$first_output"
+awk -v repo="$repo" '
+$0 == "Repository: " repo {
+	if ((getline line) <= 0 || line != "Specification: agent/specs/000-domain-types.md") exit 1
+	if ((getline line) <= 0 || line != "Branch: change/000-domain-types") exit 1
+	if ((getline line) <= 0 || line != "") exit 1
+	if ((getline line) <= 0 || line != "=== Implementation ===") exit 1
+	found = 1
+}
+END { if (!found) exit 1 }
+' "$first_output"
 grep -Eq '^codex exec --json -o /.+/implementation-result.md ' "$first_output"
 grep -Fq "'\$change-code agent/specs/000-domain-types.md'" "$first_output"
-grep -Eq '^Implement 00:0[1-9] \.\. ✅$' "$first_output"
+grep -Eq '^\[✅\] 00:0[1-9] ••$' "$first_output"
+awk '
+/^\[✅\]/ { finished = 1; next }
+finished && $0 == "" { separated = 1; next }
+$0 == "Changed files:" && separated { found = 1 }
+END { if (!found) exit 1 }
+' "$first_output"
+! grep -Eq '^Implement [0-9]' "$first_output"
 grep -Fxq 'Commit: Implement change 000-domain-types' "$first_output"
 [[ -z $(git -C "$repo" status --short) ]]
 git -C "$repo" checkout -q master
@@ -138,7 +156,7 @@ set -e
 [[ $failed_status -eq 42 ]]
 [[ $(git -C "$repo" branch --show-current) == 'change/001-failing-change' ]]
 [[ $(git -C "$repo" rev-parse HEAD) == $(git -C "$repo" rev-parse master) ]]
-grep -Eq '^Implement 00:00 \. ❌$' "$failed_output"
+grep -Eq '^\[❌\] 00:00 •$' "$failed_output"
 grep -Fxq 'codex-code-spec: Codex command failed with exit code 42' "$failed_error"
 grep -Fq 'simulated implementation failure' "$failed_error"
 

@@ -18,8 +18,9 @@ repo="$test_root/$repo_name"
 remote="$test_root/origin.git"
 fake_bin="$test_root/bin"
 specification='agent/specs/test-spec.md'
-mkdir -p "$repo/scripts" "$repo/agent/specs" "$fake_bin"
+mkdir -p "$repo/scripts/lib/APIHydra" "$repo/agent/specs" "$fake_bin"
 cp "$script_dir/codex-review-loop.pl" "$repo/scripts/codex-review-loop.pl"
+cp "$script_dir/lib/APIHydra/Progress.pm" "$repo/scripts/lib/APIHydra/Progress.pm"
 printf '%s\n' '# Test specification' >"$repo/$specification"
 
 cat >"$repo/scripts/commit-agent.pl" <<'EOF'
@@ -34,7 +35,8 @@ git -C "$repo" config user.name 'Review Loop Test'
 git -C "$repo" config user.email 'review-loop@example.invalid'
 git -C "$repo" remote add origin "$remote"
 printf '%s\n' 'initial' >"$repo/initial.txt"
-git -C "$repo" add initial.txt "$specification" scripts/codex-review-loop.pl scripts/commit-agent.pl
+git -C "$repo" add initial.txt "$specification" scripts/codex-review-loop.pl \
+	scripts/lib/APIHydra/Progress.pm scripts/commit-agent.pl
 git -C "$repo" commit -q -m initial
 git -C "$repo" push -q -u origin master
 git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/master
@@ -190,6 +192,20 @@ grep -Fxq "Pinned base: $pinned_base" "$output"
 grep -Fxq "Specification: $specification" "$output"
 grep -Fxq "Review options: --base $pinned_base" "$output"
 grep -Fxq "Findings: $findings_file" "$output"
+awk -v repo="$repo" -v base="$pinned_base" -v findings="$findings_file" '
+$0 == "Repository: " repo {
+	if ((getline line) <= 0 || line != "Specification: agent/specs/test-spec.md") exit 1
+	if ((getline line) <= 0 || line != "Branch: master") exit 1
+	if ((getline line) <= 0 || line != "Base: origin/master") exit 1
+	if ((getline line) <= 0 || line != "Pinned base: " base) exit 1
+	if ((getline line) <= 0 || line != "Review options: --base " base) exit 1
+	if ((getline line) <= 0 || line != "Findings: " findings) exit 1
+	if ((getline line) <= 0 || line != "") exit 1
+	if ((getline line) <= 0 || line != "=== Review pass 01 ===") exit 1
+	found = 1
+}
+END { if (!found) exit 1 }
+' "$output"
 grep -Fxq '=== Review pass 01 ===' "$output"
 grep -Fxq '=== Review pass 02 ===' "$output"
 awk '
@@ -213,9 +229,10 @@ printed_fix_command=$(grep -Fx "$expected_fix_command" "$output")
 eval "set -- ${printed_fix_command% < *}"
 [[ $# -eq 6 && $1 == codex && $2 == exec && $3 == --json && $4 == -o &&
 	$5 == "$fix_result_file" && $6 == "$expected_fix_prompt" ]]
-grep -Eq '^Review [0-9]+:[0-9]{2} \.+ ✅$' "$output"
-grep -Eq '^Review 00:0[2-9] \.\. ✅$' "$output"
-grep -Eq '^Fix [0-9]+:[0-9]{2} \. ✅$' "$output"
+[[ $(grep -Ec '^\[✅\] [0-9]+:[0-9]{2} •+$' "$output") -eq 3 ]]
+grep -Eq '^\[✅\] 00:0[2-9] ••$' "$output"
+grep -Eq '^\[✅\] [0-9]+:[0-9]{2} •$' "$output"
+! grep -Eq '^(Review|Fix) [0-9]' "$output"
 ! grep -Fq 'review output one' "$output"
 ! grep -Fq 'fix output' "$output"
 grep -Fxq 'Full review comments:' "$output"
@@ -276,7 +293,7 @@ set -e
 failed_findings_file=$(sed -n 's/^Findings: //p' "$failed_review_output" | head -n 1)
 failed_findings_dir=${failed_findings_file%/*}
 [[ $failed_review_status -eq 42 ]]
-grep -Eq '^Review [0-9]+:[0-9]{2} \. ❌$' "$failed_review_output"
+grep -Eq '^\[❌\] [0-9]+:[0-9]{2} •$' "$failed_review_output"
 grep -Fxq 'codex-review-loop: Codex command failed with exit code 42' "$failed_review_error"
 grep -Fxq 'codex-review-loop: Codex command output:' "$failed_review_error"
 grep -Fxq '  simulated Codex review failure' "$failed_review_error"
@@ -512,7 +529,7 @@ if [[ $interrupt_status -ne 143 ]]; then
 	cat "$interrupt_error" >&2
 fi
 [[ $interrupt_status -eq 143 ]]
-grep -Eq '^Review [0-9]+:[0-9]{2} \. ❌$' "$interrupt_output"
+grep -Eq '^\[❌\] [0-9]+:[0-9]{2} •$' "$interrupt_output"
 grep -Fxq 'codex-review-loop: interrupted' "$interrupt_error"
 [[ ! -e "$interrupt_findings_dir" ]]
 [[ ! -e "$repo/findings.md" ]]

@@ -7,19 +7,15 @@ use Errno qw(EINTR);
 use File::Basename qw(dirname);
 use File::Spec;
 use File::Temp qw(tempdir);
+use FindBin;
 use IO::Handle;
 use IO::Select;
 use POSIX qw(WIFEXITED WIFSIGNALED WEXITSTATUS WTERMSIG setpgid);
-use Time::HiRes qw(CLOCK_MONOTONIC clock_gettime);
+use lib "$FindBin::Bin/lib";
+use APIHydra::Progress;
 
 STDOUT->autoflush(1);
 STDERR->autoflush(1);
-
-my @ACTIVITY_FRAMES = ("\xC2\xB7", "\xE2\x80\xA2", "\xE2\x97\x8F", "\xE2\x80\xA2");
-my $SUCCESS_SYMBOL = "\xE2\x9C\x85";
-my $FAILURE_SYMBOL = "\xE2\x9D\x8C";
-my $ACTIVITY_INTERVAL = 0.25;
-my $OUTPUT_DOT_INTERVAL = 1;
 
 my $active_codex_pid;
 my $temporary_dir;
@@ -119,61 +115,23 @@ sub print_command {
 	print "$separator\n", shell_join(@_), "\n$separator\n";
 }
 
-sub monotonic_time {
-	return clock_gettime(CLOCK_MONOTONIC);
-}
-
-sub new_progress_state {
-	my ($label, $terminal, $output) = @_;
-	return {
-		active       => 1,
-		dots         => 0,
-		label        => $label,
-		last_dot_at  => undef,
-		output       => $output,
-		started_at   => monotonic_time(),
-		terminal     => $terminal,
-	};
-}
-
-sub progress_text {
-	my ($progress, $now) = @_;
-	$now //= monotonic_time();
-	my $elapsed = int($now - $progress->{started_at});
-	return sprintf '%s %02d:%02d %s',
-		$progress->{label}, int($elapsed / 60), $elapsed % 60, '.' x $progress->{dots};
-}
-
-sub activity_frame {
-	my ($elapsed) = @_;
-	my $frame_index = int($elapsed / $ACTIVITY_INTERVAL) % scalar @ACTIVITY_FRAMES;
-	return $ACTIVITY_FRAMES[$frame_index];
-}
-
-sub record_output {
-	my ($progress, $now) = @_;
-	$now //= monotonic_time();
-	if (!defined $progress->{last_dot_at} || $now - $progress->{last_dot_at} >= $OUTPUT_DOT_INTERVAL) {
-		$progress->{dots}++;
-		$progress->{last_dot_at} = $now;
+sub print_initial_context {
+	my ($context, $terminal, $output) = @_;
+	$terminal //= -t STDOUT;
+	$output //= \*STDOUT;
+	my ($label_color, $repository_color, $specification_color, $branch_color, $reset) = ('') x 5;
+	if ($terminal && !exists $ENV{NO_COLOR}) {
+		$label_color = "\033[37m";
+		$repository_color = "\033[34m";
+		$specification_color = "\033[35m";
+		$branch_color = "\033[32m";
+		$reset = "\033[0m";
 	}
-}
 
-sub render_progress {
-	my ($progress, $now) = @_;
-	return if !$progress->{terminal};
-	$now //= monotonic_time();
-	my $frame = activity_frame($now - $progress->{started_at});
-	print { $progress->{output} } "\r\033[2K", progress_text($progress, $now), " $frame";
-}
-
-sub finish_progress {
-	my ($progress, $success) = @_;
-	return if !$progress->{active};
-	my $symbol = $success ? $SUCCESS_SYMBOL : $FAILURE_SYMBOL;
-	my $prefix = $progress->{terminal} ? "\r\033[2K" : '';
-	print { $progress->{output} } $prefix, progress_text($progress), " $symbol\n";
-	$progress->{active} = 0;
+	print {$output} "\n";
+	print {$output} $label_color, 'Repository:', $reset, ' ', $repository_color, $context->{repo_root}, $reset, "\n";
+	print {$output} $label_color, 'Specification:', $reset, ' ', $specification_color, $context->{specification}, $reset, "\n";
+	print {$output} $label_color, 'Branch:', $reset, ' ', $branch_color, $context->{branch}, $reset, "\n";
 }
 
 sub stop {
@@ -213,17 +171,17 @@ sub monitor_command {
 	my ($pid, $reader) = start_command(@command);
 	$active_codex_pid = $pid;
 	my $selector = IO::Select->new($reader);
-	my $next_render_at = $progress->{started_at};
-	render_progress($progress, $next_render_at);
+	my $next_render_at = $progress->started_at();
+	$progress->render($next_render_at);
 
 	open my $log, '>:raw', $output_log or fail("cannot create $output_log: $!");
 	while ($selector->count) {
-		my $now = monotonic_time();
+		my $now = $progress->now();
 		if ($now >= $next_render_at) {
-			render_progress($progress, $now);
-			$next_render_at += $ACTIVITY_INTERVAL while $next_render_at <= $now;
+			$progress->render($now);
+			$next_render_at += $progress->render_interval() while $next_render_at <= $now;
 		}
-		my $timeout = $next_render_at - monotonic_time();
+		my $timeout = $next_render_at - $progress->now();
 		$timeout = 0 if $timeout < 0;
 		my @ready = $selector->can_read($timeout);
 		next if !@ready;
@@ -241,7 +199,7 @@ sub monitor_command {
 			next;
 		}
 		print {$log} $buffer or fail("cannot write $output_log: $!");
-		record_output($progress);
+		$progress->record_output();
 	}
 	close $log or fail("cannot close $output_log: $!");
 
@@ -254,18 +212,18 @@ sub monitor_command {
 sub run_codex {
 	my (@command) = @_;
 	print_command(@command);
-	my $progress = new_progress_state('Implement', -t STDOUT, \*STDOUT);
+	my $progress = APIHydra::Progress->new(terminal => -t STDOUT, output => \*STDOUT);
 	$active_output_log = File::Spec->catfile($temporary_dir, 'codex-output.log');
 	my $exit_code = monitor_command($progress, $active_output_log, @command);
 	if ($requested_exit_code != 0) {
-		finish_progress($progress, 0);
+		$progress->finish(0);
 		unlink $active_output_log;
 		$active_output_log = undef;
 		print STDERR "codex-code-spec: interrupted\n";
 		exit $requested_exit_code;
 	}
 
-	finish_progress($progress, $exit_code == 0);
+	$progress->finish($exit_code == 0);
 	if ($exit_code != 0) {
 		print STDERR "codex-code-spec: Codex command failed with exit code $exit_code\n";
 		if (-s $active_output_log) {
@@ -342,9 +300,12 @@ sub main {
 	defined $temporary_dir or fail("cannot create private implementation directory under $temp_root");
 	$result_file = File::Spec->catfile($temporary_dir, 'implementation-result.md');
 
-	print "Repository: $repo_root\n";
-	print "Branch: $branch\n";
-	print "Specification: $specification\n";
+	print_initial_context({
+		branch        => $branch,
+		repo_root     => $repo_root,
+		specification => $specification,
+	});
+	print "\n=== Implementation ===\n";
 	my $prompt = '$change-code ' . $specification;
 	my $status = run_codex('codex', 'exec', '--json', '-o', $result_file, $prompt);
 	exit $status if $status != 0;
@@ -359,12 +320,12 @@ sub main {
 	my ($changed_files, $changed_status) = capture_command(0, 'git', 'status', '--short', '--untracked-files=all', '--', '.');
 	$changed_status == 0 or exit $changed_status;
 	if ($changed_files eq '') {
-		print "Implementation result:\n";
+		print "\nImplementation result:\n";
 		print read_file($result_file);
 		print "\n";
 		fail('codex made no repository changes; see the implementation result above');
 	}
-	print "Changed files:\n$changed_files";
+	print "\nChanged files:\n$changed_files";
 
 	my $commit_message = "Implement change $change_name";
 	print "Commit: $commit_message\n";

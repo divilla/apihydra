@@ -7,19 +7,15 @@ use Errno qw(EINTR);
 use File::Basename qw(dirname);
 use File::Spec;
 use File::Temp qw(tempdir);
+use FindBin;
 use IO::Handle;
 use IO::Select;
 use POSIX qw(WIFEXITED WIFSIGNALED WEXITSTATUS WTERMSIG setpgid);
-use Time::HiRes qw(CLOCK_MONOTONIC clock_gettime);
+use lib "$FindBin::Bin/lib";
+use APIHydra::Progress;
 
 STDOUT->autoflush(1);
 STDERR->autoflush(1);
-
-my @ACTIVITY_FRAMES = ("\xC2\xB7", "\xE2\x80\xA2", "\xE2\x97\x8F", "\xE2\x80\xA2");
-my $SUCCESS_SYMBOL = "\xE2\x9C\x85";
-my $FAILURE_SYMBOL = "\xE2\x9D\x8C";
-my $ACTIVITY_INTERVAL = 0.25;
-my $OUTPUT_DOT_INTERVAL = 1;
 
 my $active_codex_pid;
 my $findings_dir;
@@ -131,24 +127,28 @@ sub print_command_with_input {
 }
 
 sub print_initial_context {
-	my ($context) = @_;
-	my ($label_color, $repository_color, $branch_color, $base_color, $options_color, $reset) = ('') x 6;
-	if (-t STDOUT && !exists $ENV{NO_COLOR}) {
-		$label_color = "\033[1;36m";
+	my ($context, $terminal, $output) = @_;
+	$terminal //= -t STDOUT;
+	$output //= \*STDOUT;
+	my ($label_color, $repository_color, $specification_color, $branch_color, $base_color, $options_color, $reset) = ('') x 7;
+	if ($terminal && !exists $ENV{NO_COLOR}) {
+		$label_color = "\033[37m";
 		$repository_color = "\033[34m";
+		$specification_color = "\033[35m";
 		$branch_color = "\033[32m";
 		$base_color = "\033[33m";
 		$options_color = "\033[35m";
 		$reset = "\033[0m";
 	}
 
-	print $label_color, 'Repository:', $reset, ' ', $repository_color, $context->{repo_root}, $reset, "\n";
-	print $label_color, 'Branch:', $reset, ' ', $branch_color, $context->{branch}, $reset, "\n";
-	print $label_color, 'Base:', $reset, ' ', $base_color, $context->{review_base}, $reset, "\n";
-	print $label_color, 'Pinned base:', $reset, ' ', $base_color, $context->{review_base_commit}, $reset, "\n";
-	print $label_color, 'Specification:', $reset, ' ', $repository_color, $context->{specification}, $reset, "\n";
-	print $label_color, 'Review options:', $reset, ' ', $options_color, $context->{review_options}, $reset, "\n";
-	print $label_color, 'Findings:', $reset, ' ', $repository_color, $findings_file, $reset, "\n";
+	print {$output} "\n";
+	print {$output} $label_color, 'Repository:', $reset, ' ', $repository_color, $context->{repo_root}, $reset, "\n";
+	print {$output} $label_color, 'Specification:', $reset, ' ', $specification_color, $context->{specification}, $reset, "\n";
+	print {$output} $label_color, 'Branch:', $reset, ' ', $branch_color, $context->{branch}, $reset, "\n";
+	print {$output} $label_color, 'Base:', $reset, ' ', $base_color, $context->{review_base}, $reset, "\n";
+	print {$output} $label_color, 'Pinned base:', $reset, ' ', $base_color, $context->{review_base_commit}, $reset, "\n";
+	print {$output} $label_color, 'Review options:', $reset, ' ', $options_color, $context->{review_options}, $reset, "\n";
+	print {$output} $label_color, 'Findings:', $reset, ' ', $repository_color, $context->{findings_file}, $reset, "\n";
 }
 
 sub review_has_findings {
@@ -187,63 +187,6 @@ sub select_temp_root {
 		return $resolved;
 	}
 	return;
-}
-
-sub monotonic_time {
-	return clock_gettime(CLOCK_MONOTONIC);
-}
-
-sub new_progress_state {
-	my ($label, $terminal, $output) = @_;
-	return {
-		active       => 1,
-		dots         => 0,
-		label        => $label,
-		last_dot_at  => undef,
-		output       => $output,
-		started_at   => monotonic_time(),
-		terminal     => $terminal,
-	};
-}
-
-sub progress_text {
-	my ($progress, $now) = @_;
-	$now //= monotonic_time();
-	my $elapsed = int($now - $progress->{started_at});
-	return sprintf '%s %02d:%02d %s',
-		$progress->{label}, int($elapsed / 60), $elapsed % 60, '.' x $progress->{dots};
-}
-
-sub activity_frame {
-	my ($elapsed) = @_;
-	my $frame_index = int($elapsed / $ACTIVITY_INTERVAL) % scalar @ACTIVITY_FRAMES;
-	return $ACTIVITY_FRAMES[$frame_index];
-}
-
-sub record_output {
-	my ($progress, $now) = @_;
-	$now //= monotonic_time();
-	if (!defined $progress->{last_dot_at} || $now - $progress->{last_dot_at} >= $OUTPUT_DOT_INTERVAL) {
-		$progress->{dots}++;
-		$progress->{last_dot_at} = $now;
-	}
-}
-
-sub render_progress {
-	my ($progress, $now) = @_;
-	return if !$progress->{terminal};
-	$now //= monotonic_time();
-	my $frame = activity_frame($now - $progress->{started_at});
-	print { $progress->{output} } "\r\033[2K", progress_text($progress, $now), " $frame";
-}
-
-sub finish_progress {
-	my ($progress, $success) = @_;
-	return if !$progress->{active};
-	my $symbol = $success ? $SUCCESS_SYMBOL : $FAILURE_SYMBOL;
-	my $prefix = $progress->{terminal} ? "\r\033[2K" : '';
-	print { $progress->{output} } $prefix, progress_text($progress), " $symbol\n";
-	$progress->{active} = 0;
 }
 
 sub stop {
@@ -286,17 +229,17 @@ sub monitor_command {
 	my ($pid, $reader) = start_command($input_file, @command);
 	$active_codex_pid = $pid;
 	my $selector = IO::Select->new($reader);
-	my $next_render_at = $progress->{started_at};
-	render_progress($progress, $next_render_at);
+	my $next_render_at = $progress->started_at();
+	$progress->render($next_render_at);
 
 	open my $log, '>:raw', $output_log or fail("cannot create $output_log: $!");
 	while ($selector->count) {
-		my $now = monotonic_time();
+		my $now = $progress->now();
 		if ($now >= $next_render_at) {
-			render_progress($progress, $now);
-			$next_render_at += $ACTIVITY_INTERVAL while $next_render_at <= $now;
+			$progress->render($now);
+			$next_render_at += $progress->render_interval() while $next_render_at <= $now;
 		}
-		my $timeout = $next_render_at - monotonic_time();
+		my $timeout = $next_render_at - $progress->now();
 		$timeout = 0 if $timeout < 0;
 		my @ready = $selector->can_read($timeout);
 		next if !@ready;
@@ -314,7 +257,7 @@ sub monitor_command {
 			next;
 		}
 		print {$log} $buffer or fail("cannot write $output_log: $!");
-		record_output($progress);
+		$progress->record_output();
 	}
 	close $log or fail("cannot close $output_log: $!");
 
@@ -325,25 +268,25 @@ sub monitor_command {
 }
 
 sub run_codex {
-	my ($label, $input_file, @command) = @_;
+	my ($input_file, @command) = @_;
 	if (defined $input_file) {
 		print_command_with_input($input_file, @command);
 	} else {
 		print_command(@command);
 	}
 
-	my $progress = new_progress_state($label, -t STDOUT, \*STDOUT);
+	my $progress = APIHydra::Progress->new(terminal => -t STDOUT, output => \*STDOUT);
 	$active_output_log = File::Spec->catfile($findings_dir, 'codex-output.log');
 	my $exit_code = monitor_command($progress, $input_file, $active_output_log, @command);
 	if ($requested_exit_code != 0) {
-		finish_progress($progress, 0);
+		$progress->finish(0);
 		unlink $active_output_log;
 		$active_output_log = undef;
 		print STDERR "codex-review-loop: interrupted\n";
 		exit $requested_exit_code;
 	}
 
-	finish_progress($progress, $exit_code == 0);
+	$progress->finish($exit_code == 0);
 	if ($exit_code != 0) {
 		print STDERR "codex-review-loop: Codex command failed with exit code $exit_code\n";
 		if (-s $active_output_log) {
@@ -458,6 +401,7 @@ sub main {
 
 	print_initial_context({
 		branch             => $branch,
+		findings_file      => $findings_file,
 		repo_root          => $repo_root,
 		review_base        => $review_base,
 		review_base_commit => $review_base_commit,
@@ -471,7 +415,7 @@ sub main {
 		printf "\n=== Review pass %02d ===\n", $pass;
 		unlink $findings_file;
 		my @review_command = ('codex', 'exec', 'review', '--json', @review_arguments, '-o', $findings_file);
-		$status = run_codex('Review', undef, @review_command);
+		$status = run_codex(undef, @review_command);
 		exit $status if $status != 0;
 		-f $findings_file or fail('review did not write findings.md');
 
@@ -491,7 +435,7 @@ sub main {
 		$before_status == 0 or exit $before_status;
 		$before_fix =~ s/\s+\z//;
 		unlink $fix_result_file;
-		$status = run_codex('Fix', $findings_file, 'codex', 'exec', '--json', '-o', $fix_result_file, $fix_prompt);
+		$status = run_codex($findings_file, 'codex', 'exec', '--json', '-o', $fix_result_file, $fix_prompt);
 		exit $status if $status != 0;
 		my ($after_fix, $after_status) = capture_command(0, 'git', 'rev-parse', 'HEAD');
 		$after_status == 0 or exit $after_status;

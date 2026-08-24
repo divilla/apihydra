@@ -17,3 +17,6 @@
 +9 -2 code - +34 -0 tests --- review fixes 01
 +1 -1 code - +24 -0 tests --- review fixes 02
 +6 -0 code - +12 -0 tests --- review fixes 03
+
+2026-24-08 16:17 004-decoder-service
++118 -0 code - +306 -0 tests --- spec

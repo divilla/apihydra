@@ -18,11 +18,33 @@ sub assert_equal {
 my $script = abs_path(File::Spec->catfile(dirname(__FILE__), 'codex-review-loop.pl'));
 do $script or die "cannot load $script: " . ($@ || $!);
 
-assert_equal(activity_frame(0), "\xC2\xB7", 'animation starts at the small central point');
-assert_equal(activity_frame(0.25), "\xE2\x80\xA2", 'animation advances after 250 ms');
-assert_equal(activity_frame(0.50), "\xE2\x97\x8F", 'animation reaches the large central point');
-assert_equal(activity_frame(0.75), "\xE2\x80\xA2", 'animation contracts after 750 ms');
-assert_equal(activity_frame(1), "\xC2\xB7", 'animation repeats after one second');
+my $context_output = '';
+open my $context_handle, '>:raw', \$context_output or die "cannot create context capture: $!";
+{
+	local $ENV{NO_COLOR};
+	delete $ENV{NO_COLOR};
+	print_initial_context({
+		branch             => 'change/004-decoder-service',
+		findings_file      => '/tmp/apih-review.test/findings.md',
+		repo_root          => '/home/vito/go/src/apihydra',
+		review_base        => 'origin/master',
+		review_base_commit => '47d4f35c2759e81216efb909c66d7e58ba43e503',
+		review_options     => '--base 47d4f35c2759e81216efb909c66d7e58ba43e503',
+		specification      => 'agent/specs/004-decoder-service.md',
+	}, 1, $context_handle);
+}
+close $context_handle;
+assert_equal(
+	$context_output,
+	"\n\033[37mRepository:\033[0m \033[34m/home/vito/go/src/apihydra\033[0m\n"
+		. "\033[37mSpecification:\033[0m \033[35magent/specs/004-decoder-service.md\033[0m\n"
+		. "\033[37mBranch:\033[0m \033[32mchange/004-decoder-service\033[0m\n"
+		. "\033[37mBase:\033[0m \033[33morigin/master\033[0m\n"
+		. "\033[37mPinned base:\033[0m \033[33m47d4f35c2759e81216efb909c66d7e58ba43e503\033[0m\n"
+		. "\033[37mReview options:\033[0m \033[35m--base 47d4f35c2759e81216efb909c66d7e58ba43e503\033[0m\n"
+		. "\033[37mFindings:\033[0m \033[34m/tmp/apih-review.test/findings.md\033[0m\n",
+	'review context extends the implementation order with consistent colors',
+);
 
 assert_equal(
 	join("\0", parse_review_options('--model', 'gpt-5', '--title', 'Review title', '--base', 'develop')),
@@ -34,7 +56,7 @@ my $rendered = '';
 open my $progress_output, '>:raw', \$rendered or die "cannot create progress capture: $!";
 my ($log, $output_log) = tempfile();
 close $log;
-my $progress = new_progress_state('Review', 1, $progress_output);
+my $progress = APIHydra::Progress->new(terminal => 1, output => $progress_output);
 my $status = monitor_command(
 	$progress,
 	undef,

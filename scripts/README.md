@@ -64,9 +64,14 @@ The specification path must have the form `agent/specs/<spec-slug>.md`, and the
 current branch must be `change/<spec-slug>`. The script requires a clean working
 tree so the automated commit cannot absorb unrelated changes.
 
+The startup context is printed in `Repository`, `Specification`, `Branch`
+order, followed by an `=== Implementation ===` heading and the rendered Codex
+command. In a color-capable terminal, labels remain white while repository,
+specification, and branch values are blue, magenta, and green respectively.
+
 The implementation runs as
 `codex exec --json -o <temporary-result> '$change-code <specification>'` with
-the same elapsed-time, output-dot, activity-marker, success, failure, and
+the same elapsed-time, output-marker, activity-marker, success, failure, and
 interrupt behavior as `codex-review-loop.pl`. Raw JSON output is suppressed on
 success and printed on failure. When Codex succeeds, the script requires both a
 final response and repository changes, commits and pushes them as
@@ -130,16 +135,21 @@ The default `/tmp` location works on Linux and macOS. The script requires Perl
 and a POSIX environment because interruption is propagated to the active Codex
 process group.
 
-While Codex runs, its output is replaced by a progress line containing elapsed
-minutes and seconds plus accumulated output dots, rate-limited to at most one
-dot per second while output is received. In a terminal, Perl's timed I/O
+While Codex runs, its output is replaced by a progress line such as
+`[ ] 00:00 •••••••••●`, containing elapsed minutes and seconds plus accumulated
+output bullets, rate-limited to at most one bullet per second while output is
+received. The activity marker is appended directly to the bullets without
+intervening whitespace. In a terminal, Perl's timed I/O
 multiplexing updates the activity marker every 250 milliseconds independently
 of Codex output, without delivering asynchronous progress signals to the
-process. It resolves to a green
-`✅` on success or a red `❌` on failure or interruption. Pressing Ctrl+C
-terminates the active Codex command and the loop. Startup output identifies the
-repository, branch, base, review options, and findings file, with terminal
-colors unless `NO_COLOR` is set.
+process. The reusable implementation lives in `lib/APIHydra/Progress.pm`. The
+status resolves to `[✅]` on success or `[❌]` on failure or interruption; a
+finished line looks like `[✅] 11:11 ••••••••••••`. Pressing Ctrl+C
+terminates the active Codex command and the loop. Review startup output uses the
+same repository, specification, and branch order and colors as the
+implementation script, followed by the base, pinned base, review options, and
+findings file. Additional values retain their established colors. All terminal
+colors are disabled when `NO_COLOR` is set.
 Before each run, the complete copy/pasteable Codex command, including the
 fixer's stdin redirection, is printed with readable single-quoted arguments
 between terminal-width
