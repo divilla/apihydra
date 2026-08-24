@@ -100,19 +100,26 @@ sub command_exists {
 	return 0;
 }
 
-sub terminal_width {
-	my $width = $ENV{COLUMNS} // 120;
-	if (-t STDOUT) {
-		my ($detected, $status) = capture_command(1, 'tput', 'cols');
-		$detected =~ s/\s+\z//;
-		$width = $detected if $status == 0 && $detected =~ /\A[1-9][0-9]*\z/;
+sub print_rendered_command {
+	my ($command) = @_;
+	my $separator_width = 1;
+	for my $line (split /\n/, $command, -1) {
+		$separator_width = length($line) if length($line) > $separator_width;
 	}
-	return $width =~ /\A[1-9][0-9]*\z/ ? $width : 120;
+	my $separator = '-' x $separator_width;
+	print "$separator\n$command\n$separator\n";
 }
 
 sub print_command {
-	my $separator = '-' x terminal_width();
-	print "$separator\n", shell_join(@_), "\n$separator\n";
+	print_rendered_command(shell_join(@_));
+}
+
+sub print_file_block {
+	my ($path) = @_;
+	my $contents = read_file($path);
+	print "\n$contents";
+	print "\n" if $contents !~ /\n\z/;
+	print "\n";
 }
 
 sub print_initial_context {
@@ -310,6 +317,7 @@ sub main {
 	my $status = run_codex('codex', 'exec', '--json', '-o', $result_file, $prompt);
 	exit $status if $status != 0;
 	-f $result_file or fail('implementation did not write a final response');
+	print_file_block($result_file);
 
 	my ($after_implementation, $after_status) = capture_command(0, 'git', 'rev-parse', 'HEAD');
 	$after_status == 0 or exit $after_status;
@@ -319,13 +327,12 @@ sub main {
 
 	my ($changed_files, $changed_status) = capture_command(0, 'git', 'status', '--short', '--untracked-files=all', '--', '.');
 	$changed_status == 0 or exit $changed_status;
+	print "Changed files:\n";
 	if ($changed_files eq '') {
-		print "\nImplementation result:\n";
-		print read_file($result_file);
-		print "\n";
+		print "  (none)\n";
 		fail('codex made no repository changes; see the implementation result above');
 	}
-	print "\nChanged files:\n$changed_files";
+	print $changed_files;
 
 	my $commit_message = "Implement change $change_name";
 	print "Commit: $commit_message\n";

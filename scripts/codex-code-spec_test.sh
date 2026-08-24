@@ -130,13 +130,26 @@ END { if (!found) exit 1 }
 ' "$first_output"
 grep -Eq '^codex exec --json -o /.+/implementation-result.md ' "$first_output"
 grep -Fq "'\$change-code agent/specs/000-domain-types.md'" "$first_output"
+awk '
+/^-+$/ {
+	separator = $0
+	if ((getline command) <= 0 || command !~ /^codex /) exit 1
+	if ((getline closing) <= 0 || closing != separator) exit 1
+	if (length(separator) != length(command)) exit 1
+	commands++
+}
+END { if (commands != 1) exit 1 }
+' "$first_output"
 grep -Eq '^\[✅\] 00:0[1-9] ••$' "$first_output"
 awk '
 /^\[✅\]/ { finished = 1; next }
-finished && $0 == "" { separated = 1; next }
-$0 == "Changed files:" && separated { found = 1 }
+finished && !before_result && $0 == "" { before_result = 1; next }
+$0 == "Implementation complete." && before_result { result = 1; next }
+result && $0 == "" { after_result = 1; next }
+$0 == "Changed files:" && after_result { found = 1 }
 END { if (!found) exit 1 }
 ' "$first_output"
+grep -Fxq 'Implementation complete.' "$first_output"
 ! grep -Eq '^Implement [0-9]' "$first_output"
 grep -Fxq 'Commit: Implement change 000-domain-types' "$first_output"
 [[ -z $(git -C "$repo" status --short) ]]

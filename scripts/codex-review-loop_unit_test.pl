@@ -46,6 +46,20 @@ assert_equal(
 	'review context extends the implementation order with consistent colors',
 );
 
+my $command_output = '';
+open my $command_handle, '>:raw', \$command_output or die "cannot create command capture: $!";
+{
+	local *STDOUT = $command_handle;
+	print_rendered_command("codex exec --json\n< findings.md");
+}
+close $command_handle;
+my $command_separator = '-' x length('codex exec --json');
+assert_equal(
+	$command_output,
+	"$command_separator\ncodex exec --json\n< findings.md\n$command_separator\n",
+	'multiline review commands use the longest line without extending the separator',
+);
+
 assert_equal(
 	join("\0", parse_review_options('--model', 'gpt-5', '--title', 'Review title', '--base', 'develop')),
 	join("\0", 'develop', '--model', 'gpt-5', '--title', 'Review title'),

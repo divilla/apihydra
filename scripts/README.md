@@ -74,7 +74,8 @@ The implementation runs as
 the same elapsed-time, output-marker, activity-marker, success, failure, and
 interrupt behavior as `codex-review-loop.pl`. Raw JSON output is suppressed on
 success and printed on failure. When Codex succeeds, the script requires both a
-final response and repository changes, commits and pushes them as
+final response and repository changes. It prints the final response between the
+progress line and the changed-file list, then commits and pushes the changes as
 `Implement change <spec-slug>`. Temporary output stays outside the repository
 and is removed on exit.
 
@@ -114,10 +115,11 @@ Every findings pass redirects that file through standard input to a fresh
 positional specification file. The skill validates the findings against the
 specification and repository contracts, implements valid fixes with tests and
 verification, and preserves unrelated changes. The prompt leaves commits and
-pushes to the loop. The loop captures the fixer's final response. If the fixer
-makes no repository changes, the loop prints that response so protected-contract
-blockers and rejected findings are visible, then stops without committing.
-Otherwise, it prints changed files, then commits and pushes them as
+pushes to the loop. Each review and fix command has a numbered heading, and the
+loop prints each captured final response after its progress line. If the fixer
+makes no repository changes, the response keeps protected-contract blockers and
+rejected findings visible before the loop stops without committing. Otherwise,
+it prints changed files, then commits and pushes them as
 `review fixes 01`, `review fixes 02`, and so on. Native Codex review rendering
 adds an exact `Review comment:` or `Full review comments:` header whenever its
 structured result contains findings. The loop checks those headers instead of
@@ -150,9 +152,9 @@ same repository, specification, and branch order and colors as the
 implementation script, followed by the base, pinned base, review options, and
 findings file. Additional values retain their established colors. All terminal
 colors are disabled when `NO_COLOR` is set.
-Before each run, the complete copy/pasteable Codex command, including the
-fixer's stdin redirection, is printed with readable single-quoted arguments
-between terminal-width
-separator lines. Codex runs in JSON mode so progress events remain streamable
-while their raw content is suppressed on success. If Codex fails, its captured
-output is printed to standard error for diagnosis.
+Before each run, the Codex command is printed with readable single-quoted
+arguments between separator lines sized to its longest rendered line. The
+fixer's stdin redirection is rendered on a separate line, so neither separator
+extends into that line. Codex runs in JSON mode so progress events remain
+streamable while their raw content is suppressed on success. If Codex fails,
+its captured output is printed to standard error for diagnosis.

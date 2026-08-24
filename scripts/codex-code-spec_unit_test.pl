@@ -39,6 +39,19 @@ assert_equal(
 	'implementation context uses the requested order, spacing, and colors',
 );
 
+my $command_output = '';
+open my $command_handle, '>:raw', \$command_output or die "cannot create command capture: $!";
+{
+	local *STDOUT = $command_handle;
+	print_rendered_command('codex exec');
+}
+close $command_handle;
+assert_equal(
+	$command_output,
+	('-' x length('codex exec')) . "\ncodex exec\n" . ('-' x length('codex exec')) . "\n",
+	'implementation command separators match the rendered command width',
+);
+
 my $formatted = '';
 open my $formatted_output, '>:raw', \$formatted or die "cannot create formatted progress capture: $!";
 my $formatted_progress = APIHydra::Progress->new(

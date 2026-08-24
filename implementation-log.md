@@ -20,3 +20,6 @@
 
 2026-24-08 16:17 004-decoder-service
 +118 -0 code - +306 -0 tests --- spec
+
+2026-24-08 16:54 005-resolver-service
++173 -0 code - +375 -0 tests --- spec

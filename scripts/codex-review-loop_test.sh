@@ -212,21 +212,31 @@ awk '
 /^-+$/ {
 	separator = $0
 	if ((getline command) <= 0 || command !~ /^codex /) exit 1
-	if ((getline closing) <= 0 || closing !~ /^-+$/) exit 1
-	if (length(separator) != 80 || closing != separator) exit 1
+	width = length(command)
+	if ((getline following) <= 0) exit 1
+	if (following ~ /^< /) {
+		if (length(following) > width) width = length(following)
+		inputs++
+		if ((getline closing) <= 0) exit 1
+	} else {
+		closing = following
+	}
+	if (length(separator) != width || closing != separator) exit 1
 	commands++
 }
-END { if (commands != 3) exit 1 }
+END { if (commands != 3 || inputs != 1) exit 1 }
 ' "$output"
 printf -v expected_review_command \
 	'codex exec review --json --base %q -o %q' \
 	"$pinned_base" "$findings_file"
 grep -Fxq "$expected_review_command" "$output"
 fix_result_file="$findings_dir/fix-result.md"
-expected_fix_command="codex exec --json -o $fix_result_file '$expected_fix_prompt' < $findings_file"
+expected_fix_command="codex exec --json -o $fix_result_file '$expected_fix_prompt'"
+expected_fix_input="< $findings_file"
 grep -Fxq "$expected_fix_command" "$output"
+grep -Fxq "$expected_fix_input" "$output"
 printed_fix_command=$(grep -Fx "$expected_fix_command" "$output")
-eval "set -- ${printed_fix_command% < *}"
+eval "set -- $printed_fix_command"
 [[ $# -eq 6 && $1 == codex && $2 == exec && $3 == --json && $4 == -o &&
 	$5 == "$fix_result_file" && $6 == "$expected_fix_prompt" ]]
 [[ $(grep -Ec '^\[✅\] [0-9]+:[0-9]{2} •+$' "$output") -eq 3 ]]
@@ -235,6 +245,21 @@ grep -Eq '^\[✅\] [0-9]+:[0-9]{2} •$' "$output"
 ! grep -Eq '^(Review|Fix) [0-9]' "$output"
 ! grep -Fq 'review output one' "$output"
 ! grep -Fq 'fix output' "$output"
+grep -Fxq '=== Fix findings 01 ===' "$output"
+grep -Fxq 'Applied all valid review findings.' "$output"
+awk '
+/^\[✅\]/ {
+	if ((getline blank) <= 0 || blank != "") exit 1
+	completed++
+}
+/This finding contains .* as an example\.$/ { review_result = 1; next }
+review_result && !review_blank && $0 == "" { review_blank = 1; next }
+$0 == "=== Fix findings 01 ===" && review_blank { fix_section = 1 }
+$0 == "Applied all valid review findings." && fix_section { fix_result = 1; next }
+fix_result && $0 == "" { fix_blank = 1; next }
+$0 == "Changed files:" && fix_blank { changed_files = 1 }
+END { if (completed != 3 || !changed_files) exit 1 }
+' "$output"
 grep -Fxq 'Full review comments:' "$output"
 grep -Fq '{"verdict":"no_findings","findings":""}' "$output"
 grep -Fxq 'No actionable defects found.' "$output"
@@ -361,11 +386,12 @@ set -e
 [[ $no_fix_status -eq 1 ]]
 grep -Fxq 'Changed files:' "$no_fix_output"
 grep -Fxq '  (none)' "$no_fix_output"
-grep -Fxq 'Fix result:' "$no_fix_output"
+! grep -Fxq 'Fix result:' "$no_fix_output"
 grep -Fxq 'Cannot modify the protected skeleton without explicit user direction.' "$no_fix_output"
 grep -Fxq 'codex-review-loop: codex made no repository changes; see the fix result above' "$no_fix_error"
 no_fix_findings_file=$(sed -n 's/^Findings: //p' "$no_fix_output" | head -n 1)
-grep -Fxq "codex exec --json -o ${no_fix_findings_file%/*}/fix-result.md '$expected_fix_prompt' < $no_fix_findings_file" "$no_fix_output"
+grep -Fxq "codex exec --json -o ${no_fix_findings_file%/*}/fix-result.md '$expected_fix_prompt'" "$no_fix_output"
+grep -Fxq "< $no_fix_findings_file" "$no_fix_output"
 [[ ! -e "${no_fix_findings_file%/*}" ]]
 [[ -z $(git -C "$repo" status --short) ]]
 

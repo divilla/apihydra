@@ -39,11 +39,6 @@ sub read_file {
 	return defined $contents ? $contents : '';
 }
 
-sub print_file {
-	my ($path) = @_;
-	print read_file($path);
-}
-
 sub shell_quote {
 	my ($argument) = @_;
 	return $argument if $argument =~ m{\A[a-zA-Z0-9_\@%+=:,./-]+\z};
@@ -101,19 +96,13 @@ sub command_exists {
 	return 0;
 }
 
-sub terminal_width {
-	my $width = $ENV{COLUMNS} // 120;
-	if (-t STDOUT) {
-		my ($detected, $status) = capture_command(1, 'tput', 'cols');
-		$detected =~ s/\s+\z//;
-		$width = $detected if $status == 0 && $detected =~ /\A[1-9][0-9]*\z/;
-	}
-	return $width =~ /\A[1-9][0-9]*\z/ ? $width : 120;
-}
-
 sub print_rendered_command {
 	my ($command) = @_;
-	my $separator = '-' x terminal_width();
+	my $separator_width = 1;
+	for my $line (split /\n/, $command, -1) {
+		$separator_width = length($line) if length($line) > $separator_width;
+	}
+	my $separator = '-' x $separator_width;
 	print "$separator\n$command\n$separator\n";
 }
 
@@ -123,7 +112,15 @@ sub print_command {
 
 sub print_command_with_input {
 	my ($input_file, @command) = @_;
-	print_rendered_command(shell_join(@command) . ' < ' . shell_quote($input_file));
+	print_rendered_command(shell_join(@command) . "\n< " . shell_quote($input_file));
+}
+
+sub print_file_block {
+	my ($path) = @_;
+	my $contents = read_file($path);
+	print "\n$contents";
+	print "\n" if $contents !~ /\n\z/;
+	print "\n";
 }
 
 sub print_initial_context {
@@ -419,9 +416,7 @@ sub main {
 		exit $status if $status != 0;
 		-f $findings_file or fail('review did not write findings.md');
 
-		print "Findings:\n";
-		print_file($findings_file);
-		print "\n\n";
+		print_file_block($findings_file);
 		review_is_displayable($findings_file) or fail('review did not produce a displayable result');
 
 		if (!review_has_findings($findings_file)) {
@@ -435,6 +430,7 @@ sub main {
 		$before_status == 0 or exit $before_status;
 		$before_fix =~ s/\s+\z//;
 		unlink $fix_result_file;
+		printf "=== Fix findings %02d ===\n", $fix_number;
 		$status = run_codex($findings_file, 'codex', 'exec', '--json', '-o', $fix_result_file, $fix_prompt);
 		exit $status if $status != 0;
 		my ($after_fix, $after_status) = capture_command(0, 'git', 'rev-parse', 'HEAD');
@@ -442,6 +438,7 @@ sub main {
 		$after_fix =~ s/\s+\z//;
 		$after_fix eq $before_fix or fail(sprintf 'codex created a commit; expected this script to create review fixes %02d', $fix_number);
 		-f $fix_result_file or fail('fix did not write a final response');
+		print_file_block($fix_result_file);
 
 		my ($changed_files, $changed_status) = capture_command(0, 'git', 'status', '--short', '--untracked-files=all', '--', '.');
 		$changed_status == 0 or exit $changed_status;
@@ -449,13 +446,7 @@ sub main {
 		if ($changed_files ne '') {
 			print $changed_files;
 		} else {
-			print "  (none)\nFix result:\n";
-			if (-s $fix_result_file) {
-				print_file($fix_result_file);
-			} else {
-				print "  (empty)\n";
-			}
-			print "\n";
+			print "  (none)\n";
 			fail('codex made no repository changes; see the fix result above');
 		}
 
