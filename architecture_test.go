@@ -40,7 +40,7 @@ func TestPackageBoundaries(t *testing.T) {
 		assertPatternsAbsentOutside(
 			t,
 			filepath.FromSlash("cmd/cli"),
-			[]string{"log.Print(", "log.Printf(", "log.Println("},
+			[]string{"log.Print(", "log.Printf(", "log.Println(", "os.Stderr", "os.Exit("},
 		)
 	})
 
