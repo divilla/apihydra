@@ -29,3 +29,6 @@
 
 2026-24-08 17:24 007-binder-service
 +121 -0 code - +282 -0 tests --- spec
+
+2026-24-08 18:37 008-validator-service
++107 -0 code - +335 -0 tests --- spec
