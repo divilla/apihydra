@@ -23,3 +23,6 @@
 
 2026-24-08 16:54 005-resolver-service
 +173 -0 code - +375 -0 tests --- spec
+
+2026-24-08 17:16 006-key-value-store-service
++48 -0 code - +119 -0 tests --- spec
