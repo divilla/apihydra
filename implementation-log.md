@@ -26,3 +26,6 @@
 
 2026-24-08 17:16 006-key-value-store-service
 +48 -0 code - +119 -0 tests --- spec
+
+2026-24-08 17:24 007-binder-service
++121 -0 code - +282 -0 tests --- spec
