@@ -1,0 +1,9 @@
+app: apihydra
+kind: root
+metadata:
+  name: integration-validation
+spec:
+  baseUrl: http://APIH_TEST_SERVER
+  basePath: /api
+  timeout: 10
+  retries: 1

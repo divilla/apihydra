@@ -1,0 +1,44 @@
+package definition
+
+import (
+	"apih/skeleton/internal/domain"
+	"context"
+)
+
+// Resolver combines decoded definitions into executable step values.
+type Resolver struct{}
+
+// NewResolver returns a stateless Resolver.
+func NewResolver() *Resolver {
+	return &Resolver{}
+}
+
+// ResolveDefaults traverses suite.Root and populates each ResolvedDefaults with
+// values merged from the directory's and parent directory's DefaultsDefinition.
+func (l *Resolver) ResolveDefaults(
+	ctx context.Context,
+	suite *domain.Suite,
+) error {
+	// TODO: implement
+	return nil
+}
+
+// ResolveSteps traverses suite.Root and populates each ResolvedSteps with values
+// merged from the directory's StepsDefinitions and DefaultsDefinition.
+func (l *Resolver) ResolveSteps(
+	ctx context.Context,
+	suite *domain.Suite,
+) error {
+	// TODO: implement
+	return nil
+}
+
+// ValidateStepsDefinitions traverses suite.Root and validates every entry in
+// Directory.StepsDefinitions, returning an error on failure.
+func (l *Resolver) ValidateStepsDefinitions(
+	ctx context.Context,
+	suite *domain.Suite,
+) error {
+	// TODO: implement
+	return nil
+}

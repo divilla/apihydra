@@ -1,0 +1,6 @@
+app: apihydra
+kind: defaults
+metadata:
+  name: integration-child-defaults
+spec:
+  basePath: /child-api

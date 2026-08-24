@@ -1,0 +1,26 @@
+app: apihydra
+kind: steps
+metadata:
+  name: integration-success-steps
+  labels: [integration, success]
+spec:
+  steps:
+    - vars:
+        name: alpha
+        expected_id: '7'
+      request:
+        method: POST
+        path: /items
+        body: '{"name":"$name"}'
+      response:
+        expected_status: 200
+        expected_body: '{"id":$expected_id,"ok":true}'
+        capture:
+          item_id: .id
+    - request:
+        method: POST
+        path: /items/captured
+        body: '{"id":${item_id}}'
+      response:
+        expected_status: 200
+        expected_body: '{"id":7,"ok":true}'

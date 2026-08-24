@@ -1,0 +1,11 @@
+app: apihydra
+kind: root
+metadata:
+  name: integration-success
+spec:
+  baseUrl: http://APIH_TEST_SERVER
+  basePath: /api
+  headers:
+    Content-Type: application/json
+  timeout: 10
+  retries: 1

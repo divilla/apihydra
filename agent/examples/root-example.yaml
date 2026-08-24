@@ -1,0 +1,13 @@
+# Shape-only example. Values illustrate fields and do not define runtime behavior.
+app: apihydra
+kind: root
+metadata:
+  name: suite-root
+spec:
+  baseUrl: http://127.0.0.1:8080
+  basePath: /api/v1
+  headers:
+    Content-Type: application/json
+    User-Agent: APIHydra example
+  timeout: 10
+  retries: 3

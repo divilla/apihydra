@@ -1,0 +1,13 @@
+app: apihydra
+kind: steps
+metadata:
+  name: integration-validation-steps
+  labels: [integration, validation]
+spec:
+  steps:
+    - request:
+        method: GET
+        path: /status-mismatch
+      response:
+        expected_status: 201
+        expected_body: '{"id":9,"ok":true}'

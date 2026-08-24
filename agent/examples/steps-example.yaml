@@ -1,0 +1,38 @@
+# Shape-only example. Values illustrate fields and do not define validation or runtime behavior.
+app: apihydra
+kind: steps
+metadata:
+  name: create-steps
+  labels: [create, steps]
+spec:
+  steps:
+    - vars:
+        project_id: example-project
+      request:
+        method: POST
+        baseUrl: https://api.example.com
+        basePath: /api/v1
+        path: /api/users
+        headers:
+          Content-Type: application/json
+          Accept: application/json
+        timeout: 10
+        retries: 3
+        query: page=1&limit=20&sort=name
+        body: |
+          {
+            "project_id": "example-project",
+            "title": "Example title"
+          }
+      response:
+        expected_status: 201
+        capture:
+          change_id: example-capture-expression
+        expected_types:
+          example.selector: [example-type]
+        expected_body: |
+          {
+            "agent_edit": false,
+            "change_phase": "backlog",
+            "change_types": []
+          }

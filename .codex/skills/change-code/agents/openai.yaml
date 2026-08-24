@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Code"
+  short_description: "Implement a specification in an existing codebase"
+  default_prompt: "Use $change-code to implement the following specification completely and verify the result:"
