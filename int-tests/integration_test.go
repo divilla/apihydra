@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,20 +30,49 @@ const (
 )
 
 type observedRequests struct {
-	mu     sync.Mutex
-	bodies []string
+	mu       sync.Mutex
+	requests []observedRequest
 }
 
-func (o *observedRequests) add(body string) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.bodies = append(o.bodies, body)
+type observedRequest struct {
+	method   string
+	path     string
+	rawQuery string
+	headers  http.Header
+	body     string
 }
 
-func (o *observedRequests) joinedBodies() string {
+func (o *observedRequests) add(request *http.Request, body string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return strings.Join(o.bodies, "\n")
+	o.requests = append(o.requests, observedRequest{
+		method:   request.Method,
+		path:     request.URL.Path,
+		rawQuery: request.URL.RawQuery,
+		headers:  request.Header.Clone(),
+		body:     body,
+	})
+}
+
+func (o *observedRequests) contains(want observedRequest) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for _, request := range o.requests {
+		if request.method != want.method || request.path != want.path || request.rawQuery != want.rawQuery || request.body != want.body {
+			continue
+		}
+		matches := true
+		for name, values := range want.headers {
+			if !slices.Equal(request.headers.Values(name), values) {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+	return false
 }
 
 func TestApplicationScenariosAndCoverage(t *testing.T) {
@@ -68,7 +98,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 			http.Error(w, readErr.Error(), http.StatusBadRequest)
 			return
 		}
-		requests.add(requestBody)
+		requests.add(r, requestBody)
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Path == "/invalid-json" {
 			w.WriteHeader(http.StatusOK)
@@ -130,6 +160,9 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if nondirectory.stdout != "" {
 		t.Fatalf("file path stdout = %q, want empty", nondirectory.stdout)
 	}
+	if !strings.Contains(nondirectory.stderr, "invalid path") {
+		t.Fatalf("file path stderr = %q, want invalid-path diagnostic", nondirectory.stderr)
+	}
 
 	successSuite := "test1"
 	success := runCLI(t, ctx, binary, runRoot, coverageDir, successSuite)
@@ -158,7 +191,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		t.Fatalf("test2 stdout = %q, want working-directory output", validation.stdout)
 	}
 	workingDirectoryOnly := fmt.Sprintf("Working Directory: %s\n\n", filepath.Join(runRoot, validationSuite))
-	if validation.stdout == workingDirectoryOnly {
+	if strings.TrimSpace(strings.TrimPrefix(validation.stdout, workingDirectoryOnly)) == "" {
 		t.Fatalf("test2 stdout = %q, want reported validation output", validation.stdout)
 	}
 	nilExpectedTypes := runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "nil-expected-types"))
@@ -166,10 +199,25 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		t.Fatalf("nil expected-types result = code %d, stderr %q, want validation result", nilExpectedTypes.exitCode, nilExpectedTypes.stderr)
 	}
 
-	gotBodies := requests.joinedBodies()
-	for _, want := range []string{`"name":"alpha"`, `"id":7`} {
-		if !strings.Contains(gotBodies, want) {
-			t.Fatalf("HTTP request bodies = %q, want interpolated fragment %q", gotBodies, want)
+	wantRequests := []observedRequest{
+		{
+			method:   http.MethodPost,
+			path:     "/api/items",
+			rawQuery: "source=integration",
+			headers: http.Header{
+				"Content-Type": []string{"application/json"},
+				"X-Root":       []string{"inherited"},
+				"X-Step":       []string{"local"},
+			},
+			body: `{"name":"alpha"}`,
+		},
+		{method: http.MethodPost, path: "/api/items/captured", body: `{"id":7}`},
+		{method: http.MethodHead, path: "/api/head"},
+		{method: http.MethodGet, path: "/child-api/inherited"},
+	}
+	for _, want := range wantRequests {
+		if !requests.contains(want) {
+			t.Fatalf("HTTP requests do not contain method %s path %s query %q headers %v body %q", want.method, want.path, want.rawQuery, want.headers, want.body)
 		}
 	}
 
