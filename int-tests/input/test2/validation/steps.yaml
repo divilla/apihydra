@@ -11,3 +11,5 @@ spec:
       response:
         expected_status: 201
         expected_body: '{"id":9,"ok":true}'
+        expected_types:
+          .id: [string]

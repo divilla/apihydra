@@ -1,0 +1,9 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        method: GET
+      response:
+        expected_status: 200
+        expected_body: '{"id":9,"ok":true}'

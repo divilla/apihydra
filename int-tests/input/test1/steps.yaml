@@ -11,16 +11,27 @@ spec:
       request:
         method: POST
         path: /items
+        headers:
+          X-Step: local
+        query: source=integration
         body: '{"name":"$name"}'
       response:
         expected_status: 200
         expected_body: '{"id":$expected_id,"ok":true}'
+        expected_types:
+          .id: [number]
+          .ok: [boolean]
         capture:
           item_id: .id
+      debug: true
     - request:
         method: POST
         path: /items/captured
         body: '{"id":${item_id}}'
       response:
-        expected_status: 200
         expected_body: '{"id":7,"ok":true}'
+    - request:
+        method: HEAD
+        path: /head
+      response:
+        expected_status: 200

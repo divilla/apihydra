@@ -1,0 +1,8 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        method: GET
+      response:
+        expected_body: not-json

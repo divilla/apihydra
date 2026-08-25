@@ -33,14 +33,18 @@ YAML remains static and unchanged.
   nested suite exercising variables, both placeholder forms,
   request/expected-body interpolation, inheritance, HTTP, response validation,
   and capture; `int-tests/input/test2/` contains nonfatal status and body
-  validation mismatches.
+  validation mismatches; and `int-tests/input/scenarios/` contains auxiliary
+  failure and edge-case suites that must not affect either top-level fixture.
 - Build output is temporary. The harness builds `./cmd/cli` with Go coverage
   instrumentation over `apih/...`, runs the scenarios with `GOCOVERDIR`, and
   removes artifacts through the test temporary directory lifecycle.
 - Coverage means aggregate statement coverage of production packages linked
   into the real CLI binary and executed only by these black-box scenarios.
   Skeleton and integration-harness statements are not part of the denominator.
-  The test fails when that total is below 90%.
+  The test fails below 90% on Linux, 89% on other Unix systems, or 86% on
+  non-Unix systems; the lower platform baselines account only for production
+  error branches requiring Unix shell/filesystem facilities or Linux PTY and
+  inotify facilities.
 - Until `cmd/cli` is created by guide `011`, the tagged suite skips with an
   explicit prerequisite message. Once that path exists, build, scenario, and
   coverage failures are hard failures rather than skips.
@@ -65,11 +69,10 @@ a fatal diagnostic.
    invalid-path diagnostic on stderr, and does not emit working-directory
    output; selecting a YAML file exercises the same contract.
 5. Coverage data from all CLI subprocesses is merged and total linked
-   production statement coverage is at least 90%; missing or malformed coverage
-   data fails the suite.
-6. The suite uses only the static trees under `int-tests/input/test1` and
-   `int-tests/input/test2`, temporary copies, and a loopback HTTP server; it
-   needs no remote service.
+   production statement coverage meets the platform baseline specified above;
+   missing or malformed coverage data fails the suite.
+6. The suite uses only the static trees under `int-tests/input`, temporary
+   copies, and a loopback HTTP server; it needs no remote service.
 7. An unavailable loopback server produces a fatal nonzero process result and
    stderr diagnostic, with its coverage merged into the same profile.
 8. `make integration-test`, `go test ./...`, `go test -race ./...`, and

@@ -1,0 +1,6 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        body: '{"missing":$unknown,"also":$other}'

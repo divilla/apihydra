@@ -1,0 +1,10 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        method: GET
+        path: /large
+      response:
+        expected_body: '{}'
+      debug: true

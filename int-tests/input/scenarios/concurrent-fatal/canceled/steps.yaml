@@ -1,0 +1,7 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        method: GET
+        path: /hang

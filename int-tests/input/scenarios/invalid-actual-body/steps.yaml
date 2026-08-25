@@ -1,0 +1,9 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        method: GET
+        path: /invalid-json
+      response:
+        expected_body: '{}'

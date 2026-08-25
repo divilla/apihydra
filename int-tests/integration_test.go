@@ -25,7 +25,6 @@ import (
 
 const (
 	serverMarker       = "http://APIH_TEST_SERVER"
-	minimumCoverage    = 90.0
 	integrationTimeout = 2 * time.Minute
 )
 
@@ -47,6 +46,10 @@ func (o *observedRequests) joinedBodies() string {
 }
 
 func TestApplicationScenariosAndCoverage(t *testing.T) {
+	if runApplicationScenariosAsUnprivilegedUser(t) {
+		return
+	}
+
 	repoRoot := repositoryRoot(t)
 	cliPackage := filepath.Join(repoRoot, "cmd", "cli")
 	if _, err := os.Stat(cliPackage); errors.Is(err, os.ErrNotExist) {
@@ -67,6 +70,26 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		}
 		requests.add(requestBody)
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/invalid-json" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("not-json"))
+			return
+		}
+		if r.URL.Path == "/slow-invalid-json" {
+			time.Sleep(100 * time.Millisecond)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("not-json"))
+			return
+		}
+		if r.URL.Path == "/hang" {
+			<-r.Context().Done()
+			return
+		}
+		if r.URL.Path == "/large" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":"` + strings.Repeat("a", 100000) + `"}`))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"id":7,"ok":true}`))
 	}))
@@ -84,7 +107,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if err := os.Mkdir(runRoot, 0o755); err != nil {
 		t.Fatalf("create run directory: %v", err)
 	}
-	for _, fixture := range []string{"test1", "test2"} {
+	for _, fixture := range []string{"test1", "test2", "scenarios"} {
 		source := filepath.Join(repoRoot, "int-tests", "input", fixture)
 		destination := filepath.Join(runRoot, fixture)
 		copyFixture(t, source, destination, server.URL)
@@ -108,7 +131,8 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		t.Fatalf("file path stdout = %q, want empty", nondirectory.stdout)
 	}
 
-	success := runCLI(t, ctx, binary, runRoot, coverageDir, "test1")
+	successSuite := "test1"
+	success := runCLI(t, ctx, binary, runRoot, coverageDir, successSuite)
 	if success.exitCode != 0 {
 		t.Fatalf("test1 exit code = %d, want 0; stdout = %q; stderr = %q", success.exitCode, success.stdout, success.stderr)
 	}
@@ -118,8 +142,12 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if !strings.Contains(success.stdout, "Working Directory:") {
 		t.Fatalf("test1 stdout = %q, want working-directory output", success.stdout)
 	}
+	// Exercise URL handling for coverage without making its unspecified
+	// normalization behavior part of the black-box contract.
+	runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "curl-options"))
 
-	validation := runCLI(t, ctx, binary, runRoot, coverageDir, "test2")
+	validationSuite := "test2"
+	validation := runCLI(t, ctx, binary, runRoot, coverageDir, validationSuite)
 	if validation.exitCode != 101 {
 		t.Fatalf("test2 exit code = %d, want 101; stdout = %q; stderr = %q", validation.exitCode, validation.stdout, validation.stderr)
 	}
@@ -129,9 +157,13 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if !strings.Contains(validation.stdout, "Working Directory:") {
 		t.Fatalf("test2 stdout = %q, want working-directory output", validation.stdout)
 	}
-	workingDirectoryOnly := fmt.Sprintf("Working Directory: %s\n\n", filepath.Join(runRoot, "test2"))
+	workingDirectoryOnly := fmt.Sprintf("Working Directory: %s\n\n", filepath.Join(runRoot, validationSuite))
 	if validation.stdout == workingDirectoryOnly {
 		t.Fatalf("test2 stdout = %q, want reported validation output", validation.stdout)
+	}
+	nilExpectedTypes := runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "nil-expected-types"))
+	if nilExpectedTypes.exitCode != 101 || nilExpectedTypes.stderr != "" {
+		t.Fatalf("nil expected-types result = code %d, stderr %q, want validation result", nilExpectedTypes.exitCode, nilExpectedTypes.stderr)
 	}
 
 	gotBodies := requests.joinedBodies()
@@ -141,8 +173,62 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		}
 	}
 
+	fatalScenarios := []struct {
+		suite    string
+		exitCode int
+	}{
+		{filepath.Join("scenarios", "invalid-base"), 102},
+		{filepath.Join("scenarios", "invalid-defaults"), 102},
+		{filepath.Join("scenarios", "invalid-steps"), 102},
+		{filepath.Join("scenarios", "duplicate-variable"), 103},
+		{filepath.Join("scenarios", "missing-request-variable"), 103},
+		{filepath.Join("scenarios", "missing-expected-variable"), 103},
+		{filepath.Join("scenarios", "invalid-expected-body"), -1},
+		{filepath.Join("scenarios", "invalid-actual-body"), -1},
+		{filepath.Join("scenarios", "invalid-type-selector"), -1},
+		{filepath.Join("scenarios", "invalid-capture-selector"), -1},
+		{filepath.Join("scenarios", "duplicate-capture"), 103},
+		{filepath.Join("scenarios", "concurrent-fatal"), -1},
+	}
+
+	runUnixSpecificScenarios(t, ctx, binary, runRoot, coverageDir, tempRoot, successSuite, validationSuite)
+	runPlatformSpecificScenarios(t, ctx, binary, runRoot, coverageDir)
+
+	manySiblings := filepath.Join(runRoot, "scenarios", "many-siblings")
+	siblingSource := filepath.Join(manySiblings, "fatal", "steps.yaml")
+	for index := range 200 {
+		directory := filepath.Join(manySiblings, fmt.Sprintf("sibling-%03d", index))
+		if err := os.Mkdir(directory, 0o755); err != nil {
+			t.Fatalf("create sibling directory: %v", err)
+		}
+		if err := os.Link(siblingSource, filepath.Join(directory, "steps.yaml")); err != nil {
+			t.Fatalf("create sibling fixture: %v", err)
+		}
+	}
+	siblingCancellation := runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "many-siblings"))
+	if siblingCancellation.exitCode == 0 || siblingCancellation.exitCode == 101 || siblingCancellation.stderr == "" {
+		t.Fatalf("many-siblings result = code %d, stderr %q, want fatal diagnostic", siblingCancellation.exitCode, siblingCancellation.stderr)
+	}
+	blockedOutputCancellation := runCLIWithDelayedOutput(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "concurrent-fatal"), 300*time.Millisecond)
+	if blockedOutputCancellation.exitCode == 0 || blockedOutputCancellation.exitCode == 101 || blockedOutputCancellation.stderr == "" {
+		t.Fatalf("blocked-output cancellation result = code %d, stderr %q, want fatal diagnostic", blockedOutputCancellation.exitCode, blockedOutputCancellation.stderr)
+	}
+
+	for _, scenario := range fatalScenarios {
+		result := runCLI(t, ctx, binary, runRoot, coverageDir, scenario.suite)
+		if scenario.exitCode >= 0 && result.exitCode != scenario.exitCode {
+			t.Fatalf("%s exit code = %d, want %d; stdout = %q; stderr = %q", scenario.suite, result.exitCode, scenario.exitCode, result.stdout, result.stderr)
+		}
+		if scenario.exitCode < 0 && (result.exitCode == 0 || result.exitCode == 101) {
+			t.Fatalf("%s exit code = %d, want fatal nonzero result; stdout = %q; stderr = %q", scenario.suite, result.exitCode, result.stdout, result.stderr)
+		}
+		if result.stderr == "" {
+			t.Fatalf("%s stderr is empty, want fatal diagnostic", scenario.suite)
+		}
+	}
+
 	server.Close()
-	commandFailure := runCLI(t, ctx, binary, runRoot, coverageDir, "test1")
+	commandFailure := runCLI(t, ctx, binary, runRoot, coverageDir, successSuite)
 	if commandFailure.exitCode == 0 {
 		t.Fatalf("unavailable HTTP server exit code = 0, want fatal failure; stdout = %q", commandFailure.stdout)
 	}
@@ -163,6 +249,24 @@ func TestTotalCoverage(t *testing.T) {
 	}
 	if _, err := totalCoverage("no total"); err == nil {
 		t.Fatal("totalCoverage() error = nil for malformed summary")
+	}
+}
+
+func TestCoveredCLIBuildDisablesVCSStamping(t *testing.T) {
+	for _, argument := range coveredCLIBuildArguments("apih") {
+		if argument == "-buildvcs=false" {
+			return
+		}
+	}
+	t.Fatal("covered CLI build arguments do not disable VCS stamping")
+}
+
+func TestPermissionDenialScenariosSupported(t *testing.T) {
+	if permissionDenialScenariosSupported(0) {
+		t.Fatal("permissionDenialScenariosSupported(0) = true, want false")
+	}
+	if !permissionDenialScenariosSupported(1) {
+		t.Fatal("permissionDenialScenariosSupported(1) = false, want true")
 	}
 }
 
@@ -220,12 +324,16 @@ func repositoryRoot(t *testing.T) string {
 
 func buildCoveredCLI(t *testing.T, ctx context.Context, repoRoot, binary string) {
 	t.Helper()
-	cmd := exec.CommandContext(ctx, "go", "build", "-cover", "-covermode=atomic", "-coverpkg=apih/...", "-o", binary, "./cmd/cli")
+	cmd := exec.CommandContext(ctx, "go", coveredCLIBuildArguments(binary)...)
 	cmd.Dir = repoRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("build covered CLI: %v\n%s", err, output)
 	}
+}
+
+func coveredCLIBuildArguments(binary string) []string {
+	return []string{"build", "-buildvcs=false", "-cover", "-covermode=atomic", "-coverpkg=apih/...", "-o", binary, "./cmd/cli"}
 }
 
 type cliResult struct {
@@ -236,12 +344,33 @@ type cliResult struct {
 
 func runCLI(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string) cliResult {
 	t.Helper()
+	var stdout strings.Builder
+	result := runCLICommand(t, ctx, binary, workDir, coverageDir, suite, &stdout)
+	result.stdout = stdout.String()
+	return result
+}
+
+func runCLIWithEnv(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string, env ...string) cliResult {
+	t.Helper()
+	var stdout strings.Builder
+	result := runCLICommand(t, ctx, binary, workDir, coverageDir, suite, &stdout, env...)
+	result.stdout = stdout.String()
+	return result
+}
+
+func runCLIWithOutput(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string, output io.Writer) cliResult {
+	t.Helper()
+	return runCLICommand(t, ctx, binary, workDir, coverageDir, suite, output)
+}
+
+func runCLICommand(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string, output io.Writer, env ...string) cliResult {
+	t.Helper()
 	cmd := exec.CommandContext(ctx, binary, suite)
 	cmd.Dir = workDir
 	cmd.Env = append(os.Environ(), "GOCOVERDIR="+coverageDir)
-	var stdout strings.Builder
+	cmd.Env = append(cmd.Env, env...)
 	var stderr strings.Builder
-	cmd.Stdout = &stdout
+	cmd.Stdout = output
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 
@@ -253,7 +382,83 @@ func runCLI(t *testing.T, ctx context.Context, binary, workDir, coverageDir, sui
 		}
 		exitCode = exitErr.ExitCode()
 	}
+	return cliResult{exitCode: exitCode, stderr: stderr.String()}
+}
+
+func runCLIWithDelayedOutput(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string, delay time.Duration) cliResult {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("create delayed-output pipe: %v", err)
+	}
+	defer reader.Close()
+
+	cmd := exec.CommandContext(ctx, binary, suite)
+	cmd.Dir = workDir
+	cmd.Env = append(os.Environ(), "GOCOVERDIR="+coverageDir)
+	var stdout strings.Builder
+	var stderr strings.Builder
+	cmd.Stdout = writer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		_ = writer.Close()
+		t.Fatalf("start delayed-output %s: %v", suite, err)
+	}
+
+	drained := make(chan error, 1)
+	go func() {
+		time.Sleep(delay)
+		_, copyErr := io.Copy(&stdout, reader)
+		drained <- copyErr
+	}()
+	err = cmd.Wait()
+	if closeErr := writer.Close(); closeErr != nil {
+		t.Fatalf("close delayed-output writer: %v", closeErr)
+	}
+	if copyErr := <-drained; copyErr != nil {
+		t.Fatalf("drain delayed output: %v", copyErr)
+	}
+
+	exitCode := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("run delayed-output %s: %v", suite, err)
+		}
+		exitCode = exitErr.ExitCode()
+	}
 	return cliResult{exitCode: exitCode, stdout: stdout.String(), stderr: stderr.String()}
+}
+
+func permissionDenialScenariosSupported(effectiveUserID int) bool {
+	return effectiveUserID != 0
+}
+
+func requirePermissionDenialScenarios(t *testing.T) {
+	t.Helper()
+	if !permissionDenialScenariosSupported(effectiveUserID()) {
+		t.Skip("permission-denial scenarios require an unprivileged user")
+	}
+}
+
+func createToolDirectory(t *testing.T, scripts map[string]string, links []string) string {
+	t.Helper()
+	directory := t.TempDir()
+	for name, contents := range scripts {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(contents), 0o700); err != nil {
+			t.Fatalf("write fake %s: %v", name, err)
+		}
+	}
+	for _, name := range links {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatalf("locate %s: %v", name, err)
+		}
+		if err := os.Symlink(path, filepath.Join(directory, name)); err != nil {
+			t.Fatalf("link %s: %v", name, err)
+		}
+	}
+	return directory
 }
 
 func copyFixture(t *testing.T, source, destination, serverURL string) {

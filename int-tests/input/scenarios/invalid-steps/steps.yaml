@@ -1,0 +1,6 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - response:
+        expected_status: [200, 201]

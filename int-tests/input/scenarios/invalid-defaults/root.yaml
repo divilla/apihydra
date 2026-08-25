@@ -1,0 +1,4 @@
+app: apihydra
+kind: root
+spec:
+  timeout: invalid

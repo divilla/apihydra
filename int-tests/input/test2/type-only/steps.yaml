@@ -1,0 +1,10 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        method: GET
+      response:
+        expected_body: '{"id":7,"ok":true}'
+        expected_types:
+          .id: [string]

@@ -1,0 +1,4 @@
+app: apihydra
+kind: root
+spec:
+  baseUrl: http://APIH_TEST_SERVER

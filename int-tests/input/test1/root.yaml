@@ -7,5 +7,6 @@ spec:
   basePath: /api
   headers:
     Content-Type: application/json
+    X-Root: inherited
   timeout: 10
   retries: 1
