@@ -581,7 +581,7 @@ esac
 		if got := string(step.Response.ExpectedBody); got != want {
 			t.Errorf("step %d ExpectedBody = %q, want %q", index, got, want)
 		}
-		if step.Response.ActualBody != want || step.Response.ActualStatus != 201 {
+		if string(step.Response.ActualBody) != want || step.Response.ActualStatus != 201 {
 			t.Errorf("step %d actual response = (%d, %q), want (201, %q)", index, step.Response.ActualStatus, step.Response.ActualBody, want)
 		}
 	}

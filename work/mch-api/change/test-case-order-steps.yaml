@@ -1,0 +1,35 @@
+app: apihydra
+kind: steps
+metadata:
+  name: change-test-cases-order
+  labels: [mch-api, change, ordering]
+spec:
+  steps:
+    - request: {path: /project/create, body: '{"name":"apih-change-test-case-order-project"}'}
+      response:
+        expected_status: 201
+        capture: {ctco_project_id: .id}
+    - request: {path: /change/create, body: '{"project_id":$ctco_project_id,"title":"apih-test-case-order-change","def":"Test case ordering def"}'}
+      response:
+        expected_status: 201
+        capture: {ctco_change_id: .id}
+    - request: {path: /test-case/create, body: '{"change_id":$ctco_change_id,"scenario":"zzz first by id"}'}
+      response:
+        expected_status: 201
+        capture: {ctco_first_id: .test_case.id}
+    - request: {path: /test-case/create, body: '{"change_id":$ctco_change_id,"scenario":"aaa second by id"}'}
+      response:
+        expected_status: 201
+        capture: {ctco_second_id: .test_case.id}
+    - request: {path: /test-case/create, body: '{"change_id":$ctco_change_id,"scenario":"mmm third by id"}'}
+      response:
+        expected_status: 201
+        capture: {ctco_third_id: .test_case.id}
+    - request: {path: /change/get, body: '{"id":$ctco_change_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"test_cases":[{"id":$ctco_first_id},{"id":$ctco_second_id},{"id":$ctco_third_id}]}'
+    - request: {path: /change/delete, body: '{"id":$ctco_change_id}'}
+      response: {expected_status: 204}
+    - request: {path: /project/delete, body: '{"id":$ctco_project_id}'}
+      response: {expected_status: 204}

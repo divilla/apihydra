@@ -1,0 +1,312 @@
+app: apihydra
+kind: steps
+metadata:
+  name: test-case-http-integration
+  labels: [mch-api, test-case]
+spec:
+  steps:
+    # TestTestCaseCRUDRecalculatesChangeAndEpicCompleteness
+    - request:
+        path: /project/create
+        body: '{"name":"apih-test-case-crud-project"}'
+      response:
+        expected_status: 201
+        capture:
+          tc_crud_project_id: .id
+    - request:
+        path: /epic/create
+        body: '{"project_id":$tc_crud_project_id,"name":"apih-test-case-crud-epic"}'
+      response:
+        expected_status: 201
+        capture:
+          tc_crud_epic_id: .id
+    - request:
+        path: /change/create
+        body: '{"project_id":$tc_crud_project_id,"title":"apih-test-case-crud-change","def":"Test case def"}'
+      response:
+        expected_status: 201
+        capture:
+          tc_crud_change_id: .id
+        expected_body: '{"completed":0}'
+    - request:
+        path: /change/update-epic
+        body: '{"id":$tc_crud_change_id,"epic_id":$tc_crud_epic_id}'
+      response:
+        expected_status: 200
+    - request:
+        path: /test-case/list
+        body: '{"change_id":$tc_crud_change_id}'
+      response:
+        expected_status: 200
+        expected_body: '[]'
+    - request:
+        path: /test-case/create
+        body: '{"change_id":$tc_crud_change_id,"scenario":"Add test case create endpoint test."}'
+      response:
+        expected_status: 201
+        capture:
+          tc_crud_first_id: .test_case.id
+        expected_body: '{"test_case":{"change_id":$tc_crud_change_id,"scenario":"Add test case create endpoint test.","done":false},"change":{"completed":0}}'
+    - request:
+        path: /test-case/create
+        body: '{"change_id":$tc_crud_change_id,"scenario":"Add test case update endpoint test."}'
+      response:
+        expected_status: 201
+        capture:
+          tc_crud_second_id: .test_case.id
+        expected_body: '{"test_case":{"change_id":$tc_crud_change_id,"scenario":"Add test case update endpoint test.","done":false},"change":{"completed":0}}'
+    - request:
+        path: /test-case/list
+        body: '{"change_id":$tc_crud_change_id}'
+      response:
+        expected_status: 200
+        expected_body: '[{"id":$tc_crud_first_id},{"id":$tc_crud_second_id}]'
+    - request:
+        path: /test-case/update-done
+        body: '{"id":$tc_crud_first_id,"done":true}'
+      response:
+        expected_status: 200
+        expected_body: '{"test_case":{"id":$tc_crud_first_id,"done":true,"version":0},"change":{"id":$tc_crud_change_id,"completed":50},"test_cases":[{"id":$tc_crud_first_id},{"id":$tc_crud_second_id}]}'
+    - request:
+        path: /test-case/update-done
+        body: '{"id":$tc_crud_first_id,"done":true}'
+      response:
+        expected_status: 200
+        expected_body: '{"test_case":{"id":$tc_crud_first_id,"done":true,"version":0}}'
+    - request:
+        path: /epic/get
+        body: '{"id":$tc_crud_epic_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"done_tc":1,"total_tc":2,"completed":50}'
+    - request:
+        path: /test-case/update-done
+        body: '{"id":$tc_crud_second_id,"done":true}'
+      response:
+        expected_status: 200
+        expected_body: '{"test_case":{"id":$tc_crud_second_id,"done":true,"version":0},"change":{"completed":100}}'
+    - request:
+        path: /test-case/update
+        body: '{"id":$tc_crud_second_id,"scenario":"Updated test case scenario."}'
+      response:
+        expected_status: 200
+        expected_body: '{"test_case":{"id":$tc_crud_second_id,"scenario":"Updated test case scenario.","version":1}}'
+    - request:
+        path: /test-case/update
+        body: '{"id":$tc_crud_second_id,"scenario":"Updated test case scenario again."}'
+      response:
+        expected_status: 200
+        expected_body: '{"test_case":{"id":$tc_crud_second_id,"scenario":"Updated test case scenario again.","version":2}}'
+    - request:
+        path: /test-case/update
+        body: '{"id":$tc_crud_second_id,"scenario":"Updated test case scenario again."}'
+      response:
+        expected_status: 200
+        expected_body: '{"test_case":{"id":$tc_crud_second_id,"scenario":"Updated test case scenario again.","version":2}}'
+    - request:
+        path: /test-case/update-done
+        body: '{"id":$tc_crud_second_id,"done":false}'
+      response:
+        expected_status: 200
+        expected_body: '{"test_case":{"id":$tc_crud_second_id,"done":false,"version":2},"change":{"completed":50}}'
+    - request:
+        path: /change/create
+        body: '{"project_id":$tc_crud_project_id,"title":"apih-test-case-new-change","def":"Test case def"}'
+      response:
+        expected_status: 201
+        capture:
+          tc_crud_new_change_id: .id
+    - request:
+        path: /change/update-epic
+        body: '{"id":$tc_crud_new_change_id,"epic_id":$tc_crud_epic_id}'
+      response:
+        expected_status: 200
+    - request:
+        path: /test-case/update-change
+        body: '{"id":$tc_crud_second_id,"change_id":$tc_crud_new_change_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"test_case":{"id":$tc_crud_second_id,"change_id":$tc_crud_new_change_id,"version":2},"change":{"id":$tc_crud_new_change_id}}'
+    - request:
+        path: /test-case/update-change
+        body: '{"id":$tc_crud_second_id,"change_id":$tc_crud_new_change_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"test_case":{"id":$tc_crud_second_id,"change_id":$tc_crud_new_change_id,"version":2}}'
+    - request:
+        path: /test-case/delete
+        body: '{"id":$tc_crud_first_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"id":$tc_crud_change_id,"completed":0},"test_cases":[]}'
+    - request:
+        path: /test-case/delete
+        body: '{"id":$tc_crud_first_id}'
+      response:
+        expected_status: 404
+    - request:
+        path: /change/delete
+        body: '{"id":$tc_crud_change_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /change/delete
+        body: '{"id":$tc_crud_new_change_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /epic/delete
+        body: '{"id":$tc_crud_epic_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /project/delete
+        body: '{"id":$tc_crud_project_id}'
+      response:
+        expected_status: 204
+
+    # TestTestCaseRejectsInvalidInputAndMissingRows
+    - request:
+        path: /test-case/list
+        body: '{}'
+      response:
+        expected_status: 400
+    - request:
+        path: /test-case/list
+        body: '{"change_id":999999999}'
+      response:
+        expected_status: 404
+    - request:
+        path: /test-case/create
+        body: '{"change_id":-1,"scenario":"orphan test case"}'
+      response:
+        expected_status: 400
+    - request:
+        path: /test-case/create
+        body: '{"change_id":-1,"scenario":"   "}'
+      response:
+        expected_status: 400
+    - request:
+        path: /test-case/create
+        body: '{"change_id":999999999,"scenario":"missing change test case"}'
+      response:
+        expected_status: 404
+    - request:
+        path: /test-case/update
+        body: '{"id":999999999,"scenario":"missing test case"}'
+      response:
+        expected_status: 404
+    - request:
+        path: /test-case/update
+        body: '{"id":999999999,"scenario":"   "}'
+      response:
+        expected_status: 400
+    - request:
+        path: /test-case/update-done
+        body: '{}'
+      response:
+        expected_status: 400
+    - request:
+        path: /test-case/update-done
+        body: '{"id":999999999,"done":true}'
+      response:
+        expected_status: 404
+    - request:
+        path: /test-case/update-change
+        body: '{"id":999999999}'
+      response:
+        expected_status: 400
+    - request:
+        path: /test-case/update-change
+        body: '{"id":999999999,"change_id":999999999}'
+      response:
+        expected_status: 404
+    - request:
+        path: /test-case/delete
+        body: '{}'
+      response:
+        expected_status: 400
+    - request:
+        path: /test-case/delete
+        body: '{"id":999999999}'
+      response:
+        expected_status: 404
+
+    # TestTestCaseDeleteLastItemReturnsZeroCompleted
+    - request:
+        path: /project/create
+        body: '{"name":"apih-test-case-delete-last-project"}'
+      response:
+        expected_status: 201
+        capture:
+          tc_last_project_id: .id
+    - request:
+        path: /change/create
+        body: '{"project_id":$tc_last_project_id,"title":"apih-test-case-delete-last-change","def":"Test case def"}'
+      response:
+        expected_status: 201
+        capture:
+          tc_last_change_id: .id
+    - request:
+        path: /test-case/create
+        body: '{"change_id":$tc_last_change_id,"scenario":"Delete the final test case transactionally."}'
+      response:
+        expected_status: 201
+        capture:
+          tc_last_id: .test_case.id
+    - request:
+        path: /test-case/delete
+        body: '{"id":$tc_last_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"id":$tc_last_change_id,"completed":0,"done_tc":0,"total_tc":0},"test_cases":[]}'
+    - request:
+        path: /change/delete
+        body: '{"id":$tc_last_change_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /project/delete
+        body: '{"id":$tc_last_project_id}'
+      response:
+        expected_status: 204
+
+    # TestTestCaseDoneUpdateDoesNotIncrementVersion
+    - request:
+        path: /project/create
+        body: '{"name":"apih-test-case-version-project"}'
+      response:
+        expected_status: 201
+        capture:
+          tc_version_project_id: .id
+    - request:
+        path: /change/create
+        body: '{"project_id":$tc_version_project_id,"title":"apih-test-case-version-change","def":"Test case def"}'
+      response:
+        expected_status: 201
+        capture:
+          tc_version_change_id: .id
+    - request:
+        path: /test-case/create
+        body: '{"change_id":$tc_version_change_id,"scenario":"Done changes preserve the version."}'
+      response:
+        expected_status: 201
+        capture:
+          tc_version_id: .test_case.id
+          tc_version_initial: .test_case.version
+    - request:
+        path: /test-case/update-done
+        body: '{"id":$tc_version_id,"done":true}'
+      response:
+        expected_status: 200
+        expected_body: '{"test_case":{"id":$tc_version_id,"version":$tc_version_initial,"done":true}}'
+    - request:
+        path: /change/delete
+        body: '{"id":$tc_version_change_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /project/delete
+        body: '{"id":$tc_version_project_id}'
+      response:
+        expected_status: 204

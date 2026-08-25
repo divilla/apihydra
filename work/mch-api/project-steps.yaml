@@ -1,0 +1,143 @@
+app: apihydra
+kind: steps
+metadata:
+  name: project-http-integration
+  labels: [mch-api, project]
+spec:
+  steps:
+    # TestProjectCRUD
+    - request:
+        path: /project/create
+        body: '{"name":"apih-project-crud"}'
+      response:
+        expected_status: 201
+        capture:
+          project_crud_id: .id
+          project_crud_created: .created
+          project_crud_modified: .modified
+        expected_types:
+          .id: [int]
+          .created: [string]
+          .modified: [string]
+        expected_body: '{"name":"apih-project-crud","last_ref":0,"change_count":0}'
+    - request:
+        path: /project/list
+        body: '{"last_ref":999}'
+      response:
+        expected_status: 200
+        expected_types:
+          .: [array]
+          .[0].id: [int]
+    - request:
+        path: /project/get
+        body: '{"id":$project_crud_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"id":$project_crud_id,"name":"apih-project-crud","last_ref":0,"created":$project_crud_created,"modified":$project_crud_modified,"change_count":0}'
+    - request:
+        path: /project/update
+        body: '{"id":$project_crud_id,"name":"apih-project-crud-updated"}'
+      response:
+        expected_status: 200
+        expected_types:
+          .modified: [string]
+        expected_body: '{"id":$project_crud_id,"name":"apih-project-crud-updated"}'
+    - request:
+        path: /project/delete
+        body: '{"id":$project_crud_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /project/get
+        body: '{"id":$project_crud_id}'
+      response:
+        expected_status: 404
+
+    # TestProjectDeleteRejectsProjectsWithChanges
+    - request:
+        path: /project/create
+        body: '{"name":"apih-project-delete-conflict"}'
+      response:
+        expected_status: 201
+        capture:
+          project_conflict_id: .id
+    - request:
+        path: /change/create
+        body: '{"project_id":$project_conflict_id,"title":"apih-project-delete-change","def":"Project delete conflict def"}'
+      response:
+        expected_status: 201
+        capture:
+          project_conflict_change_id: .id
+    - request:
+        path: /test-case/create
+        body: '{"change_id":$project_conflict_change_id,"scenario":"Project delete keeps this test case."}'
+      response:
+        expected_status: 201
+        capture:
+          project_conflict_test_case_id: .test_case.id
+        expected_body: '{"test_case":{"change_id":$project_conflict_change_id,"scenario":"Project delete keeps this test case."}}'
+    - request:
+        path: /project/delete
+        body: '{"id":$project_conflict_id}'
+      response:
+        expected_status: 409
+    - request:
+        path: /project/get
+        body: '{"id":$project_conflict_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"id":$project_conflict_id}'
+    - request:
+        path: /change/get
+        body: '{"id":$project_conflict_change_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"id":$project_conflict_change_id}}'
+    - request:
+        path: /test-case/list
+        body: '{"change_id":$project_conflict_change_id}'
+      response:
+        expected_status: 200
+        expected_body: '[{"id":$project_conflict_test_case_id,"change_id":$project_conflict_change_id}]'
+    - request:
+        path: /change/delete
+        body: '{"id":$project_conflict_change_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /project/delete
+        body: '{"id":$project_conflict_id}'
+      response:
+        expected_status: 204
+
+    # TestProjectRejectsInvalidInputAndMissingRows
+    - request:
+        path: /project/create
+        body: '{"name":"   "}'
+      response:
+        expected_status: 400
+    - request:
+        path: /project/get
+        body: '{"id":999999999}'
+      response:
+        expected_status: 404
+    - request:
+        path: /project/update
+        body: '{"id":999999999,"name":"missing project"}'
+      response:
+        expected_status: 404
+    - request:
+        path: /project/update
+        body: '{"id":999999999,"name":"   "}'
+      response:
+        expected_status: 400
+    - request:
+        path: /project/delete
+        body: '{"id":999999999}'
+      response:
+        expected_status: 404
+    - request:
+        path: /project/delete
+        body: '{}'
+      response:
+        expected_status: 400

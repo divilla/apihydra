@@ -1,0 +1,80 @@
+app: apihydra
+kind: steps
+metadata:
+  name: malformed-json-http-integration
+  labels: [mch-api, malformed-json]
+spec:
+  steps:
+    # Project request binding
+    - request: {path: /project/get, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /project/create, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /project/update, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /project/delete, body: '{'}
+      response: {expected_status: 400}
+
+    # Epic request binding
+    - request: {path: /epic/list, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /epic/get, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /epic/create, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /epic/update, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /epic/delete, body: '{'}
+      response: {expected_status: 400}
+
+    # Change request binding
+    - request: {path: /change/list, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/rendered-artifacts, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/create, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/assign-flow, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/start-run, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-run, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/reset-claim, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-epic, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-phase, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-open, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-change-types, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-title, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-def, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-spec, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-pr, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-pr-url, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /change/delete, body: '{'}
+      response: {expected_status: 400}
+
+    # Test-case request binding
+    - request: {path: /test-case/list, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /test-case/create, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /test-case/update, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /test-case/update-done, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /test-case/update-change, body: '{'}
+      response: {expected_status: 400}
+    - request: {path: /test-case/delete, body: '{'}
+      response: {expected_status: 400}

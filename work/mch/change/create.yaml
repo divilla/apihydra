@@ -5,15 +5,19 @@ metadata:
   labels: [create, change]
 spec:
   steps:
-    - request:
+    - vars:
+        change_project_id: 1
+      request:
         path: /change/create
         body: |
           {
-            "project_id": 1,
+            "project_id": $change_project_id,
             "title": "API tester Title",
             "def": "API tester Def"
           }
       response:
+        capture:
+          change_id: .id
         expected_status: 201
         expected_types:
           .version: [int, zero]
@@ -25,7 +29,29 @@ spec:
             "change_types": [],
             "version": 0
           }
-#      debug: true
+
+    - request:
+        path: /change/get
+        body: |
+          {
+            "id": $change_id
+          }
+      response:
+        expected_status: 200
+        expected_types:
+          .change.version: [int, zero]
+          .change.change_phase: [string]
+        expected_body: |
+          {
+            "change": {
+              "id": $change_id,
+              "agent_edit": false,
+              "change_phase": "backlog",
+              "change_types": [],
+              "version": 0
+            }
+          }
+      debug: true
 
     - request:
         path: /change/create

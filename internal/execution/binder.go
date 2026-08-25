@@ -85,7 +85,7 @@ func (b *Binder) CaptureResponseVariables(
 	slices.Sort(names)
 
 	for _, name := range names {
-		value, exitCode, err := runner.JQExtract(ctx, string(step.Response.Capture[name]), step.Response.ActualBody)
+		value, exitCode, err := runner.JQExtract(ctx, string(step.Response.Capture[name]), string(step.Response.ActualBody))
 		if err != nil {
 			return exitCode, err
 		}

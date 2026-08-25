@@ -1,0 +1,175 @@
+app: apihydra
+kind: steps
+metadata:
+  name: change-crud-and-options
+  labels: [mch-api, change, crud]
+spec:
+  steps:
+    - request: {path: /project/create, body: '{"name":"apih-change-crud-project"}'}
+      response:
+        expected_status: 201
+        capture: {cco_project_id: .id}
+    - request: {path: /epic/create, body: '{"project_id":$cco_project_id,"name":"apih-change-crud-epic"}'}
+      response:
+        expected_status: 201
+        capture: {cco_epic_id: .id}
+    - request: {path: /options/change-phases-list, body: '{}'}
+      response:
+        expected_status: 200
+        expected_types:
+          .: [array]
+          .[0].slug: [string]
+          .[0].color: [string]
+    - request: {path: /options/change-types-list, body: '{}'}
+      response:
+        expected_status: 200
+        expected_types:
+          .: [array]
+          .[0].slug: [string]
+    - request: {path: /change/create, body: '{"project_id":$cco_project_id,"title":"apih-change-crud","def":"Created by change API integration test."}'}
+      response:
+        expected_status: 201
+        capture:
+          cco_change_id: .id
+          cco_ref_uuid: .ref_uuid
+        expected_types:
+          .id: [int]
+          .ref_uuid: [string]
+        expected_body: '{"ref":null,"slug":null,"title":"apih-change-crud","def":"Created by change API integration test.","change_phase":"backlog","spec":"","spec_html":"","pr":"","pr_html":"","pr_url":"","agent_edit":false,"open":true,"change_types":[],"epic_id":null}'
+    - request: {path: /change/update-idea, body: '{"id":$cco_change_id,"idea":"legacy definition","agent_edit":false}'}
+      response: {expected_status: 404}
+    - request: {path: /change/create, body: '{"project_id":$cco_project_id,"title":"legacy field","idea":"legacy definition"}'}
+      response: {expected_status: 400}
+    - request: {path: /change/list, body: '{"project_id":$cco_project_id}'}
+      response:
+        expected_status: 200
+        expected_body: '[{"id":$cco_change_id,"ref_uuid":$cco_ref_uuid,"ref":null,"slug":null,"title":"apih-change-crud","epic_id":null,"epic_name":null}]'
+    - request: {path: /change/get, body: '{"id":$cco_change_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"id":$cco_change_id,"ref_uuid":$cco_ref_uuid,"ref":null,"slug":null,"def":"Created by change API integration test.","spec_html":""}}'
+    - request: {path: /change/assign-flow, body: '{"id":$cco_change_id}'}
+      response:
+        expected_status: 200
+        capture:
+          cco_first_ref: .ref
+          cco_first_slug: .slug
+          cco_flow_stages: .flow_stages
+          cco_flow_modes: .flow_stage_modes
+        expected_types:
+          .ref: [int]
+          .slug: [string]
+          .flow_stages: [array]
+          .flow_stage_modes: [array]
+        expected_body: '{"def":"Created by change API integration test."}'
+    - request: {path: /project/get, body: '{"id":$cco_project_id}'}
+      response:
+        expected_status: 200
+        capture: {cco_last_ref: .last_ref}
+    - request: {path: /change/assign-flow, body: '{"id":$cco_change_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"ref":$cco_first_ref,"slug":$cco_first_slug,"flow_stages":$cco_flow_stages,"flow_stage_modes":$cco_flow_modes}'
+    - request: {path: /project/get, body: '{"id":$cco_project_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"last_ref":$cco_last_ref}'
+    - request: {path: /change/rendered-artifacts, body: '{"ids":[$cco_change_id]}'}
+      response:
+        expected_status: 200
+        expected_body: '{"artifacts":[{"id":$cco_change_id,"spec_html":""}]}'
+    - request: {path: /change/update-title, body: '{"id":$cco_change_id,"title":"perf(json): pooled-buffer JSON deserialize"}'}
+      response:
+        expected_status: 200
+        expected_body: '{"title":"perf(json): pooled-buffer JSON deserialize","ref":$cco_first_ref,"slug":$cco_first_slug}'
+    - request: {path: /change/assign-flow, body: '{"id":$cco_change_id}'}
+      response:
+        expected_status: 200
+        capture: {cco_refreshed_slug: .slug}
+        expected_body: '{"ref":$cco_first_ref}'
+    - request: {path: /project/get, body: '{"id":$cco_project_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"last_ref":$cco_last_ref}'
+    - request: {path: /change/reference, body: '{"id":$cco_change_id}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-def, body: '{"id":$cco_change_id,"def":"Focused definition update.","agent_edit":false}'}
+      response:
+        expected_status: 200
+        expected_body: '{"def":"Focused definition update.","agent_edit":false}'
+    - request: {path: /change/update-def, body: '{"id":$cco_change_id,"def":"Agent rewritten definition.","agent_edit":true}'}
+      response:
+        expected_status: 200
+        expected_body: '{"def":"Agent rewritten definition.","agent_edit":true}'
+    - request: {path: /change/update-spec, body: '{"id":$cco_change_id,"spec":"Focused spec update.","agent_edit":false}'}
+      response:
+        expected_status: 200
+        expected_body: '{"spec":"Focused spec update.","spec_html":"<p>Focused spec update.</p>\n"}'
+    - request: {path: /change/update-spec, body: '{"id":$cco_change_id,"spec":null,"agent_edit":false}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-spec, body: '{"id":$cco_change_id,"spec":"","agent_edit":false}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-pr, body: '{"id":$cco_change_id,"pr":"Focused pull request body update.","agent_edit":true}'}
+      response:
+        expected_status: 200
+        expected_body: '{"pr":"Focused pull request body update.","agent_edit":true}'
+    - request: {path: /change/update-pr, body: '{"id":$cco_change_id,"pr":"","agent_edit":true}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-pr-url, body: '{"id":$cco_change_id,"pr_url":"https://example.test/project-manager/pull/1"}'}
+      response:
+        expected_status: 200
+        expected_body: '{"pr_url":"https://example.test/project-manager/pull/1"}'
+    - request: {path: /change/update-pr-url, body: '{"id":$cco_change_id,"pr_url":null}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-pr-url, body: '{"id":$cco_change_id,"pr_url":""}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-pr-url, body: '{"id":$cco_change_id,"pr_url":"javascript:alert(1)"}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":$cco_change_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"pr_url":"https://example.test/project-manager/pull/1"}}'
+    - request: {path: /change/update-agent-edit, body: '{"id":$cco_change_id,"agent_edit":true}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-change-types, body: '{"id":$cco_change_id,"change_types":[]}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change_types":[]}'
+    - request: {path: /change/update-change-types, body: '{"id":$cco_change_id,"change_types":["docs","missing-type"]}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change_types":["docs"]}'
+    - request: {path: /change/update-change-types, body: '{"id":$cco_change_id,"change_types":["missing-type"]}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change_types":[]}'
+    - request: {path: /change/update-phase, body: '{"id":$cco_change_id,"change_phase":"review"}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change_phase":"review"}'
+    - request: {path: /change/update-open, body: '{"id":$cco_change_id,"open":false}'}
+      response:
+        expected_status: 200
+        expected_body: '{"open":false}'
+    - request: {path: /change/update-epic, body: '{"id":$cco_change_id,"epic_id":$cco_epic_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"epic_id":$cco_epic_id}'
+    - request: {path: /change/update-epic, body: '{"id":$cco_change_id,"epic_id":null}'}
+      response:
+        expected_status: 200
+        expected_body: '{"epic_id":null}'
+    - request: {path: /test-case/create, body: '{"change_id":$cco_change_id,"scenario":"Change delete removes this test case."}'}
+      response:
+        expected_status: 201
+        capture: {cco_test_case_id: .test_case.id}
+    - request: {path: /change/delete, body: '{"id":$cco_change_id}'}
+      response: {expected_status: 204}
+    - request: {path: /change/get, body: '{"id":$cco_change_id}'}
+      response: {expected_status: 404}
+    - request: {path: /test-case/delete, body: '{"id":$cco_test_case_id}'}
+      response: {expected_status: 404}
+    - request: {path: /epic/delete, body: '{"id":$cco_epic_id}'}
+      response: {expected_status: 204}
+    - request: {path: /project/delete, body: '{"id":$cco_project_id}'}
+      response: {expected_status: 204}

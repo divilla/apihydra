@@ -182,7 +182,7 @@ esac
 			t.Fatalf("store.Get(%q) = (%q, %v), want (%q, nil)", name, got, err, want)
 		}
 	}
-	if got := readBinderFile(t, inputPath); got != step.Response.ActualBody {
+	if got := readBinderFile(t, inputPath); got != string(step.Response.ActualBody) {
 		t.Fatalf("jq input = %q, want %q", got, step.Response.ActualBody)
 	}
 	if got := strings.Fields(readBinderFile(t, selectorsPath)); !reflect.DeepEqual(got, []string{".count", ".title"}) {

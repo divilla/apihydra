@@ -1,0 +1,56 @@
+app: apihydra
+kind: steps
+metadata:
+  name: change-boolean-fields
+  labels: [mch-api, change, validation]
+spec:
+  steps:
+    - request: {path: /project/create, body: '{"name":"apih-change-boolean-project"}'}
+      response:
+        expected_status: 201
+        capture: {cbf_project_id: .id}
+    - request: {path: /change/create, body: '{"project_id":$cbf_project_id,"title":"apih-boolean-change","def":"Boolean update definition"}'}
+      response:
+        expected_status: 201
+        capture: {cbf_change_id: .id}
+        expected_body: '{"agent_edit":false,"open":true}'
+    - request: {path: /change/update-open, body: '{"id":$cbf_change_id}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-open, body: '{"id":$cbf_change_id,"closed":true}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":$cbf_change_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"open":true}}'
+    - request: {path: /change/update-agent-edit, body: '{"id":$cbf_change_id}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-def-agent-edit, body: '{"id":$cbf_change_id,"def":" ","agent_edit":true}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-def, body: '{"id":$cbf_change_id,"def":"Definition without provenance"}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-def, body: '{"id":$cbf_change_id,"def":"Definition without provenance","agent_edit":null}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-spec, body: '{"id":$cbf_change_id,"spec":"Spec without provenance"}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-spec, body: '{"id":$cbf_change_id,"spec":"Spec without provenance","agent_edit":null}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-pr, body: '{"id":$cbf_change_id,"pr":"PR without provenance"}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-pr, body: '{"id":$cbf_change_id,"pr":"PR without provenance","agent_edit":null}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":$cbf_change_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"def":"Boolean update definition","spec":"","pr":"","agent_edit":false}}'
+    - request: {path: /change/update-def, body: '{"id":$cbf_change_id,"def":"Agent-edited def.","agent_edit":true}'}
+      response:
+        expected_status: 200
+        expected_body: '{"agent_edit":true}'
+    - request: {path: /change/get, body: '{"id":$cbf_change_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"agent_edit":true}}'
+    - request: {path: /change/delete, body: '{"id":$cbf_change_id}'}
+      response: {expected_status: 204}
+    - request: {path: /project/delete, body: '{"id":$cbf_project_id}'}
+      response: {expected_status: 204}

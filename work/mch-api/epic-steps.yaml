@@ -1,0 +1,224 @@
+app: apihydra
+kind: steps
+metadata:
+  name: epic-http-integration
+  labels: [mch-api, epic]
+spec:
+  steps:
+    # TestEpicCRUDAndProjectScopedList
+    - request:
+        path: /project/create
+        body: '{"name":"apih-epic-project-main"}'
+      response:
+        expected_status: 201
+        capture:
+          epic_main_project_id: .id
+    - request:
+        path: /project/create
+        body: '{"name":"apih-epic-project-other"}'
+      response:
+        expected_status: 201
+        capture:
+          epic_other_project_id: .id
+    - request:
+        path: /epic/create
+        body: '{"project_id":$epic_main_project_id,"name":" apih-epic-crud "}'
+      response:
+        expected_status: 201
+        capture:
+          epic_crud_id: .id
+          epic_crud_created: .created
+          epic_crud_modified: .modified
+        expected_types:
+          .id: [int]
+          .created: [string]
+          .modified: [string]
+        expected_body: '{"project_id":$epic_main_project_id,"name":"apih-epic-crud","version":0,"done_tc":0,"total_tc":0,"completed":0,"change_count":0}'
+    - request:
+        path: /epic/create
+        body: '{"project_id":$epic_other_project_id,"name":"apih-epic-other"}'
+      response:
+        expected_status: 201
+        capture:
+          epic_other_id: .id
+    - request:
+        path: /epic/list
+        body: '{"project_id":$epic_main_project_id}'
+      response:
+        expected_status: 200
+        expected_body: '[{"id":$epic_crud_id,"project_id":$epic_main_project_id}]'
+    - request:
+        path: /epic/list
+        body: '{"project_id":$epic_other_project_id}'
+      response:
+        expected_status: 200
+        expected_body: '[{"id":$epic_other_id,"project_id":$epic_other_project_id}]'
+    - request:
+        path: /epic/get
+        body: '{"id":$epic_crud_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"id":$epic_crud_id,"project_id":$epic_main_project_id,"name":"apih-epic-crud","version":0,"created":$epic_crud_created,"modified":$epic_crud_modified}'
+    - request:
+        path: /epic/update
+        body: '{"id":$epic_crud_id,"name":" apih-epic-crud-updated "}'
+      response:
+        expected_status: 200
+        expected_body: '{"id":$epic_crud_id,"project_id":$epic_main_project_id,"name":"apih-epic-crud-updated","version":1,"change_count":0}'
+    - request:
+        path: /epic/update
+        body: '{"id":$epic_crud_id,"name":" apih-epic-crud-updated-again "}'
+      response:
+        expected_status: 200
+        expected_body: '{"name":"apih-epic-crud-updated-again","version":2}'
+    - request:
+        path: /epic/update
+        body: '{"id":$epic_crud_id,"name":"apih-epic-crud-updated-again"}'
+      response:
+        expected_status: 200
+        expected_body: '{"name":"apih-epic-crud-updated-again","version":2}'
+    - request:
+        path: /epic/delete
+        body: '{"id":$epic_crud_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /epic/get
+        body: '{"id":$epic_crud_id}'
+      response:
+        expected_status: 404
+    - request:
+        path: /epic/delete
+        body: '{"id":$epic_other_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /project/delete
+        body: '{"id":$epic_main_project_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /project/delete
+        body: '{"id":$epic_other_project_id}'
+      response:
+        expected_status: 204
+
+    # TestEpicDeleteRejectsEpicsWithChanges
+    - request:
+        path: /project/create
+        body: '{"name":"apih-epic-conflict-project"}'
+      response:
+        expected_status: 201
+        capture:
+          epic_conflict_project_id: .id
+    - request:
+        path: /epic/create
+        body: '{"project_id":$epic_conflict_project_id,"name":"apih-epic-conflict"}'
+      response:
+        expected_status: 201
+        capture:
+          epic_conflict_id: .id
+    - request:
+        path: /change/create
+        body: '{"project_id":$epic_conflict_project_id,"title":"apih-epic-conflict-change","def":"Epic conflict def"}'
+      response:
+        expected_status: 201
+        capture:
+          epic_conflict_change_id: .id
+    - request:
+        path: /change/update-epic
+        body: '{"id":$epic_conflict_change_id,"epic_id":$epic_conflict_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"id":$epic_conflict_change_id,"epic_id":$epic_conflict_id}'
+    - request:
+        path: /epic/list
+        body: '{"project_id":$epic_conflict_project_id}'
+      response:
+        expected_status: 200
+        expected_body: '[{"id":$epic_conflict_id,"change_count":1}]'
+    - request:
+        path: /epic/get
+        body: '{"id":$epic_conflict_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"id":$epic_conflict_id,"change_count":1}'
+    - request:
+        path: /epic/delete
+        body: '{"id":$epic_conflict_id}'
+      response:
+        expected_status: 409
+    - request:
+        path: /change/delete
+        body: '{"id":$epic_conflict_change_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /epic/delete
+        body: '{"id":$epic_conflict_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /project/delete
+        body: '{"id":$epic_conflict_project_id}'
+      response:
+        expected_status: 204
+
+    # TestEpicRejectsInvalidInputAndMissingRows
+    - request:
+        path: /epic/list
+        body: '{}'
+      response:
+        expected_status: 400
+    - request:
+        path: /epic/create
+        body: '{"project_id":0,"name":"orphan epic"}'
+      response:
+        expected_status: 400
+    - request:
+        path: /epic/create
+        body: '{"project_id":999999999,"name":"orphan epic"}'
+      response:
+        expected_status: 404
+    - request:
+        path: /project/create
+        body: '{"name":"apih-epic-invalid-project"}'
+      response:
+        expected_status: 201
+        capture:
+          epic_invalid_project_id: .id
+    - request:
+        path: /epic/create
+        body: '{"project_id":$epic_invalid_project_id,"name":"   "}'
+      response:
+        expected_status: 400
+    - request:
+        path: /epic/get
+        body: '{"id":999999999}'
+      response:
+        expected_status: 404
+    - request:
+        path: /epic/update
+        body: '{"id":999999999,"name":"missing epic"}'
+      response:
+        expected_status: 404
+    - request:
+        path: /epic/update
+        body: '{"id":1,"name":"   "}'
+      response:
+        expected_status: 400
+    - request:
+        path: /epic/delete
+        body: '{"id":999999999}'
+      response:
+        expected_status: 404
+    - request:
+        path: /epic/delete
+        body: '{}'
+      response:
+        expected_status: 400
+    - request:
+        path: /project/delete
+        body: '{"id":$epic_invalid_project_id}'
+      response:
+        expected_status: 204

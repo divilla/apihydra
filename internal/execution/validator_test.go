@@ -117,7 +117,7 @@ printf '%s\n' '{"selector":".active","expected":["boolean"],"actual":"string"}'
 	if failed != wantFailed {
 		t.Fatalf("ValidateTypes() failed = %q, want %q", failed, wantFailed)
 	}
-	if got := readValidatorFile(t, inputPath); got != step.Response.ActualBody {
+	if got := readValidatorFile(t, inputPath); got != string(step.Response.ActualBody) {
 		t.Fatalf("jq input = %q, want %q", got, step.Response.ActualBody)
 	}
 	args := strings.Split(strings.TrimSpace(readValidatorFile(t, argsPath)), "\n")

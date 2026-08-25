@@ -1,0 +1,51 @@
+app: apihydra
+kind: steps
+metadata:
+  name: change-list-order
+  labels: [mch-api, change, ordering]
+spec:
+  steps:
+    - request:
+        path: /project/create
+        body: '{"name":"apih-change-order-project"}'
+      response:
+        expected_status: 201
+        capture:
+          clo_project_id: .id
+    - request:
+        path: /change/create
+        body: '{"project_id":$clo_project_id,"title":"apih-older-change","def":"Older def"}'
+      response:
+        expected_status: 201
+        capture:
+          clo_older_id: .id
+    - request:
+        path: /change/create
+        body: '{"project_id":$clo_project_id,"title":"apih-newer-change","def":"Newer def"}'
+      response:
+        expected_status: 201
+        capture:
+          clo_newer_id: .id
+    - request:
+        path: /change/list
+        body: '{"project_id":$clo_project_id}'
+      response:
+        expected_status: 200
+        expected_body: '[{"id":$clo_newer_id},{"id":$clo_older_id}]'
+    - request:
+        path: /change/update-title
+        body: '{"id":$clo_older_id,"title":"apih-older-change-updated"}'
+      response:
+        expected_status: 200
+    - request:
+        path: /change/list
+        body: '{"project_id":$clo_project_id}'
+      response:
+        expected_status: 200
+        expected_body: '[{"id":$clo_older_id},{"id":$clo_newer_id}]'
+    - request: {path: /change/delete, body: '{"id":$clo_older_id}'}
+      response: {expected_status: 204}
+    - request: {path: /change/delete, body: '{"id":$clo_newer_id}'}
+      response: {expected_status: 204}
+    - request: {path: /project/delete, body: '{"id":$clo_project_id}'}
+      response: {expected_status: 204}

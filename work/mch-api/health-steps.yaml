@@ -1,0 +1,28 @@
+app: apihydra
+kind: steps
+metadata:
+  name: health-http-integration
+  labels: [mch-api, health]
+spec:
+  steps:
+    - request:
+        method: GET
+        path: /health
+      response:
+        expected_status: 200
+        expected_types:
+          .status: [string]
+          .api: [string]
+          .database: [string]
+        expected_body: '{"status":"ok","api":"ok"}'
+    - request:
+        method: GET
+        basePath: /api
+        path: /health
+      response:
+        expected_status: 200
+        expected_types:
+          .status: [string]
+          .api: [string]
+          .database: [string]
+        expected_body: '{"status":"ok","api":"ok"}'

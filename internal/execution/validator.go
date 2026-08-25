@@ -59,7 +59,7 @@ func (v *Validator) ValidateBody(
 	if err != nil {
 		return "", errs.StepExecutionError(step, "", ErrValidatorFatal, err)
 	}
-	actual, _, err := runner.JQProject(ctx, buildBodySelector(string(step.Response.ExpectedBody)), step.Response.ActualBody)
+	actual, _, err := runner.JQProject(ctx, buildBodySelector(string(step.Response.ExpectedBody)), string(step.Response.ActualBody))
 	if err != nil {
 		return "", errs.StepExecutionError(step, "", ErrValidatorFatal, err)
 	}
@@ -103,7 +103,7 @@ func (v *Validator) ValidateTypes(
 	ctx context.Context,
 	step *domain.Step,
 ) (string, error) {
-	failed, _, err := runner.JQFilter(ctx, buildTypeFilter(step.Response.ExpectedTypes), step.Response.ActualBody)
+	failed, _, err := runner.JQFilter(ctx, buildTypeFilter(step.Response.ExpectedTypes), string(step.Response.ActualBody))
 	if err != nil {
 		return "", errs.StepExecutionError(step, "", ErrValidatorFatal, err)
 	}

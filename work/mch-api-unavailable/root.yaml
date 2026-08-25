@@ -1,0 +1,9 @@
+app: apihydra
+kind: root
+spec:
+  baseUrl: http://127.0.0.1:19082
+  basePath: /api/v1
+  headers:
+    Content-Type: application/json
+  timeout: 2
+  retries: -1

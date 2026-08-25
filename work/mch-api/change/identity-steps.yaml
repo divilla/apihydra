@@ -1,0 +1,95 @@
+app: apihydra
+kind: steps
+metadata:
+  name: change-create-identity-contract
+  labels: [mch-api, change, identity]
+spec:
+  steps:
+    - request:
+        path: /project/create
+        body: '{"name":"apih-change-identity-project"}'
+      response:
+        expected_status: 201
+        capture:
+          ci_project_id: .id
+    - request:
+        path: /change/create
+        body: '{"project_id":$ci_project_id,"title":"supplied identity","def":"# supplied identity","ref_uuid":"018f5f7e-7c3a-7b5b-8a9c-123456789abc"}'
+      response:
+        expected_status: 201
+        capture:
+          ci_supplied_id: .id
+        expected_body: '{"ref_uuid":"018f5f7e-7c3a-7b5b-8a9c-123456789abc"}'
+    - request:
+        path: /change/create
+        body: '{"project_id":$ci_project_id,"title":"omitted identity","def":"# omitted identity"}'
+      response:
+        expected_status: 201
+        capture:
+          ci_omitted_id: .id
+          ci_omitted_uuid: .ref_uuid
+        expected_types:
+          .ref_uuid: [string]
+    - request:
+        path: /change/create
+        body: '{"project_id":$ci_project_id,"title":"null identity","def":"# null identity","ref_uuid":null}'
+      response:
+        expected_status: 201
+        capture:
+          ci_null_id: .id
+          ci_null_uuid: .ref_uuid
+        expected_types:
+          .ref_uuid: [string]
+    - request:
+        path: /change/create
+        body: '{"project_id":$ci_project_id,"title":"invalid empty identity","def":"# invalid","ref_uuid":""}'
+      response:
+        expected_status: 400
+    - request:
+        path: /change/create
+        body: '{"project_id":$ci_project_id,"title":"invalid identity","def":"# invalid","ref_uuid":"not-a-uuid"}'
+      response:
+        expected_status: 400
+    - request:
+        path: /change/create
+        body: '{"project_id":$ci_project_id,"title":"duplicate identity","def":"# duplicate","ref_uuid":"018f5f7e-7c3a-7b5b-8a9c-123456789abc"}'
+      response:
+        expected_status: 500
+    - request:
+        path: /change/list
+        body: '{"project_id":$ci_project_id}'
+      response:
+        expected_status: 200
+        expected_body: '[{},{},{}]'
+    - request:
+        path: /change/update-title
+        body: '{"id":$ci_supplied_id,"title":"mutated title","ref_uuid":$ci_omitted_uuid}'
+      response:
+        expected_status: 200
+        expected_body: '{"id":$ci_supplied_id,"ref_uuid":"018f5f7e-7c3a-7b5b-8a9c-123456789abc"}'
+    - request:
+        path: /change/get
+        body: '{"id":$ci_supplied_id}'
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"id":$ci_supplied_id,"ref_uuid":"018f5f7e-7c3a-7b5b-8a9c-123456789abc","version":0}}'
+    - request:
+        path: /change/delete
+        body: '{"id":$ci_supplied_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /change/delete
+        body: '{"id":$ci_omitted_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /change/delete
+        body: '{"id":$ci_null_id}'
+      response:
+        expected_status: 204
+    - request:
+        path: /project/delete
+        body: '{"id":$ci_project_id}'
+      response:
+        expected_status: 204

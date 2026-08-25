@@ -1,0 +1,33 @@
+app: apihydra
+kind: steps
+metadata:
+  name: change-invalid-input-and-missing-rows
+  labels: [mch-api, change, invalid]
+spec:
+  steps:
+    - request: {path: /change/list, body: '{}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":999999999}'}
+      response: {expected_status: 404}
+    - request: {path: /change/rendered-artifacts, body: '{"ids":[0]}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-title, body: '{"id":999999999,"title":"missing change"}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-change-types, body: '{"id":999999999,"change_types":["missing-type"]}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-epic, body: '{"id":999999999,"epic_id":null}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-phase, body: '{"id":999999999,"change_phase":"missing-phase"}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-open, body: '{"id":999999999,"open":false}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-pr-url, body: '{"id":999999999,"pr_url":"https://example.test"}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-agent-edit, body: '{"id":999999999,"agent_edit":true}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-def-agent-edit, body: '{"id":999999999,"def":"missing","agent_edit":true}'}
+      response: {expected_status: 404}
+    - request: {path: /change/delete, body: '{}'}
+      response: {expected_status: 400}
+    - request: {path: /change/delete, body: '{"id":999999999}'}
+      response: {expected_status: 404}

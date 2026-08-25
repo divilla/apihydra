@@ -1,0 +1,96 @@
+app: apihydra
+kind: steps
+metadata:
+  name: validation-boundary-http-integration
+  labels: [mch-api, validation]
+spec:
+  steps:
+    # Service-level validation branches.
+    - request: {path: /project/get, body: '{"id":0}'}
+      response: {expected_status: 400}
+    - request: {path: /epic/get, body: '{"id":0}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":0}'}
+      response: {expected_status: 400}
+    - request: {path: /change/rendered-artifacts, body: '{"ids":[]}'}
+      response: {expected_status: 200, expected_body: '{"artifacts":[]}'}
+    - request: {path: /change/update-change-types, body: '{"id":0,"change_types":[]}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-title, body: '{"id":0,"title":"valid"}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-epic, body: '{"id":1,"epic_id":0}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-phase, body: '{"id":0,"change_phase":"backlog"}'}
+      response: {expected_status: 400}
+    - request: {path: /change/assign-flow, body: '{"id":0}'}
+      response: {expected_status: 400}
+    - request: {path: /change/start-run, body: '{"id":0}'}
+      response: {expected_status: 400}
+    - request: {path: /change/reset-claim, body: '{"id":0}'}
+      response: {expected_status: 400}
+    - request: {path: /change/update-pr-url, body: '{"id":1,"pr_url":"%"}'}
+      response: {expected_status: 400}
+
+    # Repository not-found branches reached through the current API routes.
+    - request: {path: /change/update-def, body: '{"id":999999999,"def":"missing","agent_edit":true}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-spec, body: '{"id":999999999,"spec":"missing","agent_edit":true}'}
+      response: {expected_status: 404}
+    - request: {path: /change/update-pr, body: '{"id":999999999,"pr":"missing","agent_edit":true}'}
+      response: {expected_status: 404}
+    - request: {path: /change/assign-flow, body: '{"id":999999999}'}
+      response: {expected_status: 404}
+    - request: {path: /change/start-run, body: '{"id":999999999}'}
+      response: {expected_status: 404}
+    - request: {path: /change/reset-claim, body: '{"id":999999999}'}
+      response: {expected_status: 404}
+
+    # Successful no-op updates and populated optional list fields.
+    - request: {path: /project/create, body: '{"name":"apih-validation-boundary-project"}'}
+      response:
+        expected_status: 201
+        capture: {validation_project_id: .id}
+    - request: {path: /epic/create, body: '{"project_id":$validation_project_id,"name":"apih-validation-boundary-epic"}'}
+      response:
+        expected_status: 201
+        capture: {validation_epic_id: .id}
+    - request: {path: /change/create, body: '{"project_id":$validation_project_id,"title":"apih-validation-boundary-change","def":"Validation boundary definition."}'}
+      response:
+        expected_status: 201
+        capture: {validation_change_id: .id}
+    - request: {path: /change/assign-flow, body: '{"id":$validation_change_id}'}
+      response: {expected_status: 200}
+    - request: {path: /change/update-epic, body: '{"id":$validation_change_id,"epic_id":$validation_epic_id}'}
+      response: {expected_status: 200}
+    - request: {path: /change/list, body: '{"project_id":$validation_project_id}'}
+      response:
+        expected_status: 200
+        expected_body: '[{"id":$validation_change_id,"epic_id":$validation_epic_id,"epic_name":"apih-validation-boundary-epic"}]'
+    - request: {path: /change/rendered-artifacts, body: '{"ids":[$validation_change_id,$validation_change_id]}'}
+      response:
+        expected_status: 200
+        expected_body: '{"artifacts":[{"id":$validation_change_id}]}'
+    - request: {path: /change/update-title, body: '{"id":$validation_change_id,"title":"apih-validation-boundary-change"}'}
+      response: {expected_status: 200}
+    - request: {path: /change/update-phase, body: '{"id":$validation_change_id,"change_phase":"backlog"}'}
+      response: {expected_status: 200}
+    - request: {path: /change/update-open, body: '{"id":$validation_change_id,"open":true}'}
+      response: {expected_status: 200}
+    - request: {path: /change/update-change-types, body: '{"id":$validation_change_id,"change_types":[" ","docs","docs"]}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change_types":["docs"]}'
+    - request: {path: /change/update-change-types, body: '{"id":$validation_change_id,"change_types":["docs"]}'}
+      response: {expected_status: 200}
+    - request: {path: /change/update-pr-url, body: '{"id":$validation_change_id,"pr_url":"https://example.test/pr/no-op"}'}
+      response: {expected_status: 200}
+    - request: {path: /change/update-pr-url, body: '{"id":$validation_change_id,"pr_url":"https://example.test/pr/no-op"}'}
+      response: {expected_status: 200}
+    - request: {path: /change/update-epic, body: '{"id":$validation_change_id,"epic_id":$validation_epic_id}'}
+      response: {expected_status: 200}
+    - request: {path: /change/delete, body: '{"id":$validation_change_id}'}
+      response: {expected_status: 204}
+    - request: {path: /epic/delete, body: '{"id":$validation_epic_id}'}
+      response: {expected_status: 204}
+    - request: {path: /project/delete, body: '{"id":$validation_project_id}'}
+      response: {expected_status: 204}

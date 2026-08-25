@@ -307,7 +307,7 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 				return fatalResult(status, err)
 			}
 			step.Response.ActualStatus = status
-			step.Response.ActualBody = body
+			step.Response.ActualBody = domain.YAMLString(body)
 
 			failedTypes, err := e.val.ValidateTypes(ctx, step)
 			if err != nil {

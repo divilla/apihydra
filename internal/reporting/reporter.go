@@ -44,6 +44,35 @@ type failedStepKey struct {
 	index      int
 }
 
+type debugStep struct {
+	Vars     map[string]domain.YAMLString `json:"vars"`
+	Request  debugRequest                 `json:"request"`
+	Response debugResponse                `json:"response"`
+	Debug    bool                         `json:"debug"`
+	Index    int                          `json:"index"`
+}
+
+type debugRequest struct {
+	Method   string            `json:"method"`
+	BaseURL  string            `json:"baseUrl"`
+	BasePath string            `json:"basePath"`
+	Path     string            `json:"path"`
+	Headers  map[string]string `json:"headers"`
+	Timeout  int               `json:"timeout"`
+	Retries  int               `json:"retries"`
+	Query    string            `json:"query"`
+	Body     json.RawMessage   `json:"body"`
+}
+
+type debugResponse struct {
+	ExpectedStatus int                          `json:"expected_status"`
+	ActualStatus   int                          `json:"actual_status"`
+	ExpectedBody   json.RawMessage              `json:"expected_body"`
+	ActualBody     json.RawMessage              `json:"actual_body"`
+	ExpectedTypes  map[string][]string          `json:"expected_types"`
+	Capture        map[string]domain.YAMLString `json:"capture"`
+}
+
 // NewReporter returns a Reporter that serializes writes to output.
 func NewReporter(output io.Writer) *Reporter {
 	return &Reporter{
@@ -207,7 +236,7 @@ func (r *Reporter) Debug(ctx context.Context, step *domain.Step) error {
 		return errs.Build(errs.ExitInternal, ErrReporter, err)
 	}
 
-	payload, err := json.Marshal(step)
+	payload, err := json.Marshal(debugStepValue(step))
 	if err != nil {
 		return errs.Build(errs.ExitInternal, ErrReporter, err)
 	}
@@ -225,6 +254,48 @@ func (r *Reporter) Debug(ctx context.Context, step *domain.Step) error {
 	}
 	r.stopped = true
 	return nil
+}
+
+func debugStepValue(step *domain.Step) any {
+	if step == nil {
+		return nil
+	}
+	var requestBody json.RawMessage
+	if step.Request.Body != "" {
+		requestBody = json.RawMessage(step.Request.Body)
+	}
+	var expectedBody json.RawMessage
+	if step.Response.ExpectedBody != "" {
+		expectedBody = json.RawMessage(step.Response.ExpectedBody)
+	}
+	var actualBody json.RawMessage
+	if step.Response.ActualBody != "" {
+		actualBody = json.RawMessage(step.Response.ActualBody)
+	}
+	return debugStep{
+		Vars: step.Vars,
+		Request: debugRequest{
+			Method:   step.Request.Method,
+			BaseURL:  step.Request.BaseURL,
+			BasePath: step.Request.BasePath,
+			Path:     step.Request.Path,
+			Headers:  step.Request.Headers,
+			Timeout:  step.Request.Timeout,
+			Retries:  step.Request.Retries,
+			Query:    step.Request.Query,
+			Body:     requestBody,
+		},
+		Response: debugResponse{
+			ExpectedStatus: step.Response.ExpectedStatus,
+			ActualStatus:   step.Response.ActualStatus,
+			ExpectedBody:   expectedBody,
+			ActualBody:     actualBody,
+			ExpectedTypes:  step.Response.ExpectedTypes,
+			Capture:        step.Response.Capture,
+		},
+		Debug: step.Debug,
+		Index: step.Index,
+	}
 }
 
 func (r *Reporter) writeGenerated(ctx context.Context, generate func() string) error {

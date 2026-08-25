@@ -1,0 +1,86 @@
+app: apihydra
+kind: steps
+metadata:
+  name: database-unavailable-http-integration
+  labels: [mch-api, database-unavailable]
+spec:
+  steps:
+    - request: {path: /health}
+      response: {expected_status: 503}
+
+    - request: {path: /project/list, body: '{}'}
+      response: {expected_status: 500}
+    - request: {path: /project/get, body: '{"id":1}'}
+      response: {expected_status: 500}
+    - request: {path: /project/create, body: '{"name":"unavailable"}'}
+      response: {expected_status: 500}
+    - request: {path: /project/update, body: '{"id":1,"name":"unavailable"}'}
+      response: {expected_status: 500}
+    - request: {path: /project/delete, body: '{"id":1}'}
+      response: {expected_status: 500}
+
+    - request: {path: /epic/list, body: '{"project_id":1}'}
+      response: {expected_status: 500}
+    - request: {path: /epic/get, body: '{"id":1}'}
+      response: {expected_status: 500}
+    - request: {path: /epic/create, body: '{"project_id":1,"name":"unavailable"}'}
+      response: {expected_status: 500}
+    - request: {path: /epic/update, body: '{"id":1,"name":"unavailable"}'}
+      response: {expected_status: 500}
+    - request: {path: /epic/delete, body: '{"id":1}'}
+      response: {expected_status: 500}
+
+    - request: {path: /options/change-phases-list, body: '{}'}
+      response: {expected_status: 500}
+    - request: {path: /options/change-types-list, body: '{}'}
+      response: {expected_status: 500}
+
+    - request: {path: /change/list, body: '{"project_id":1}'}
+      response: {expected_status: 500}
+    - request: {path: /change/get, body: '{"id":1}'}
+      response: {expected_status: 500}
+    - request: {path: /change/rendered-artifacts, body: '{"ids":[1]}'}
+      response: {expected_status: 500}
+    - request: {path: /change/create, body: '{"project_id":1,"title":"unavailable","def":"unavailable"}'}
+      response: {expected_status: 500}
+    - request: {path: /change/assign-flow, body: '{"id":1}'}
+      response: {expected_status: 500}
+    - request: {path: /change/start-run, body: '{"id":1}'}
+      response: {expected_status: 500}
+    - request: {path: /change/update-run, body: '{"id":1,"run_claim_id":"claim"}'}
+      response: {expected_status: 500}
+    - request: {path: /change/reset-claim, body: '{"id":1}'}
+      response: {expected_status: 500}
+    - request: {path: /change/update-epic, body: '{"id":1,"epic_id":null}'}
+      response: {expected_status: 500}
+    - request: {path: /change/update-phase, body: '{"id":1,"change_phase":"review"}'}
+      response: {expected_status: 500}
+    - request: {path: /change/update-open, body: '{"id":1,"open":true}'}
+      response: {expected_status: 500}
+    - request: {path: /change/update-change-types, body: '{"id":1,"change_types":["docs"]}'}
+      response: {expected_status: 500}
+    - request: {path: /change/update-title, body: '{"id":1,"title":"unavailable"}'}
+      response: {expected_status: 500}
+    - request: {path: /change/update-def, body: '{"id":1,"def":"unavailable","agent_edit":true}'}
+      response: {expected_status: 500}
+    - request: {path: /change/update-spec, body: '{"id":1,"spec":"unavailable","agent_edit":true}'}
+      response: {expected_status: 500}
+    - request: {path: /change/update-pr, body: '{"id":1,"pr":"unavailable","agent_edit":true}'}
+      response: {expected_status: 500}
+    - request: {path: /change/update-pr-url, body: '{"id":1,"pr_url":"https://example.test/pr/1"}'}
+      response: {expected_status: 500}
+    - request: {path: /change/delete, body: '{"id":1}'}
+      response: {expected_status: 500}
+
+    - request: {path: /test-case/list, body: '{"change_id":1}'}
+      response: {expected_status: 500}
+    - request: {path: /test-case/create, body: '{"change_id":1,"scenario":"unavailable"}'}
+      response: {expected_status: 500}
+    - request: {path: /test-case/update, body: '{"id":1,"scenario":"unavailable"}'}
+      response: {expected_status: 500}
+    - request: {path: /test-case/update-done, body: '{"id":1,"done":true}'}
+      response: {expected_status: 500}
+    - request: {path: /test-case/update-change, body: '{"id":1,"change_id":1}'}
+      response: {expected_status: 500}
+    - request: {path: /test-case/delete, body: '{"id":1}'}
+      response: {expected_status: 500}

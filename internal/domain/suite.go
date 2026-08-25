@@ -91,7 +91,7 @@ type Step struct {
 		ExpectedStatus int                   `yaml:"expected_status" json:"expected_status"`
 		ActualStatus   int                   `yaml:"actual_status" json:"actual_status"`
 		ExpectedBody   YAMLString            `yaml:"expected_body" json:"expected_body"`
-		ActualBody     string                `yaml:"actual_body" json:"actual_body"`
+		ActualBody     YAMLString            `yaml:"actual_body" json:"actual_body"`
 		ExpectedTypes  map[string][]string   `yaml:"expected_types" json:"expected_types"`
 		Capture        map[string]YAMLString `yaml:"capture" json:"capture"`
 	} `yaml:"response" json:"response"`
@@ -113,3 +113,16 @@ func (s *Step) FilePath() string {
 }
 
 type YAMLString string
+
+func (s YAMLString) MarshalYAML() (interface{}, error) {
+	return string(s), nil
+}
+
+func (s *YAMLString) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var value string
+	if err := unmarshal(&value); err != nil {
+		return err
+	}
+	*s = YAMLString(value)
+	return nil
+}

@@ -154,14 +154,17 @@ func TestWorkingDirectoryPreservesReferenceShortWriteHandling(t *testing.T) {
 
 func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 	step := reporterStep("suite/steps.yaml", 3)
+	step.Request.Method = "GET"
+	step.Request.Body = `{"request":true}`
 	step.Response.ExpectedStatus = 201
 	step.Response.ActualStatus = 500
+	step.Response.ExpectedBody = `{"message":"wanted"}`
 	step.Response.ActualBody = `{"message":"failed"}`
 	step.Response.ExpectedTypes = map[string][]string{".id": {"string"}}
 	step.Debug = true
 	directory := step.Definition.File.Directory
 
-	debugJSON, err := json.Marshal(step)
+	debugJSON, err := json.Marshal(debugStepValue(step))
 	if err != nil {
 		t.Fatalf("marshal debug step: %v", err)
 	}
@@ -211,6 +214,27 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 				t.Fatalf("output = %q, want %q", got, test.want)
 			}
 		})
+	}
+}
+
+func TestDebugFormatsRequestBodyAsSortedJSON(t *testing.T) {
+	step := &domain.Step{Index: 2}
+	step.Request.Body = `{"b":2,"a":1}`
+	var output bytes.Buffer
+
+	if err := NewReporter(&output).Debug(context.Background(), step); err != nil {
+		t.Fatalf("Debug() error = %v", err)
+	}
+
+	got := output.String()
+	if !strings.HasPrefix(got, "Debug step 2:\n") {
+		t.Fatalf("Debug() output = %q, want standalone step reference", got)
+	}
+	body := strings.Index(got, colorizeJQJSON(`"body": {`))
+	a := strings.Index(got, colorizeJQJSON(`"a": 1`))
+	b := strings.Index(got, colorizeJQJSON(`"b": 2`))
+	if body < 0 || a < body || b < a {
+		t.Fatalf("Debug() output = %q, want request body as key-sorted JSON object", got)
 	}
 }
 

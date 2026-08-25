@@ -1,0 +1,55 @@
+app: apihydra
+kind: steps
+metadata:
+  name: change-artifact-validation
+  labels: [mch-api, change, validation]
+spec:
+  steps:
+    - request: {path: /project/create, body: '{"name":"apih-change-artifact-project"}'}
+      response:
+        expected_status: 201
+        capture: {cav_project_id: .id}
+    - request: {path: /change/create, body: '{"project_id":$cav_project_id,"title":"apih-artifact-validation","def":"Artifact validation def"}'}
+      response:
+        expected_status: 201
+        capture: {cav_change_id: .id}
+
+    - request: {path: /change/update-def, body: '{"id":$cav_change_id,"def":null,"agent_edit":true}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":$cav_change_id}'}
+      response: &unchanged
+        expected_status: 200
+        expected_body: '{"change":{"def":"Artifact validation def","spec":"","pr":"","pr_url":"","agent_edit":false}}'
+    - request: {path: /change/update-def, body: '{"id":$cav_change_id,"def":"","agent_edit":true}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":$cav_change_id}'}
+      response: *unchanged
+    - request: {path: /change/update-spec, body: '{"id":$cav_change_id,"spec":null,"agent_edit":true}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":$cav_change_id}'}
+      response: *unchanged
+    - request: {path: /change/update-spec, body: '{"id":$cav_change_id,"spec":"","agent_edit":true}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":$cav_change_id}'}
+      response: *unchanged
+    - request: {path: /change/update-pr, body: '{"id":$cav_change_id,"pr":null,"agent_edit":true}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":$cav_change_id}'}
+      response: *unchanged
+    - request: {path: /change/update-pr, body: '{"id":$cav_change_id,"pr":"","agent_edit":true}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":$cav_change_id}'}
+      response: *unchanged
+    - request: {path: /change/update-pr-url, body: '{"id":$cav_change_id,"pr_url":null}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":$cav_change_id}'}
+      response: *unchanged
+    - request: {path: /change/update-pr-url, body: '{"id":$cav_change_id,"pr_url":""}'}
+      response: {expected_status: 400}
+    - request: {path: /change/get, body: '{"id":$cav_change_id}'}
+      response: *unchanged
+
+    - request: {path: /change/delete, body: '{"id":$cav_change_id}'}
+      response: {expected_status: 204}
+    - request: {path: /project/delete, body: '{"id":$cav_project_id}'}
+      response: {expected_status: 204}

@@ -1,0 +1,119 @@
+app: apihydra
+kind: steps
+metadata:
+  name: change-run-lifecycle
+  labels: [mch-api, change, run]
+spec:
+  steps:
+    - request: {path: /project/create, body: '{"name":"apih-change-run-project"}'}
+      response:
+        expected_status: 201
+        capture: {crl_project_id: .id}
+    - request: {path: /change/create, body: '{"project_id":$crl_project_id,"title":"Run lifecycle","def":"Run lifecycle def."}'}
+      response:
+        expected_status: 201
+        capture: {crl_change_id: .id}
+    - request: {path: /change/assign-flow, body: '{"id":$crl_change_id}'}
+      response:
+        expected_status: 200
+        expected_types:
+          .flow_stages: [array]
+          .flow_stage_modes: [array]
+    - request: {path: /change/start-run, body: '{"id":$crl_change_id}'}
+      response:
+        expected_status: 200
+        capture:
+          crl_first_claim: .claim_id
+          crl_first_claim_padded: '.claim_id | " " + . + " "'
+        expected_types:
+          .claim_id: [string]
+    - request: {path: /change/get, body: '{"id":$crl_change_id}'}
+      response:
+        expected_status: 200
+        expected_types:
+          .change.run_started_at: [string]
+        expected_body: '{"change":{"run_claim_id":$crl_first_claim}}'
+    - request: {path: /change/get, body: '{"id":$crl_change_id}'}
+      response:
+        expected_status: 200
+        expected_types:
+          .change.flow_stages: [array]
+          .change.flow_stage_modes: [array]
+          .change.run_claim_id: [string]
+          .change.run_flow_stage: [string]
+          .change.run_task_step: [string]
+          .change.run_task_status: [string]
+          .change.run_error: [string]
+          .change.run_is_completed: [boolean]
+          .change.run_started_at: [string]
+          .change.run_updated_at: [string, "null"]
+    - request: {path: /change/start-run, body: '{"id":$crl_change_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"claim_id":null}'
+    - request: {path: /change/get, body: '{"id":$crl_change_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"run_claim_id":$crl_first_claim}}'
+    - request:
+        path: /change/update-run
+        body: '{"id":$crl_change_id,"run_claim_id":$crl_first_claim_padded,"run_flow_stage":" artifact ","run_task_step":" agent ","run_task_status":" running ","run_error":" latest error ","run_is_completed":false}'
+      response:
+        expected_status: 200
+        expected_body: '{"change_id":$crl_change_id}'
+    - request: {path: /change/get, body: '{"id":$crl_change_id}'}
+      response:
+        expected_status: 200
+        expected_types:
+          .change.run_updated_at: [string]
+        expected_body: '{"change":{"run_flow_stage":"artifact","run_task_step":"agent","run_task_status":"running","run_error":"latest error","run_is_completed":false}}'
+    - request: {path: /change/reset-claim, body: '{"id":$crl_change_id}'}
+      response:
+        expected_status: 200
+        capture: {crl_reset_claim: .claim_id}
+        expected_types:
+          .claim_id: [string]
+    - request:
+        path: /change/update-run
+        body: '{"id":$crl_change_id,"run_claim_id":$crl_first_claim,"run_flow_stage":"docs","run_task_step":"done","run_task_status":"completed","run_error":"","run_is_completed":true}'
+      response:
+        expected_status: 200
+        expected_body: '{"change_id":null}'
+    - request: {path: /change/get, body: '{"id":$crl_change_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"run_flow_stage":"artifact","run_task_step":"agent","run_task_status":"running","run_error":"latest error","run_is_completed":false,"run_claim_id":$crl_reset_claim}}'
+    - request:
+        path: /change/update-run
+        body: '{"id":$crl_change_id,"run_claim_id":$crl_reset_claim,"run_flow_stage":"worker-local-stage","run_task_step":"worker-local-step","run_task_status":"worker-local-status","run_error":"","run_is_completed":false}'
+      response:
+        expected_status: 200
+        expected_body: '{"change_id":$crl_change_id}'
+    - request: {path: /change/get, body: '{"id":$crl_change_id}'}
+      response:
+        expected_status: 200
+        expected_body: '{"change":{"run_flow_stage":"worker-local-stage","run_task_step":"worker-local-step","run_task_status":"worker-local-status","run_is_completed":false}}'
+    - request:
+        path: /change/update-run
+        body: '{"id":$crl_change_id,"run_claim_id":$crl_reset_claim,"run_flow_stage":"docs","run_task_step":"done","run_task_status":"completed","run_error":"","run_is_completed":true}'
+      response:
+        expected_status: 200
+        expected_body: '{"change_id":$crl_change_id}'
+    - request: {path: /change/get, body: '{"id":$crl_change_id}'}
+      response:
+        expected_status: 200
+        expected_types:
+          .change.run_updated_at: [string]
+        expected_body: '{"change":{"run_claim_id":null,"run_flow_stage":"docs","run_task_step":"done","run_task_status":"completed","run_error":"","run_is_completed":true}}'
+    - request:
+        path: /change/update-run
+        body: '{"id":$crl_change_id,"run_claim_id":"","run_flow_stage":"docs","run_task_step":"done","run_task_status":"completed","run_error":"","run_is_completed":true}'
+      response: {expected_status: 400}
+    - request:
+        path: /change/update-run
+        body: '{"id":$crl_change_id,"run_claim_id":"not-a-uuid","run_flow_stage":"docs","run_task_step":"done","run_task_status":"completed","run_error":"","run_is_completed":true}'
+      response: {expected_status: 400}
+    - request: {path: /change/delete, body: '{"id":$crl_change_id}'}
+      response: {expected_status: 204}
+    - request: {path: /project/delete, body: '{"id":$crl_project_id}'}
+      response: {expected_status: 204}

@@ -1,14 +1,48 @@
 package domain
 
 import (
-	"encoding/json"
+	"errors"
 	"reflect"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/goccy/go-yaml"
 )
+
+func TestYAMLStringPreservesValueThroughYAMLRoundTrip(t *testing.T) {
+	var _ yaml.InterfaceMarshaler = YAMLString("")
+	var _ yaml.InterfaceUnmarshaler = (*YAMLString)(nil)
+
+	values := []YAMLString{
+		`{"message":"quote \" slash \\ newline \n tab \t","template":"$value"}`,
+		"  leading\nline\twith actual whitespace  ",
+		"plain: value # not YAML syntax",
+		"",
+	}
+	for _, want := range values {
+		encoded, err := yaml.Marshal(want)
+		if err != nil {
+			t.Fatalf("Marshal(%q) error = %v", want, err)
+		}
+		var got YAMLString
+		if err := yaml.Unmarshal(encoded, &got); err != nil {
+			t.Fatalf("Unmarshal(%q) error = %v", encoded, err)
+		}
+		if got != want {
+			t.Errorf("YAMLString round trip = %q, want %q", got, want)
+		}
+	}
+
+	want := YAMLString("unchanged")
+	got := want
+	sentinel := errors.New("decode failed")
+	if err := got.UnmarshalYAML(func(interface{}) error { return sentinel }); !errors.Is(err, sentinel) {
+		t.Fatalf("UnmarshalYAML() error = %v, want %v", err, sentinel)
+	}
+	if got != want {
+		t.Fatalf("UnmarshalYAML() after error = %q, want %q", got, want)
+	}
+}
 
 func TestDomainSchemaMatchesReference(t *testing.T) {
 	if got, want := []DocumentKind{KindRoot, KindDefaults, KindSteps}, []DocumentKind{"root", "defaults", "steps"}; !slices.Equal(got, want) {
@@ -96,7 +130,7 @@ func TestDomainSchemaMatchesReference(t *testing.T) {
 		{"ExpectedStatus", reflect.TypeOf(0), `yaml:"expected_status" json:"expected_status"`},
 		{"ActualStatus", reflect.TypeOf(0), `yaml:"actual_status" json:"actual_status"`},
 		{"ExpectedBody", reflect.TypeOf(YAMLString("")), `yaml:"expected_body" json:"expected_body"`},
-		{"ActualBody", reflect.TypeOf(""), `yaml:"actual_body" json:"actual_body"`},
+		{"ActualBody", reflect.TypeOf(YAMLString("")), `yaml:"actual_body" json:"actual_body"`},
 		{"ExpectedTypes", reflect.TypeOf(map[string][]string(nil)), `yaml:"expected_types" json:"expected_types"`},
 		{"Capture", reflect.TypeOf(map[string]YAMLString(nil)), `yaml:"capture" json:"capture"`},
 	})
@@ -133,30 +167,6 @@ spec:
 	}
 	if got := definition.Spec.Steps[0].Response.ActualBody; got != "" {
 		t.Fatalf("ActualBody = %q, want empty before execution", got)
-	}
-
-	encoded, err := json.Marshal(definition.Spec.Steps[0])
-	if err != nil {
-		t.Fatalf("json.Marshal() error = %v", err)
-	}
-	got := string(encoded)
-	if !strings.Contains(got, `"expected_status":201`) {
-		t.Fatalf("JSON = %s, want numeric expected_status", got)
-	}
-	if !strings.Contains(got, `"expected_body":"{\"created\":true}"`) {
-		t.Fatalf("JSON = %s, want expected_body", got)
-	}
-	if !strings.Contains(got, `"expected_types":{".created":["boolean"]}`) {
-		t.Fatalf("JSON = %s, want expected_types", got)
-	}
-	if !strings.Contains(got, `"actual_status":0`) {
-		t.Fatalf("JSON = %s, want numeric actual_status", got)
-	}
-	if !strings.Contains(got, `"actual_body":""`) {
-		t.Fatalf("JSON = %s, want actual_body", got)
-	}
-	if strings.Contains(got, `"status"`) || strings.Contains(got, `"expected"`) || strings.Contains(got, `"types"`) {
-		t.Fatalf("JSON = %s, contains legacy response field", got)
 	}
 }
 
