@@ -33,8 +33,11 @@ YAML remains static and unchanged.
   nested suite exercising variables, both placeholder forms,
   request/expected-body interpolation, inheritance, HTTP, response validation,
   and capture; `int-tests/input/test2/` contains nonfatal status and body
-  validation mismatches; and `int-tests/input/scenarios/` contains auxiliary
-  failure and edge-case suites that must not affect either top-level fixture.
+  validation mismatches plus a valid sibling definition in the same directory;
+  and `int-tests/input/scenarios/` contains auxiliary
+  failure and edge-case suites, including a debug step that exposes the
+  resolved 10-second timeout and 3 retries, that must not affect either
+  top-level fixture.
 - Build output is temporary. The harness builds `./cmd/cli` with Go coverage
   instrumentation over `apih/...`, runs the scenarios with `GOCOVERDIR`, and
   removes artifacts through the test temporary directory lifecycle.
@@ -75,5 +78,9 @@ a fatal diagnostic.
    copies, and a loopback HTTP server; it needs no remote service.
 7. An unavailable loopback server produces a fatal nonzero process result and
    stderr diagnostic, with its coverage merged into the same profile.
-8. `make integration-test`, `go test ./...`, `go test -race ./...`, and
+8. A step with `debug: true` and no configured timeout or retries prints its
+   resolved request with timeout `10` and retries `3` as jq-palette colored
+   JSON, exits successfully, and leaves its later sibling step unexecuted. The
+   debug JSON is the final process output.
+9. `make integration-test`, `go test ./...`, `go test -race ./...`, and
    `git diff --check` pass after guides `000` through `011` are implemented.

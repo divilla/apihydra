@@ -1,0 +1,11 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        path: /zero-types
+      response:
+        expected_body: '{"version":0}'
+      debug: true
+    - request:
+        path: /after-debug

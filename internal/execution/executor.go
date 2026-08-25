@@ -17,6 +17,8 @@ var ErrInvalidDirectoryTree = errors.New("invalid directory tree")
 // ErrExecutionCanceled classifies cancellation of staged execution.
 var ErrExecutionCanceled = errors.New("execution canceled")
 
+var errDebugStop = errors.New("debug stop")
+
 // Executor prepares, schedules, executes, validates, and reports runtime
 // steps.
 type Executor struct {
@@ -197,6 +199,14 @@ func (r *processResult) setResult(code int, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if errors.Is(err, errDebugStop) {
+		r.code = 0
+		r.err = err
+		return
+	}
+	if errors.Is(r.err, errDebugStop) {
+		return
+	}
 	if code == 0 {
 		return
 	}
@@ -221,6 +231,9 @@ func executeStages(
 
 	for _, stage := range dirs {
 		exitCode, err := executeStage(ctx, cancel, stage, process)
+		if errors.Is(err, errDebugStop) {
+			return 0, nil
+		}
 		if err != nil {
 			return exitCode, err
 		}
@@ -300,30 +313,51 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 			if err != nil {
 				return fatalResult(0, err)
 			}
-			if failedTypes != "" {
-				validationFailed = true
-				if err := e.report.ValidationTypes(ctx, step, failedTypes); err != nil {
-					return fatalResult(0, err)
-				}
-			}
 
+			var statusFailure error
 			if err := e.val.ValidateStatus(ctx, step); err != nil {
 				if !errors.Is(err, ErrValidation) {
 					return fatalResult(0, err)
 				}
-				validationFailed = true
-				if err := e.report.ValidationStatus(ctx, step, err); err != nil {
-					return fatalResult(0, err)
-				}
+				statusFailure = err
 			}
 
 			diff, err := e.val.ValidateBody(ctx, step)
 			if err != nil {
 				return fatalResult(0, err)
 			}
+			failureCount := 0
+			if failedTypes != "" {
+				failureCount++
+			}
+			if statusFailure != nil {
+				failureCount++
+			}
 			if diff != "" {
+				failureCount++
+			}
+			if failureCount > 0 {
 				validationFailed = true
-				if err := e.report.ValidationBody(ctx, step, diff); err != nil {
+			}
+			nextReportContext := func() context.Context {
+				failureCount--
+				if failureCount == 0 {
+					return context.WithValue(ctx, e.report, true)
+				}
+				return ctx
+			}
+			if failedTypes != "" {
+				if err := e.report.ValidationTypes(nextReportContext(), step, failedTypes); err != nil {
+					return fatalResult(0, err)
+				}
+			}
+			if statusFailure != nil {
+				if err := e.report.ValidationStatus(nextReportContext(), step, statusFailure); err != nil {
+					return fatalResult(0, err)
+				}
+			}
+			if diff != "" {
+				if err := e.report.ValidationBody(nextReportContext(), step, diff); err != nil {
 					return fatalResult(0, err)
 				}
 			}
@@ -335,15 +369,16 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 				if err := e.report.Debug(ctx, step); err != nil {
 					return fatalResult(0, err)
 				}
+				return 0, errDebugStop
 			}
 		}
 	}
 
-	if validationFailed {
-		return errs.ExitValidation, nil
-	}
 	if err := e.report.Success(ctx, dir); err != nil {
 		return fatalResult(0, err)
+	}
+	if validationFailed {
+		return errs.ExitValidation, nil
 	}
 	return 0, nil
 }

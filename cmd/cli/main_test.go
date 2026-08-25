@@ -92,7 +92,7 @@ func TestRunSelectsDirectoryAndCompletesDefinitionPipeline(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("run() exit code = %d, want 0", exitCode)
 	}
-	if got, want := output.String(), "Working Directory: "+selected+"\n\nSuccess: /\n\n"; got != want {
+	if got, want := output.String(), "Working Directory: "+selected+"\n\n"; got != want {
 		t.Fatalf("run() output = %q, want %q", got, want)
 	}
 }

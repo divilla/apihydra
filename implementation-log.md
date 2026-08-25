@@ -57,3 +57,12 @@
 2026-25-08 08:15 012-integration-tests
 +77 -77 code - +68 -11 tests --- spec
 +0 -0 code - +1 -10 tests --- review fixes 01
+
+2026-25-08 10:33 008-validator-service-009-reporter-service
++303 -46 code - +146 -30 tests --- spec
+
+2026-25-08 10:43 001-runner-pkg-008-validator-service-009-reporter-service
++31 -2 code - +20 -13 tests --- spec
+
+2026-25-08 10:47 001-runner-pkg-009-reporter-service
++7 -0 code - +7 -0 tests --- spec

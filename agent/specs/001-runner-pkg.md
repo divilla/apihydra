@@ -37,13 +37,35 @@ their empty results are not production behavior. The reference does not fix:
 Those details may be chosen during implementation but cannot be asserted as
 product requirements until represented by the skeleton.
 
+## Current implementation behavior
+
+The current command normalization makes these choices within the reference
+contract:
+
+- `Curl` omits `--request` when the resolved method is empty. Curl therefore
+  selects `GET` when no request body is supplied and `POST` when body data is
+  supplied.
+- `GitDiff(expected, actual)` keeps the named documents separate but compares
+  `actual` as the source with `expected` as the target. Red `-` values are
+  actual values to remove or replace; green `+` values are expected values to
+  add. Runner explicitly selects terminal palette color 210 (`#ff8787`) for
+  coral red and palette color 10 for green and disables moved-line coloring,
+  so user Git color configuration cannot change the validation palette. The
+  returned output retains those Git ANSI colors but contains only changed value
+  lines from every hunk: file headers, hunk headers, and unchanged surrounding
+  values are omitted.
+- Reporter debug serialization uses `JQPretty` for recursively key-sorted JSON
+  before rendering that JSON with jq's terminal token palette.
+
 ## Required implementation and tests
 
 - Production output: `pkg/runner/runner.go` implements all six command
   operations and retains the binding exported API and static errors.
 - Test output: `pkg/runner/runner_test.go` covers successful results, command
   startup/failure/cancellation, data passed to each operation, and result/error
-  normalization chosen within the contract.
+  normalization chosen within the contract, including implicit curl methods
+  and actual-to-expected changed-value-only diff output with fixed palette
+  colors 210 and 10.
 - Root `architecture_test.go` proves that no other production package executes
   external commands and that `bat`/`BatDiff` is absent.
 - Each acceptance criterion is traced to a meaningful unit or architecture

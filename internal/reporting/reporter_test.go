@@ -3,6 +3,7 @@ package reporting
 import (
 	"apih/internal/domain"
 	"apih/pkg/errs"
+	"apih/pkg/runner"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -156,12 +157,17 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 	step.Response.ExpectedStatus = 201
 	step.Response.ActualStatus = 500
 	step.Response.ActualBody = `{"message":"failed"}`
+	step.Response.ExpectedTypes = map[string][]string{".id": {"string"}}
 	step.Debug = true
 	directory := step.Definition.File.Directory
 
-	debugJSON, err := json.MarshalIndent(step, "", "  ")
+	debugJSON, err := json.Marshal(step)
 	if err != nil {
 		t.Fatalf("marshal debug step: %v", err)
+	}
+	prettyDebugJSON, _, err := runner.JQPretty(context.Background(), string(debugJSON))
+	if err != nil {
+		t.Fatalf("jq debug step: %v", err)
 	}
 	tests := map[string]struct {
 		call func(*Reporter) error
@@ -169,29 +175,29 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 	}{
 		"success": {
 			call: func(report *Reporter) error { return report.Success(context.Background(), directory) },
-			want: "Success: /suite\n\n",
+			want: "[\x1b[38;5;10m✓\x1b[0m] /suite/steps\n",
 		},
 		"types": {
 			call: func(report *Reporter) error {
-				return report.ValidationTypes(context.Background(), step, `{"selector":".id","actual":"null"}`)
+				return report.ValidationTypes(finalValidationContext(report), step, `{"selector":".id","actual":"null"}`)
 			},
-			want: "type validation failed for suite/steps.yaml step 3:\n{\"selector\":\".id\",\"actual\":\"null\"}\n\n",
+			want: "[\x1b[38;5;210m✗\x1b[0m] /suite/steps\n[\x1b[38;5;210m✗\x1b[0m] / GET \x1b[36mstep-4\x1b[0m\n    expected_types:\n        \x1b[38;5;15m.id:\x1b[0m \x1b[38;5;210m[string]\x1b[0m\n\n",
 		},
 		"status": {
 			call: func(report *Reporter) error {
-				return report.ValidationStatus(context.Background(), step, errors.New("validation error"))
+				return report.ValidationStatus(finalValidationContext(report), step, errors.New("validation error"))
 			},
-			want: "response status does not match expected for suite/steps.yaml step 3: validation error\n\n",
+			want: "[\x1b[38;5;210m✗\x1b[0m] /suite/steps\n[\x1b[38;5;210m✗\x1b[0m] / GET \x1b[36mstep-4\x1b[0m\n    actual_status: \x1b[38;5;210m500\x1b[0m\n    expected_status: \x1b[38;5;10m201\x1b[0m\n\n",
 		},
 		"body": {
 			call: func(report *Reporter) error {
-				return report.ValidationBody(context.Background(), step, "- expected\n+ actual")
+				return report.ValidationBody(finalValidationContext(report), step, "- actual\n+ expected")
 			},
-			want: "response body does not match expected for suite/steps.yaml step 3:\n- expected\n+ actual\n\n",
+			want: "[\x1b[38;5;210m✗\x1b[0m] /suite/steps\n[\x1b[38;5;210m✗\x1b[0m] / GET \x1b[36mstep-4\x1b[0m\n    expected_body:\n        - actual\n        + expected\n\n",
 		},
 		"debug": {
 			call: func(report *Reporter) error { return report.Debug(context.Background(), step) },
-			want: fmt.Sprintf("Debug suite/steps.yaml step 3:\n%s\n\n", debugJSON),
+			want: fmt.Sprintf("Debug suite/steps.yaml step 3:\n%s\n\n", colorizeJQJSON(prettyDebugJSON)),
 		},
 	}
 
@@ -208,15 +214,99 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 	}
 }
 
+func TestReporterGroupsEveryValidationForOneStepUnderOneFailureHeader(t *testing.T) {
+	step := reporterStep("change/create.yaml", 2)
+	step.Request.BasePath = "/api/v1"
+	step.Request.Path = "/change/create"
+	step.Request.Body = `{}`
+	step.Response.ExpectedTypes = map[string][]string{
+		".change_types": {"array"},
+		".version":      {"number", "null"},
+	}
+	var output bytes.Buffer
+	report := NewReporter(&output)
+
+	failedTypes := "{\"selector\":\".version\",\"actual\":\"string\"}\n" +
+		"{\"selector\":\".change_types\",\"actual\":\"object\"}"
+	if err := report.ValidationTypes(context.Background(), step, failedTypes); err != nil {
+		t.Fatalf("ValidationTypes() error = %v", err)
+	}
+	if err := report.ValidationBody(finalValidationContext(report), step, "- actual\n+ expected"); err != nil {
+		t.Fatalf("ValidationBody() error = %v", err)
+	}
+
+	want := "[\x1b[38;5;210m✗\x1b[0m] /change/create\n" +
+		"[\x1b[38;5;210m✗\x1b[0m] /api/v1/change/create POST \x1b[36mstep-3\x1b[0m\n" +
+		"    expected_types:\n" +
+		"        \x1b[38;5;15m.version:\x1b[0m \x1b[38;5;210m[number, null]\x1b[0m\n" +
+		"        \x1b[38;5;15m.change_types:\x1b[0m \x1b[38;5;210m[array]\x1b[0m\n" +
+		"    expected_body:\n" +
+		"        - actual\n" +
+		"        + expected\n\n"
+	if got := output.String(); got != want {
+		t.Fatalf("validation output = %q, want %q", got, want)
+	}
+}
+
+func TestSuccessReportsOnlyDefinitionsWithoutValidationFailures(t *testing.T) {
+	directory := reporterDirectory("change/create.yaml")
+	create := directory.StepsDefinitions[0]
+	updateFile := &domain.File{Path: "change/update.yaml", Directory: directory}
+	update := &domain.StepsDefinition{File: updateFile}
+	directory.StepsDefinitions = append(directory.StepsDefinitions, update)
+	step := &domain.Step{Definition: create}
+	step.Response.ExpectedTypes = map[string][]string{".version": {"int"}}
+	var output bytes.Buffer
+	report := NewReporter(&output)
+
+	if err := report.ValidationTypes(finalValidationContext(report), step, `{"selector":".version","actual":"string"}`); err != nil {
+		t.Fatalf("ValidationTypes() error = %v", err)
+	}
+	if err := report.Success(context.Background(), directory); err != nil {
+		t.Fatalf("Success() error = %v", err)
+	}
+
+	got := output.String()
+	if strings.Contains(got, "[\x1b[38;5;10m✓\x1b[0m] /change/create\n") {
+		t.Fatalf("output = %q, contains success for failed definition", got)
+	}
+	if !strings.Contains(got, "[\x1b[38;5;10m✓\x1b[0m] /change/update\n") {
+		t.Fatalf("output = %q, want success for valid sibling definition", got)
+	}
+}
+
+func TestValidationTypesFallsBackToEveryOriginalDeclaration(t *testing.T) {
+	step := reporterStep("change/create.yaml", 0)
+	step.Response.ExpectedTypes = map[string][]string{
+		".version":      {"number", "null"},
+		".change_types": {"array"},
+	}
+	var output bytes.Buffer
+
+	if err := NewReporter(&output).ValidationTypes(context.Background(), step, "non-JSON failure"); err != nil {
+		t.Fatalf("ValidationTypes() error = %v", err)
+	}
+
+	changeTypes := "        \x1b[38;5;15m.change_types:\x1b[0m \x1b[38;5;210m[array]\x1b[0m\n"
+	version := "        \x1b[38;5;15m.version:\x1b[0m \x1b[38;5;210m[number, null]\x1b[0m\n"
+	if got := output.String(); !strings.Contains(got, changeTypes) || !strings.Contains(got, version) {
+		t.Fatalf("ValidationTypes() output = %q, want original declarations", got)
+	} else if strings.Index(got, changeTypes) > strings.Index(got, version) {
+		t.Fatalf("ValidationTypes() output = %q, want sorted declarations", got)
+	}
+}
+
 func TestValidationBodyPreservesColoredDiff(t *testing.T) {
-	const diff = "\x1b[36m@@ -1 +1 @@\x1b[m\n\x1b[31m-old\x1b[m\n\x1b[32m+new\x1b[m"
+	const diff = "\x1b[38;5;210m-actual\x1b[m\n\x1b[92m+expected\x1b[m"
 	var output bytes.Buffer
 
 	if err := NewReporter(&output).ValidationBody(context.Background(), reporterStep("steps.yaml", 0), diff); err != nil {
 		t.Fatalf("ValidationBody() error = %v", err)
 	}
-	if !strings.Contains(output.String(), diff) {
-		t.Fatalf("ValidationBody() output = %q, want unchanged colored diff %q", output.String(), diff)
+	wantIndentedDiff := "        \x1b[38;5;210m-actual\x1b[m\n" +
+		"        \x1b[92m+expected\x1b[m\n"
+	if !strings.Contains(output.String(), wantIndentedDiff) {
+		t.Fatalf("ValidationBody() output = %q, want indented colored diff %q", output.String(), wantIndentedDiff)
 	}
 }
 
@@ -307,14 +397,14 @@ func TestReporterRechecksCancellationAfterWaitingForWriter(t *testing.T) {
 	report := NewReporter(writer)
 	firstDone := make(chan error, 1)
 	go func() {
-		firstDone <- report.Success(context.Background(), &domain.Directory{Path: "/first"})
+		firstDone <- report.Success(context.Background(), reporterDirectory("first.yaml"))
 	}()
 	<-writer.started
 
 	ctx, cancel := context.WithCancel(context.Background())
 	secondDone := make(chan error, 1)
 	go func() {
-		secondDone <- report.Success(ctx, &domain.Directory{Path: "/second"})
+		secondDone <- report.Success(ctx, reporterDirectory("second.yaml"))
 	}()
 	cancel()
 	close(writer.release)
@@ -325,7 +415,7 @@ func TestReporterRechecksCancellationAfterWaitingForWriter(t *testing.T) {
 	if err := <-secondDone; !errors.Is(err, context.Canceled) {
 		t.Fatalf("second Success() error = %v, want context.Canceled", err)
 	}
-	if got, want := writer.String(), "Success: /first\n\n"; got != want {
+	if got, want := writer.String(), "[\x1b[38;5;10m✓\x1b[0m] /first\n"; got != want {
 		t.Fatalf("serialized output = %q, want %q", got, want)
 	}
 }
@@ -339,7 +429,7 @@ func TestReporterSerializesConcurrentWrites(t *testing.T) {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			if err := report.Success(context.Background(), &domain.Directory{Path: fmt.Sprintf("/dir-%02d", index)}); err != nil {
+			if err := report.Success(context.Background(), reporterDirectory(fmt.Sprintf("dir-%02d.yaml", index))); err != nil {
 				t.Errorf("Success() error = %v", err)
 			}
 		}()
@@ -348,21 +438,29 @@ func TestReporterSerializesConcurrentWrites(t *testing.T) {
 
 	output := writer.String()
 	for index := 0; index < reports; index++ {
-		block := fmt.Sprintf("Success: /dir-%02d\n\n", index)
+		block := fmt.Sprintf("[\x1b[38;5;10m✓\x1b[0m] /dir-%02d\n", index)
 		if got := strings.Count(output, block); got != 1 {
 			t.Errorf("count of %q = %d, want 1; output = %q", block, got, output)
 		}
 	}
-	if got := strings.Count(output, "Success:"); got != reports {
+	if got := strings.Count(output, "[\x1b[38;5;10m✓\x1b[0m]"); got != reports {
 		t.Fatalf("success block count = %d, want %d", got, reports)
 	}
 }
 
 func TestReporterClassifiesContextualShortWrites(t *testing.T) {
-	err := NewReporter(shortWriter{}).Success(context.Background(), &domain.Directory{Path: "/work"})
-	if !errors.Is(err, ErrReporter) || !errors.Is(err, io.ErrShortWrite) {
-		t.Fatalf("Success() error = %v, want ErrReporter and io.ErrShortWrite", err)
-	}
+	t.Run("success", func(t *testing.T) {
+		err := NewReporter(shortWriter{}).Success(context.Background(), reporterDirectory("work.yaml"))
+		if !errors.Is(err, ErrReporter) || !errors.Is(err, io.ErrShortWrite) {
+			t.Fatalf("Success() error = %v, want ErrReporter and io.ErrShortWrite", err)
+		}
+	})
+	t.Run("debug", func(t *testing.T) {
+		err := NewReporter(shortWriter{}).Debug(context.Background(), nil)
+		if !errors.Is(err, ErrReporter) || !errors.Is(err, io.ErrShortWrite) {
+			t.Fatalf("Debug() error = %v, want ErrReporter and io.ErrShortWrite", err)
+		}
+	})
 }
 
 func TestReporterUsesSafeFallbackReferences(t *testing.T) {
@@ -374,17 +472,61 @@ func TestReporterUsesSafeFallbackReferences(t *testing.T) {
 	if err := report.Debug(context.Background(), nil); err != nil {
 		t.Fatalf("Debug() error = %v", err)
 	}
-	if err := report.ValidationTypes(context.Background(), &domain.Step{Index: 7}, "failed"); err != nil {
+	step := &domain.Step{Index: 7}
+	step.Response.ExpectedTypes = map[string][]string{".value": {"string"}}
+	if err := report.ValidationTypes(finalValidationContext(report), step, `{"selector":".value","actual":"number"}`); err != nil {
 		t.Fatalf("ValidationTypes() error = %v", err)
 	}
-	if got, want := output.String(), "Success: <unknown directory>\n\nDebug <unknown step>:\nnull\n\ntype validation failed for step 7:\nfailed\n\n"; got != want {
+	if err := report.Success(context.Background(), reporterDirectory("later.yaml")); err != nil {
+		t.Fatalf("Success() after debug error = %v", err)
+	}
+	if err := report.WorkingDirectory("/later"); err != nil {
+		t.Fatalf("WorkingDirectory() after debug error = %v", err)
+	}
+	if err := report.Debug(context.Background(), &domain.Step{Index: 99}); err != nil {
+		t.Fatalf("Debug() after debug error = %v", err)
+	}
+	if got, want := output.String(), "Debug <unknown step>:\n\x1b[0;90mnull\x1b[0m\n\n"; got != want {
 		t.Fatalf("fallback output = %q, want %q", got, want)
 	}
 }
 
+func TestDebugClassifiesJQFailureAsReportingFailure(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	err := NewReporter(&bytes.Buffer{}).Debug(context.Background(), &domain.Step{})
+	if !errors.Is(err, ErrReporter) || !errors.Is(err, runner.ErrJQPretty) {
+		t.Fatalf("Debug() error = %v, want ErrReporter and ErrJQPretty", err)
+	}
+}
+
+func TestColorizeJQJSONUsesJQTerminalPalette(t *testing.T) {
+	input := "{\n  \"key\": [null, true, 10, \"value\"]\n}"
+	want := "\x1b[1;39m{\x1b[0m\n" +
+		"  \x1b[1;34m\"key\"\x1b[0m\x1b[1;39m:\x1b[0m \x1b[1;39m[\x1b[0m" +
+		"\x1b[0;90mnull\x1b[0m\x1b[1;39m,\x1b[0m " +
+		"\x1b[0;39mtrue\x1b[0m\x1b[1;39m,\x1b[0m " +
+		"\x1b[0;39m10\x1b[0m\x1b[1;39m,\x1b[0m " +
+		"\x1b[0;32m\"value\"\x1b[0m\x1b[1;39m]\x1b[0m\n" +
+		"\x1b[1;39m}\x1b[0m"
+	if got := colorizeJQJSON(input); got != want {
+		t.Fatalf("colorizeJQJSON() = %q, want %q", got, want)
+	}
+}
+
 func reporterStep(path string, index int) *domain.Step {
+	directory := reporterDirectory(path)
+	definition := directory.StepsDefinitions[0]
+	return &domain.Step{Definition: definition, Index: index}
+}
+
+func finalValidationContext(report *Reporter) context.Context {
+	return context.WithValue(context.Background(), report, true)
+}
+
+func reporterDirectory(path string) *domain.Directory {
 	directory := &domain.Directory{Path: "/suite"}
 	file := &domain.File{Path: path, Directory: directory}
 	definition := &domain.StepsDefinition{File: file}
-	return &domain.Step{Definition: definition, Index: index}
+	directory.StepsDefinitions = []*domain.StepsDefinition{definition}
+	return directory
 }

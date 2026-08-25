@@ -1,0 +1,13 @@
+app: apihydra
+kind: steps
+metadata:
+  name: integration-int-zero-types
+  labels: [integration, types]
+spec:
+  steps:
+    - request:
+        path: /zero-types
+      response:
+        expected_body: '{"version":0}'
+        expected_types:
+          .version: [int, zero]

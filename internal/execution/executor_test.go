@@ -558,15 +558,19 @@ esac
 	second.Response.ExpectedStatus = 201
 	second.Response.ExpectedBody = `{"token":${captured}}`
 	second.Debug = true
+	third := executorStep("steps.yaml", 2)
+	third.Request.Method = "GET"
+	third.Request.BaseURL = "https://example.test"
+	third.Request.Path = "/must-not-run"
 
 	dir := first.Definition.File.Directory
-	dir.RuntimeSteps = [][]domain.Step{{first, second}}
+	dir.RuntimeSteps = [][]domain.Step{{first, second, third}}
 	var output bytes.Buffer
 	executor := NewExecutor(NewBinder(NewKeyValueStore()), NewValidator(), reporting.NewReporter(&output))
 
 	exitCode, err := executor.processDir(context.Background(), dir)
-	if err != nil || exitCode != 0 {
-		t.Fatalf("processDir() = (%d, %v), want success", exitCode, err)
+	if exitCode != 0 || !errors.Is(err, errDebugStop) {
+		t.Fatalf("processDir() = (%d, %v), want debug stop", exitCode, err)
 	}
 	wantBodies := []string{`{"token":"one"}`, `{"token":"one"}`}
 	for index, want := range wantBodies {
@@ -587,12 +591,30 @@ esac
 		"types", "body-expected", "body-actual", "capture",
 		`curl|https://example.test/api/second|{"token":"one"}`,
 		"types", "body-expected", "body-actual",
+		"body-expected",
 	}
 	if got := strings.Fields(phaseLog); !reflect.DeepEqual(got, wantOrder) {
 		t.Fatalf("phase order = %v, want %v", got, wantOrder)
 	}
-	if !strings.Contains(output.String(), "Debug steps.yaml step 1:") || !strings.Contains(output.String(), "Success: /suite") {
-		t.Fatalf("processDir() output = %q, want debug and success", output.String())
+	if !strings.Contains(output.String(), "Debug steps.yaml step 1:") || strings.Contains(output.String(), "[\x1b[38;5;10m✓\x1b[0m]") {
+		t.Fatalf("processDir() output = %q, want terminal debug without success", output.String())
+	}
+}
+
+func TestExecuteTreatsDebugStopAsCleanCompletionAndSkipsLaterStages(t *testing.T) {
+	debug := &domain.Directory{Path: "/debug"}
+	later := &domain.Directory{Path: "/later"}
+	visited := make([]string, 0, 1)
+
+	exitCode, err := executeStages(context.Background(), [][]*domain.Directory{{debug}, {later}}, func(_ context.Context, directory *domain.Directory) (int, error) {
+		visited = append(visited, directory.Path)
+		return 0, errDebugStop
+	})
+	if exitCode != 0 || err != nil {
+		t.Fatalf("executeStages() = (%d, %v), want clean debug completion", exitCode, err)
+	}
+	if !reflect.DeepEqual(visited, []string{"/debug"}) {
+		t.Fatalf("visited directories = %v, want debug stage only", visited)
 	}
 }
 
@@ -637,7 +659,7 @@ case "$last" in
 esac
 `)
 	installExecutorCommand(t, commandDir, "git", `
-printf '%s\n' 'diff --git expected actual' '--- expected' '+++ actual' '@@ -1 +1 @@' '-expected' '+actual'
+printf '%s\n' 'diff --git actual expected' '--- actual' '+++ expected' '@@ -1 +1 @@' '-actual' '+expected'
 exit 1
 `)
 
@@ -665,15 +687,16 @@ exit 1
 		t.Fatalf("processDir() = (%d, %v), want (%d, nil)", exitCode, err, errs.ExitValidation)
 	}
 	for _, want := range []string{
-		"type validation failed for",
-		"response status does not match expected",
-		"response body does not match expected",
+		"expected_types:",
+		"actual_status:",
+		"expected_status:",
+		"expected_body:",
 	} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("output = %q, want %q", output.String(), want)
 		}
 	}
-	if strings.Contains(output.String(), "Success:") {
+	if strings.Contains(output.String(), "[\x1b[38;5;10m✓\x1b[0m]") {
 		t.Fatalf("validation output includes success: %q", output.String())
 	}
 	if got := readExecutorFile(t, logPath); !strings.Contains(got, "capture") || !strings.Contains(got, "/ok") {
@@ -840,7 +863,7 @@ case "$last" in
 esac
 `)
 		installExecutorCommand(t, commandDir, "git", `
-printf '%s\n' 'diff --git expected actual' '--- expected' '+++ actual' '@@ -1 +1 @@' '-expected' '+actual'
+printf '%s\n' 'diff --git actual expected' '--- actual' '+++ expected' '@@ -1 +1 @@' '-actual' '+expected'
 exit 1
 `)
 		step := executorStep("steps.yaml", 0)
@@ -902,6 +925,7 @@ func executorStep(path string, index int) domain.Step {
 	directory := &domain.Directory{Path: "/suite"}
 	file := &domain.File{Path: path, Directory: directory}
 	definition := &domain.StepsDefinition{File: file}
+	directory.StepsDefinitions = []*domain.StepsDefinition{definition}
 	return domain.Step{Definition: definition, Index: index}
 }
 

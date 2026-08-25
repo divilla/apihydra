@@ -29,7 +29,7 @@ error formatting. Those contracts remain with their owning skeleton packages.
 The skeleton does not define preparation traversal order or transactionality,
 ordering between same-stage goroutines, sorting beyond the existing slice
 structure, separate file or step goroutines, URL construction, success
-reporting, debug selection or stopping, or precedence between multiple
+reporting, concurrent debug-winner selection, or precedence between multiple
 nonfatal validation failures.
 
 ## Required implementation and tests
@@ -68,7 +68,10 @@ nonfatal validation failures.
    `Reporter.ValidationTypes`.
 7. Completed validation mismatch traversal continues through remaining work
    and returns code `101` with a nil error.
-8. Debug, presentation, sorting, and per-validator payload rules absent from
-   the skeleton are not introduced here.
-9. No TODO or zero-value placeholder remains in `Prepare` or `processDir`;
+8. After Reporter successfully prints a debug step, Executor cancels concurrent
+   work, skips all later steps and stages, suppresses directory success output,
+   and converts its private stop signal into clean exit code `0` with no error.
+9. Presentation, sorting, and per-validator payload rules remain with their
+   owning packages.
+10. No TODO or zero-value placeholder remains in `Prepare` or `processDir`;
    package tests, race tests, and `git diff --check` pass.

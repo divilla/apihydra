@@ -6,7 +6,6 @@ metadata:
 spec:
   steps:
     - request:
-        method: GET
         path: /inherited
       response:
         expected_status: 200

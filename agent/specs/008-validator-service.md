@@ -21,10 +21,10 @@ suite-level result handling.
 
 The reference does not define:
 
-- expected-type declaration tokens, modifiers, zero values, or optionality;
+- expected-type declaration tokens beyond the current implementation choices,
+  modifiers, nonnumeric zero values, or optionality;
 - selector syntax, ordering, stream behavior, or aggregation format;
 - how `ValidateTypes` constructs its `runner.JQFilter` filter;
-- how `ValidateBody` constructs the `runner.JQProject` selector;
 - interpretation of malformed or non-object expected responses;
 - the relationship between validator errors and Reporter-owned static errors;
 - status rules beyond the `ExpectedStatus == 0` wildcard and exact non-zero
@@ -33,6 +33,29 @@ The reference does not define:
 
 Those behaviors must not appear as requirements or required test matrices
 until they are added to the protected skeleton.
+
+## Current type-declaration behavior
+
+Expected type declarations are alternatives: a selected response value is
+valid when any listed declaration matches. Native jq type names such as
+`number`, `string`, `boolean`, `array`, `object`, and `null` match jq's reported
+type. The `int` declaration matches any integer-valued JSON number, including
+zero. The `zero` declaration matches numeric `0`. Consequently,
+`.version: [int, zero]` accepts an actual numeric version of `0` and is omitted
+from failed type output.
+
+## Body projection contract
+
+`ValidateBody` passes `ExpectedBody` through `runner.JQPretty` without changing
+its shape. It filters `ActualBody` recursively to fields declared by the
+expected body, but only when those fields are present in the actual response.
+Projection must never synthesize a missing field as `null`. Consequently, an
+expected `"aaa": null` fails validation when the actual response omits `aaa`,
+while an actual `"aaa": null` satisfies that field. On inequality, Validator
+passes the unchanged normalized expected body and filtered normalized actual
+body to `runner.GitDiff`. Runner presents that mismatch as the correction from
+actual to expected: red values come from actual and green values come from
+expected.
 
 ## Required implementation and tests
 
@@ -52,10 +75,16 @@ until they are added to the protected skeleton.
 2. Type validation builds a filter from `ExpectedTypes`, evaluates it against
    `ActualBody` with `runner.JQFilter`, and returns `(failed string, error)`.
    Empty `failed` means all types validate; non-empty `failed` is a nonfatal
-   mismatch; `error` means filtering failed.
+   mismatch; `error` means filtering failed. Current filter behavior treats
+   declarations as alternatives, supports native jq types, matches `int` to
+   integer-valued numbers, and matches `zero` to numeric `0`.
 3. Status validation accepts every `ActualStatus` when `ExpectedStatus` is zero
-   and requires exact equality otherwise. Body validation returns an empty diff
-   for equal normalized bodies and the `GitDiff` result for unequal bodies.
+   and requires exact equality otherwise. Body validation prettifies the
+   expected body unchanged, projects only present actual fields selected by the
+   expected shape, does not equate a missing field with an expected null, returns
+   an empty diff for equal normalized bodies, and returns the `GitDiff` result
+   for unequal bodies without swapping the normalized expected and actual
+   arguments.
 4. Validator does not print, schedule work, or choose the process exit code.
 5. No validation language, comparison algorithm, external-tool dependency, or
    failure payload absent from the skeleton is specified here.

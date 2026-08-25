@@ -9,7 +9,6 @@ spec:
         name: alpha
         expected_id: '7'
       request:
-        method: POST
         path: /items
         headers:
           X-Step: local
@@ -17,13 +16,12 @@ spec:
         body: '{"name":"$name"}'
       response:
         expected_status: 200
-        expected_body: '{"id":$expected_id,"ok":true}'
+        expected_body: '{"id":$expected_id,"ok":true,"metadata":{"state":"ready"}}'
         expected_types:
           .id: [number]
           .ok: [boolean]
         capture:
           item_id: .id
-      debug: true
     - request:
         method: POST
         path: /items/captured

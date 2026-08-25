@@ -96,6 +96,48 @@ printf 'HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\n\036apih-status:200'
 	})
 }
 
+func TestCurlLetsCurlSelectMethodWhenMethodIsEmpty(t *testing.T) {
+	tests := map[string]struct {
+		body     string
+		wantArgs []string
+	}{
+		"without body defaults to GET": {
+			wantArgs: []string{
+				"--disable", "--globoff", "--silent", "--show-error",
+				"--url", "https://example.test/resource", "--output", "<response-file>", "--write-out", "", strings.TrimPrefix(curlStatusMarker, "\n") + "%{http_code}",
+			},
+		},
+		"with body defaults to POST": {
+			body: `{"name":"hydra"}`,
+			wantArgs: []string{
+				"--disable", "--globoff", "--silent", "--show-error",
+				"--url", "https://example.test/resource", "--data-binary", "@-", "--output", "<response-file>", "--write-out", "", strings.TrimPrefix(curlStatusMarker, "\n") + "%{http_code}",
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			argsPath, stdinPath := installCommand(t, "curl", `
+printf '%s\n' "$@" > "$APIH_TEST_ARGS"
+/bin/cat > "$APIH_TEST_STDIN"
+printf '{"ok":true}' > "$(apih_curl_output "$@")"
+printf '\n\036apih-status:200'
+`)
+
+			body, status, err := Curl(context.Background(), "", "https://example.test/resource", nil, 0, 0, "", test.body)
+			if err != nil {
+				t.Fatalf("Curl() error = %v", err)
+			}
+			if body != `{"ok":true}` || status != 200 {
+				t.Fatalf("Curl() = (%q, %d), want response body and status 200", body, status)
+			}
+			assertFileContents(t, stdinPath, test.body)
+			assertCurlLines(t, argsPath, test.wantArgs)
+		})
+	}
+}
+
 func TestCurlAddsQueryBeforeFragment(t *testing.T) {
 	argsPath, _ := installCommand(t, "curl", `
 printf '%s\n' "$@" > "$APIH_TEST_ARGS"
@@ -371,18 +413,28 @@ func TestCurlResponseFileFailures(t *testing.T) {
 	})
 }
 
-func TestGitDiffPassesDocumentsAndReturnsColoredHeaderlessDiff(t *testing.T) {
+func TestGitDiffPresentsActualToExpectedColoredChanges(t *testing.T) {
 	argsPath, _ := installCommand(t, "git", `
 printf '%s\n' "$@" > "$APIH_TEST_ARGS"
-/bin/cat "$9" > "$APIH_TEST_EXPECTED"
-/bin/cat "${10}" > "$APIH_TEST_ACTUAL"
-printf '\033[1mdiff --git expected actual\033[m\n'
+source=
+target=
+for argument do
+    source=$target
+    target=$argument
+done
+/bin/cat "$target" > "$APIH_TEST_EXPECTED"
+/bin/cat "$source" > "$APIH_TEST_ACTUAL"
+printf '\033[1mdiff --git actual expected\033[m\n'
 printf '\033[1mindex 111..222 100644\033[m\n'
-printf '\033[1m--- expected\033[m\n'
-printf '\033[1m+++ actual\033[m\n'
+printf '\033[1m--- actual\033[m\n'
+printf '\033[1m+++ expected\033[m\n'
 printf '\033[36m@@ -1 +1 @@\033[m\n'
-printf '\033[31m-old\033[m\n'
-printf '\033[32m+new\033[m\n'
+printf '\033[38;5;210m-new\033[m\n'
+printf ' unchanged context\n'
+printf '\033[92m+old\033[m\n'
+printf '\033[36m@@ -4 +4 @@\033[m\n'
+printf '\033[38;5;210m-new-again\033[m\n'
+printf '\033[92m+old-again\033[m\n'
 exit 1
 `)
 	expectedPath := filepath.Join(t.TempDir(), "expected-capture")
@@ -397,16 +449,18 @@ exit 1
 	if exitCode != 1 {
 		t.Fatalf("GitDiff() exit code = %d, want 1", exitCode)
 	}
-	if !strings.HasPrefix(diff, "\x1b[36m@@") {
-		t.Fatalf("GitDiff() diff = %q, want colored hunk", diff)
-	}
-	if strings.Contains(diff, "diff --git") || strings.Contains(diff, "--- expected") {
-		t.Fatalf("GitDiff() diff = %q, want headers removed", diff)
+	wantDiff := "\x1b[38;5;210m-new\x1b[m\n" +
+		"\x1b[92m+old\x1b[m\n" +
+		"\x1b[38;5;210m-new-again\x1b[m\n" +
+		"\x1b[92m+old-again\x1b[m\n"
+	if diff != wantDiff {
+		t.Fatalf("GitDiff() diff = %q, want only colored changed lines %q", diff, wantDiff)
 	}
 	assertFileContents(t, expectedPath, "old\n")
 	assertFileContents(t, actualPath, "new\n")
 	assertLines(t, argsPath, []string{
-		"diff", "--no-index", "--color=always", "--no-ext-diff", "--no-textconv", "--no-prefix", "--text", "--", "expected", "actual",
+		"-c", "color.diff.old=210", "-c", "color.diff.new=10", "-c", "color.diff.context=normal",
+		"diff", "--no-index", "--color=always", "--no-color-moved", "--no-ext-diff", "--no-textconv", "--no-prefix", "--text", "--", "actual", "expected",
 	})
 }
 

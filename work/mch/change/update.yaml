@@ -1,0 +1,46 @@
+app: apihydra
+kind: steps
+metadata:
+  name: create-change
+  labels: [create, change]
+spec:
+  steps:
+    - request:
+        path: /change/create
+        body: |
+          {
+            "project_id": 1,
+            "title": "API tester Title",
+            "def": "API tester Def"
+          }
+      response:
+        expected_types:
+          .version: [int, zero]
+          .change_phase: [string]
+        expected_body: |
+          {
+            "agent_edit": false,
+            "change_phase": "backlog",
+            "change_types": [],
+            "version": 0
+          }
+
+    - request:
+        path: /change/create
+        body: |
+          {
+            "project_id": 1,
+            "title": "API tester Title",
+            "def": "API tester Def"
+          }
+      response:
+        expected_types:
+          .version: [int, zero]
+          .change_phase: [string]
+        expected_body: |
+          {
+            "agent_edit": false,
+            "change_phase": "backlog",
+            "change_types": [],
+            "version": 0
+          }

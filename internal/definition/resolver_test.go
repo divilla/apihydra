@@ -108,10 +108,35 @@ func TestResolveDefaultsReplacesOnlyResolvedDefaultsAndAllowsEmptyTree(t *testin
 	if err := resolver.ResolveDefaults(context.Background(), &domain.Suite{Root: root}); err != nil {
 		t.Fatalf("ResolveDefaults() error = %v", err)
 	}
-	assertDefaults(t, root.ResolvedDefaults, domain.Defaults{})
-	assertDefaults(t, child.ResolvedDefaults, domain.Defaults{})
+	assertDefaults(t, root.ResolvedDefaults, domain.Defaults{Timeout: 10, Retries: 3})
+	assertDefaults(t, child.ResolvedDefaults, domain.Defaults{Timeout: 10, Retries: 3})
 	if err := resolver.ResolveDefaults(context.Background(), &domain.Suite{}); err != nil {
 		t.Fatalf("ResolveDefaults() empty-tree error = %v", err)
+	}
+}
+
+func TestResolveDefaultsAppliesProductTimeoutAndRetryFallbacks(t *testing.T) {
+	root := &domain.Directory{Path: "/"}
+	child := &domain.Directory{Path: "/child", Parent: root}
+	root.Children = []*domain.Directory{child}
+	child.DefaultsDefinition = defaultsDefinition(child, domain.Defaults{Timeout: 4})
+
+	resolver := NewResolver()
+	if err := resolver.ResolveDefaults(context.Background(), &domain.Suite{Root: root}); err != nil {
+		t.Fatalf("ResolveDefaults() error = %v", err)
+	}
+
+	assertDefaults(t, root.ResolvedDefaults, domain.Defaults{Timeout: 10, Retries: 3})
+	assertDefaults(t, child.ResolvedDefaults, domain.Defaults{Timeout: 4, Retries: 3})
+
+	definition := stepsDefinition(root, "steps.yaml", 1)
+	root.StepsDefinitions = []*domain.StepsDefinition{definition}
+	if err := resolver.ResolveSteps(context.Background(), &domain.Suite{Root: root}); err != nil {
+		t.Fatalf("ResolveSteps() error = %v", err)
+	}
+	request := root.ResolvedSteps[0][0].Request
+	if request.Timeout != 10 || request.Retries != 3 {
+		t.Fatalf("resolved request timeout/retries = %d/%d, want 10/3", request.Timeout, request.Retries)
 	}
 }
 

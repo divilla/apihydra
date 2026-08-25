@@ -53,7 +53,7 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 	isHead := method == "HEAD"
 	if isHead {
 		args = append(args, "--head")
-	} else {
+	} else if method != "" {
 		args = append(args, "--request", method)
 	}
 	args = append(args, "--url", url)
@@ -148,13 +148,16 @@ func GitDiff(ctx context.Context, expected, actual string) (string, int, error) 
 		tempDir,
 		"git",
 		"",
-		"diff", "--no-index", "--color=always", "--no-ext-diff", "--no-textconv", "--no-prefix", "--text", "--", "expected", "actual",
+		"-c", "color.diff.old=210",
+		"-c", "color.diff.new=10",
+		"-c", "color.diff.context=normal",
+		"diff", "--no-index", "--color=always", "--no-color-moved", "--no-ext-diff", "--no-textconv", "--no-prefix", "--text", "--", "actual", "expected",
 	)
 	if err != nil && exitCode != 1 {
 		return "", exitCode, newCommandFailure(ErrGitDiff, err, stderr)
 	}
 	if exitCode == 1 {
-		return trimDiffHeaders(output), exitCode, nil
+		return changedDiffLines(output), exitCode, nil
 	}
 	return "", 0, nil
 }
@@ -224,12 +227,32 @@ func (e *commandFailure) Unwrap() []error {
 	return []error{e.operation, ErrCommand, e.cause}
 }
 
-func trimDiffHeaders(diff string) string {
-	lines := strings.Split(diff, "\n")
-	for index, line := range lines {
-		if strings.Contains(line, "@@") {
-			return strings.Join(lines[index:], "\n")
+func changedDiffLines(diff string) string {
+	changed := make([]string, 0)
+	inHunk := false
+	for _, line := range strings.Split(diff, "\n") {
+		visible := trimLeadingANSI(line)
+		if strings.HasPrefix(visible, "@@") {
+			inHunk = true
+			continue
+		}
+		if inHunk && (strings.HasPrefix(visible, "-") || strings.HasPrefix(visible, "+")) {
+			changed = append(changed, line)
 		}
 	}
-	return ""
+	if len(changed) == 0 {
+		return ""
+	}
+	return strings.Join(changed, "\n") + "\n"
+}
+
+func trimLeadingANSI(line string) string {
+	for strings.HasPrefix(line, "\x1b[") {
+		end := strings.IndexByte(line, 'm')
+		if end < 0 {
+			break
+		}
+		line = line[end+1:]
+	}
+	return line
 }

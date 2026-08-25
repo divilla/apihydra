@@ -24,10 +24,20 @@ decoding and validating those definitions, resolving inherited request
 defaults, preparing request steps, executing requests, and validating
 responses.
 
+When no root, nested, or step value supplies them, request resolution uses a
+10-second timeout and 3 retries. Nonzero values at each narrower scope override
+the inherited value.
+
 The current reference CLI composes the complete flow: definition loading,
 decoding, validation, and resolution; directory-tree validation; runtime-step
 preparation and stage planning; and staged execution with response validation
 and reporting.
+
+A step with `debug: true` is a terminal breakpoint. After the step finishes,
+its runtime state is normalized through jq, printed as jq-palette ANSI-colored
+JSON, and the application completes successfully. No later step or stage is
+executed, and no success, validation, diagnostic, or other output follows the
+debug JSON.
 
 ## Package ownership
 
@@ -212,7 +222,8 @@ The following are not product requirements:
 - definition placement/cardinality rules beyond the reference fields and
   service comments;
 - deterministic file ordering or symlink/hidden-directory policy;
-- presence-sensitive default merging, implicit HTTP methods, URL
+- presence-sensitive default merging beyond the timeout/retry fallbacks,
+  implicit HTTP methods, URL
   normalization, or header canonicalization;
 - variable-name grammar within the documented `$var` and `${var}` forms,
   escaping, serialization, replacement precedence, or scope beyond the
@@ -222,9 +233,9 @@ The following are not product requirements:
   comparison, or body-validation rules beyond the documented normalized
   expected-response comparison;
 - exact curl, jq, or Git argument vectors and command-result normalization;
-- success, validation-failure, or debug layouts not implemented or tested in
+- success or validation-failure layouts not implemented or tested in
   `skeleton/`;
-- debug winner selection or execution-stop semantics;
+- selection precedence when concurrent directories reach debug steps;
 - name/label filters, preflight APIs, events, summaries, or additional CLI
   flags;
 - additional packages, services, models, fields, methods, static errors, or

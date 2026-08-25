@@ -52,6 +52,29 @@ and verifies that `master` is clean. It then creates and checks out
 `change/<spec-slug>`, stopping if that branch already exists locally or as an
 `origin` remote-tracking ref. On success, it prints the new branch name.
 
+## `change-merge-direct.pl`
+
+Squash and fast-forward a branch directly into `master`, push `master`, and
+delete the remote source branch. With no argument, the current branch must be a
+numbered `change/<change-slug>` branch and the commit message defaults to
+`Implement change <change-slug>`:
+
+```shell
+scripts/change-merge-direct.pl
+```
+
+Pass one non-empty argument to set the squash commit message and permit any
+source branch other than `master`, including `change/`, `fix/`, and `test/`
+branches:
+
+```shell
+scripts/change-merge-direct.pl "Fix request validation"
+```
+
+The source branch must have a matching branch on `origin`, the worktree must be
+clean, and `origin/master` must be its ancestor. The script rejects detached
+`HEAD` and never permits `master` to be used as its own source branch.
+
 ## `codex-code-spec.pl`
 
 Implement a specification on its already-checked-out change branch:

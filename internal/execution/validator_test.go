@@ -65,14 +65,29 @@ func TestBuildTypeFilterIsDeterministicAndSelectsMismatches(t *testing.T) {
 		`.active`:    {"boolean"},
 	})
 	want := `[` +
-		`({selector:".active",expected:["boolean"],actual:((.active) | type)} | select(.actual as $actual | (.expected | index($actual) | not))),` +
-		`({selector:".user.name",expected:["string","null"],actual:((.user.name) | type)} | select(.actual as $actual | (.expected | index($actual) | not)))` +
+		`({selector:".active",expected:["boolean"],actual:((.active))} | select(.actual as $value | ((($value | type) == "boolean") | not)) | .actual |= type),` +
+		`({selector:".user.name",expected:["string","null"],actual:((.user.name))} | select(.actual as $value | (((($value | type) == "string") or (($value | type) == "null")) | not)) | .actual |= type)` +
 		`] | .[]`
 	if got != want {
 		t.Fatalf("buildTypeFilter() = %q, want %q", got, want)
 	}
 	if got := buildTypeFilter(nil); got != `[] | .[]` {
 		t.Fatalf("buildTypeFilter(nil) = %q, want empty declaration filter", got)
+	}
+	if got := buildTypeFilter(map[string][]string{".value": nil}); !strings.Contains(got, `select(.actual as $value | (false | not))`) {
+		t.Fatalf("buildTypeFilter(empty declaration) = %q, want always-failing predicate", got)
+	}
+}
+
+func TestBuildTypeFilterSupportsIntegerAndZeroDeclarations(t *testing.T) {
+	filter := buildTypeFilter(map[string][]string{".version": {"int", "zero"}})
+	for _, want := range []string{
+		`if ($value | type) == "number" then (($value | floor) == $value) else false end`,
+		`($value == 0)`,
+	} {
+		if !strings.Contains(filter, want) {
+			t.Fatalf("buildTypeFilter() = %q, want predicate %q", filter, want)
+		}
 	}
 }
 
@@ -153,11 +168,38 @@ printf '%s\n' '}'
 	if !strings.Contains(log, `--sort-keys .|{"b":2,"a":1}`) {
 		t.Fatalf("jq log = %q, want expected body pretty invocation", log)
 	}
-	if !strings.Contains(log, `--sort-keys -- .|{"a":1,"b":2}`) {
+	wantProjection := "--sort-keys -- " + buildBodySelector(string(step.Response.ExpectedBody)) + `|{"a":1,"b":2}`
+	if !strings.Contains(log, wantProjection) {
 		t.Fatalf("jq log = %q, want actual body projection invocation", log)
 	}
 	if !reflect.DeepEqual(step, wantStep) {
 		t.Fatalf("ValidateBody() mutated step = %+v", step)
+	}
+}
+
+func TestValidateBodySkipsUnspecifiedExpectedBody(t *testing.T) {
+	commandDir := newValidatorCommandDir(t)
+	installValidatorCommand(t, commandDir, "jq", `printf 'jq must not run' >&2; exit 99`)
+	installValidatorCommand(t, commandDir, "git", `printf 'git must not run' >&2; exit 99`)
+
+	step := &domain.Step{}
+	step.Response.ExpectedBody = " \n\t"
+	step.Response.ActualBody = `{"ignored":true}`
+	wantStep := cloneValidatorStep(step)
+
+	diff, err := NewValidator().ValidateBody(context.Background(), step)
+	if err != nil || diff != "" {
+		t.Fatalf("ValidateBody() = (%q, %v), want empty success", diff, err)
+	}
+	if !reflect.DeepEqual(step, wantStep) {
+		t.Fatalf("ValidateBody() mutated step = %+v", step)
+	}
+}
+
+func TestBuildBodySelectorDoesNotMaterializeMissingFieldsAsNull(t *testing.T) {
+	selector := buildBodySelector(`{"aaa":null}`)
+	if !strings.Contains(selector, `if ($actual | has($key)) then`) {
+		t.Fatalf("buildBodySelector() = %q, want explicit actual-field presence check", selector)
 	}
 }
 
@@ -177,7 +219,7 @@ esac
 	installValidatorCommand(t, commandDir, "git", `
 /bin/cp expected "$APIH_VALIDATOR_EXPECTED"
 /bin/cp actual "$APIH_VALIDATOR_ACTUAL"
-printf '%s\n' 'diff --git expected actual' '--- expected' '+++ actual' '@@ -1 +1 @@' '-{"value":"expected"}' '+{"value":"actual"}'
+printf '%s\n' 'diff --git actual expected' '--- actual' '+++ expected' '@@ -1 +1 @@' '-{"value":"actual"}' '+{"value":"expected"}'
 exit 1
 `)
 
@@ -188,7 +230,7 @@ exit 1
 	if err != nil {
 		t.Fatalf("ValidateBody() error = %v", err)
 	}
-	wantDiff := "@@ -1 +1 @@\n-{\"value\":\"expected\"}\n+{\"value\":\"actual\"}\n"
+	wantDiff := "-{\"value\":\"actual\"}\n+{\"value\":\"expected\"}\n"
 	if diff != wantDiff {
 		t.Fatalf("ValidateBody() diff = %q, want %q", diff, wantDiff)
 	}

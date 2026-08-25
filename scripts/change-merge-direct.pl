@@ -7,55 +7,64 @@ sub fail {
     die "$message\n";
 }
 
-@ARGV == 0 or fail("usage: scripts/change-merge-direct.pl");
+@ARGV <= 1 or fail('usage: scripts/change-merge-direct.pl ["commit message"]');
 
 my $branch = qx{git branch --show-current};
 chomp $branch;
+$branch ne "" or fail("detached HEAD is not supported");
+$branch ne "master" or fail("cannot merge master into itself");
 
-my ($change_name) = $branch =~ m{^change/([0-9]+-[0-9A-Za-z_-]+)$}
-    or fail("current branch is not a change/<change-slug> branch: $branch");
+my $commit_message;
+if (@ARGV == 1) {
+    $commit_message = $ARGV[0];
+    $commit_message ne "" or fail("commit message cannot be empty");
+} else {
+    my ($change_name) = $branch =~ m{^change/([0-9]+-[0-9A-Za-z_-]+)$}
+        or fail("current branch is not a change/<change-slug> branch: $branch");
+    $commit_message = "Implement change $change_name";
+}
 
-my $change_branch = "change/$change_name";
+my $source_branch = $branch;
 
 ensure_clean_worktree();
 run_checked(qw(git fetch origin));
 my $original_commit = trim(run_capture_checked(qw(git rev-parse HEAD)));
-my $origin_change_commit = remote_head_commit($change_branch);
-$original_commit eq $origin_change_commit
-    or fail("local $change_branch $original_commit does not match origin/$change_branch $origin_change_commit");
+my $origin_source_commit = remote_head_commit($source_branch);
+$original_commit eq $origin_source_commit
+    or fail("local $source_branch $original_commit does not match origin/$source_branch $origin_source_commit");
 my $base_branch = "master";
 ensure_base_is_ancestor($base_branch);
 
 my $squashed_commit = $original_commit;
-if (!is_squashed_change_commit($original_commit, $change_name, $base_branch)) {
-    $squashed_commit = create_squash_commit($change_name, $base_branch);
+if (!is_squashed_branch_commit($original_commit, $commit_message, $base_branch)) {
+    $squashed_commit = create_squash_commit($commit_message, $base_branch);
     run_checked(
         "git",
         "push",
-        "--force-with-lease=refs/heads/$change_branch:$origin_change_commit",
+        "--force-with-lease=refs/heads/$source_branch:$origin_source_commit",
         "origin",
-        "$squashed_commit:refs/heads/$change_branch",
+        "$squashed_commit:refs/heads/$source_branch",
     );
-    run_checked("git", "update-ref", "refs/heads/$change_branch", $squashed_commit, $original_commit);
+    run_checked("git", "update-ref", "refs/heads/$source_branch", $squashed_commit, $original_commit);
 }
 
 run_checked("git", "checkout", $base_branch);
 run_checked("git", "pull", "--ff-only", "origin", $base_branch);
-run_checked("git", "merge", "--ff-only", $change_branch);
+run_checked("git", "merge", "--ff-only", $source_branch);
 my $base_commit = trim(run_capture_checked(qw(git rev-parse HEAD)));
 $base_commit eq $squashed_commit
-    or fail("$base_branch HEAD $base_commit does not match squashed change commit $squashed_commit");
+    or fail("$base_branch HEAD $base_commit does not match squashed branch commit $squashed_commit");
 run_checked("git", "push", "-u", "origin", $base_branch);
 my $origin_base_commit = remote_head_commit($base_branch);
 $origin_base_commit eq $squashed_commit
-    or fail("origin/$base_branch $origin_base_commit does not match squashed change commit $squashed_commit");
+    or fail("origin/$base_branch $origin_base_commit does not match squashed branch commit $squashed_commit");
 run_checked(
     "git",
     "push",
-    "--force-with-lease=refs/heads/$change_branch:$squashed_commit",
+    "--force-with-lease=refs/heads/$source_branch:$squashed_commit",
     "origin",
     "--delete",
-    $change_branch,
+    $source_branch,
 );
 
 sub ensure_clean_worktree {
@@ -89,8 +98,8 @@ sub remote_head_commit {
     return $1;
 }
 
-sub is_squashed_change_commit {
-    my ($commit, $change_name, $base_branch) = @_;
+sub is_squashed_branch_commit {
+    my ($commit, $commit_message, $base_branch) = @_;
     my $parents = trim(run_capture_checked("git", "rev-list", "--parents", "-n", "1", $commit));
     my @fields = split /\s+/, $parents;
     shift @fields;
@@ -100,11 +109,11 @@ sub is_squashed_change_commit {
     return 0 if $fields[0] ne $base_commit;
 
     my $subject = trim(run_capture_checked("git", "log", "-1", "--format=%s", $commit));
-    return $subject eq "Implement change $change_name";
+    return $subject eq $commit_message;
 }
 
 sub create_squash_commit {
-    my ($change_name, $base_branch) = @_;
+    my ($commit_message, $base_branch) = @_;
     my $tree = trim(run_capture_checked(qw(git rev-parse HEAD^{tree})));
     return trim(run_capture_checked(
         "git",
@@ -113,7 +122,7 @@ sub create_squash_commit {
         "-p",
         "origin/$base_branch",
         "-m",
-        "Implement change $change_name",
+        $commit_message,
     ));
 }
 

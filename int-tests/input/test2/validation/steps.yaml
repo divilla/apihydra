@@ -6,10 +6,16 @@ metadata:
 spec:
   steps:
     - request:
-        method: GET
         path: /status-mismatch
       response:
         expected_status: 201
         expected_body: '{"id":9,"ok":true}'
+        expected_types:
+          .id: [string]
+    - request:
+        path: /implicit-post
+        body: '{"continued":true}'
+      response:
+        expected_body: '{"id":7,"ok":true,"aaa":null}'
         expected_types:
           .id: [string]

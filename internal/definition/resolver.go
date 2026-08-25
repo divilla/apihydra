@@ -5,6 +5,11 @@ import (
 	"context"
 )
 
+const (
+	defaultTimeoutSeconds = 10
+	defaultRetries        = 3
+)
+
 // Resolver combines decoded definitions into executable step values.
 type Resolver struct{}
 
@@ -26,6 +31,10 @@ func (l *Resolver) ResolveDefaults(
 		}
 
 		defaults := resolved[directory.Parent]
+		if directory.Parent == nil {
+			defaults.Timeout = defaultTimeoutSeconds
+			defaults.Retries = defaultRetries
+		}
 		if directory.DefaultsDefinition != nil {
 			defaults = mergeDefaults(defaults, directory.DefaultsDefinition.Spec)
 		} else {

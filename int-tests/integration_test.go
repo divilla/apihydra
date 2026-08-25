@@ -120,6 +120,16 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 			_, _ = w.Write([]byte(`{"data":"` + strings.Repeat("a", 100000) + `"}`))
 			return
 		}
+		if r.URL.Path == "/api/items" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id":7,"ok":true,"metadata":{"state":"ready","ignored":true},"ignored":true}`))
+			return
+		}
+		if r.URL.Path == "/zero-types" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"version":0}`))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"id":7,"ok":true}`))
 	}))
@@ -194,6 +204,85 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if strings.TrimSpace(strings.TrimPrefix(validation.stdout, workingDirectoryOnly)) == "" {
 		t.Fatalf("test2 stdout = %q, want reported validation output", validation.stdout)
 	}
+	validationDetails := runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("test2", "validation"))
+	if validationDetails.exitCode != 101 || validationDetails.stderr != "" {
+		t.Fatalf("validation detail result = code %d, stderr %q, want validation output", validationDetails.exitCode, validationDetails.stderr)
+	}
+	for _, want := range []string{
+		"[\x1b[38;5;210m✗\x1b[0m] /steps\n",
+		"[\x1b[38;5;210m✗\x1b[0m] /api/status-mismatch GET \x1b[36mstep-1\x1b[0m\n",
+		"[\x1b[38;5;210m✗\x1b[0m] /api/implicit-post POST \x1b[36mstep-2\x1b[0m\n",
+		"[\x1b[38;5;10m✓\x1b[0m] /update\n",
+		"    expected_types:\n",
+		"\x1b[38;5;210m[string]\x1b[0m",
+		"    actual_status: \x1b[38;5;210m200\x1b[0m\n",
+		"    expected_status: \x1b[38;5;10m201\x1b[0m\n",
+		"    expected_body:\n",
+		"\x1b[38;5;210m-  \"id\": 7,\x1b[m",
+		"\x1b[92m+\x1b[m\x1b[92m  \"id\": 9,\x1b[m",
+		"\x1b[92m+\x1b[m\x1b[92m  \"aaa\": null,\x1b[m",
+	} {
+		if !strings.Contains(validationDetails.stdout, want) {
+			t.Fatalf("validation detail stdout = %q, want %q", validationDetails.stdout, want)
+		}
+	}
+	if got := strings.Count(validationDetails.stdout, "[\x1b[38;5;210m✗\x1b[0m] /steps\n"); got != 1 {
+		t.Fatalf("validation file header count = %d, want 1; stdout = %q", got, validationDetails.stdout)
+	}
+	if got := strings.Count(validationDetails.stdout, "[\x1b[38;5;210m✗\x1b[0m]"); got != 3 {
+		t.Fatalf("validation cross count = %d, want file plus two step crosses; stdout = %q", got, validationDetails.stdout)
+	}
+	if got := strings.Count(validationDetails.stdout, "[\x1b[38;5;10m✓\x1b[0m] /update\n"); got != 1 {
+		t.Fatalf("valid sibling definition success count = %d, want 1; stdout = %q", got, validationDetails.stdout)
+	}
+	if !strings.Contains(validationDetails.stdout, "\x1b[m\n\n[\x1b[38;5;210m✗\x1b[0m] /api/implicit-post") ||
+		!strings.Contains(validationDetails.stdout, "\x1b[m\n\n[\x1b[38;5;10m✓\x1b[0m] /update\n") {
+		t.Fatalf("validation detail stdout = %q, want one blank line below every failing step", validationDetails.stdout)
+	}
+	if strings.Contains(validationDetails.stdout, "\x1b[38;5;210m-  \"aaa\": null,\x1b[m") ||
+		strings.Contains(validationDetails.stdout, "\x1b[36m@@") ||
+		strings.Contains(validationDetails.stdout, `"ok": true`) ||
+		strings.Contains(validationDetails.stdout, "\x1b[38;5;9m[string]\x1b[0m") {
+		t.Fatalf("validation detail stdout = %q, want actual-to-expected changed values only", validationDetails.stdout)
+	}
+
+	successOutputSuite := filepath.Join("scenarios", "success-output")
+	successOutput := runCLI(t, ctx, binary, runRoot, coverageDir, successOutputSuite)
+	wantSuccessOutput := fmt.Sprintf(
+		"Working Directory: %s\n\n[\x1b[38;5;10m✓\x1b[0m] /steps\n",
+		filepath.Join(runRoot, successOutputSuite),
+	)
+	if successOutput.exitCode != 0 || successOutput.stderr != "" || successOutput.stdout != wantSuccessOutput {
+		t.Fatalf("success output = code %d, stdout %q, stderr %q, want %q", successOutput.exitCode, successOutput.stdout, successOutput.stderr, wantSuccessOutput)
+	}
+
+	intZeroSuite := filepath.Join("scenarios", "int-zero-types")
+	intZero := runCLI(t, ctx, binary, runRoot, coverageDir, intZeroSuite)
+	wantIntZeroOutput := fmt.Sprintf(
+		"Working Directory: %s\n\n[\x1b[38;5;10m✓\x1b[0m] /steps\n",
+		filepath.Join(runRoot, intZeroSuite),
+	)
+	if intZero.exitCode != 0 || intZero.stderr != "" || intZero.stdout != wantIntZeroOutput {
+		t.Fatalf("int/zero types = code %d, stdout %q, stderr %q, want %q", intZero.exitCode, intZero.stdout, intZero.stderr, wantIntZeroOutput)
+	}
+
+	debugDefaultsSuite := filepath.Join("scenarios", "debug-defaults")
+	debugDefaults := runCLI(t, ctx, binary, runRoot, coverageDir, debugDefaultsSuite)
+	if debugDefaults.exitCode != 0 || debugDefaults.stderr != "" {
+		t.Fatalf("debug defaults = code %d, stdout %q, stderr %q, want success", debugDefaults.exitCode, debugDefaults.stdout, debugDefaults.stderr)
+	}
+	for _, want := range []string{
+		"Debug steps.yaml step 0:\n",
+		"\x1b[1;34m\"timeout\"\x1b[0m\x1b[1;39m:\x1b[0m \x1b[0;39m10\x1b[0m",
+		"\x1b[1;34m\"retries\"\x1b[0m\x1b[1;39m:\x1b[0m \x1b[0;39m3\x1b[0m",
+	} {
+		if !strings.Contains(debugDefaults.stdout, want) {
+			t.Fatalf("debug defaults stdout = %q, want %q", debugDefaults.stdout, want)
+		}
+	}
+	if strings.Contains(debugDefaults.stdout, "[\x1b[38;5;10m✓\x1b[0m]") || !strings.HasSuffix(debugDefaults.stdout, "\x1b[0m\n\n") {
+		t.Fatalf("debug defaults stdout = %q, want debug JSON as final output", debugDefaults.stdout)
+	}
 	nilExpectedTypes := runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "nil-expected-types"))
 	if nilExpectedTypes.exitCode != 101 || nilExpectedTypes.stderr != "" {
 		t.Fatalf("nil expected-types result = code %d, stderr %q, want validation result", nilExpectedTypes.exitCode, nilExpectedTypes.stderr)
@@ -219,6 +308,9 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		if !requests.contains(want) {
 			t.Fatalf("HTTP requests do not contain method %s path %s query %q headers %v body %q", want.method, want.path, want.rawQuery, want.headers, want.body)
 		}
+	}
+	if requests.contains(observedRequest{method: http.MethodGet, path: "/after-debug"}) {
+		t.Fatal("HTTP requests contain /after-debug, want execution stopped at debug step")
 	}
 
 	fatalScenarios := []struct {

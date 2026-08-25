@@ -1,0 +1,13 @@
+app: apihydra
+kind: steps
+metadata:
+  name: integration-valid-sibling
+  labels: [integration, success]
+spec:
+  steps:
+    - request:
+        path: /update
+      response:
+        expected_body: '{"id":7,"ok":true}'
+        expected_types:
+          .id: [int]
