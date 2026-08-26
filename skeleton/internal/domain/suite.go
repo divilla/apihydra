@@ -87,7 +87,7 @@ type Step struct {
         Headers    map[string]string `yaml:"headers" json:"headers"`
         CookieMode string            `yaml:"cookie_mode" json:"cookie_mode"` // `included` or `excluded` - default `included`
         CookieKeys []string          `yaml:"cookie_keys" json:"cookie_keys"` // included keys or excluded keys - all cookies if empty in excluded
-        Cookie     string            `yaml:"cookies" json:"cookies"`         // full cookie lines
+        CookieJar  string            `yaml:"cookie_jar" json:"cookie_jar"`   // full cookie lines
         Timeout    int               `yaml:"timeout" json:"timeout"`
         Retries    int               `yaml:"retries" json:"retries"`
         Query      string            `yaml:"query" json:"query"`
@@ -100,7 +100,7 @@ type Step struct {
         ActualBody     YAMLString            `yaml:"actual_body" json:"actual_body"`
         ExpectedTypes  map[string][]string   `yaml:"expected_types" json:"expected_types"`
         Capture        map[string]YAMLString `yaml:"capture" json:"capture"`
-        Cookie         string                `yaml:"cookie"`
+        CookieJar      string                `yaml:"cookie_jar" json:"cookie_jar"` // full cookie lines
     } `yaml:"response" json:"response"`
     Debug      bool             `yaml:"debug" json:"debug"`
     Definition *StepsDefinition `yaml:"-" json:"-"`

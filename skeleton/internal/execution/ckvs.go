@@ -6,21 +6,21 @@ import (
     "sync"
 )
 
-// CookiesKeyValueStore is a concurrent, write-once string store.
-type CookiesKeyValueStore struct {
+// CookieKeyValueStore is a concurrent, write-once string store.
+type CookieKeyValueStore struct {
     m  map[string]string
     mu sync.RWMutex
 }
 
-// NewCookiesKeyValueStore returns an initialized empty store.
-func NewCookiesKeyValueStore() *CookiesKeyValueStore {
-    return &CookiesKeyValueStore{
+// NewCookieKeyValueStore returns an initialized empty store.
+func NewCookieKeyValueStore() *CookieKeyValueStore {
+    return &CookieKeyValueStore{
         m: make(map[string]string),
     }
 }
 
 // Get returns a stored value or ErrNotFound when key is absent.
-func (s *CookiesKeyValueStore) Get(key string) (string, error) {
+func (s *CookieKeyValueStore) Get(key string) (string, error) {
     s.mu.RLock()
     defer s.mu.RUnlock()
 
@@ -31,7 +31,7 @@ func (s *CookiesKeyValueStore) Get(key string) (string, error) {
 }
 
 // GetAll returns all values as single string.
-func (s *CookiesKeyValueStore) GetAll() string {
+func (s *CookieKeyValueStore) GetAll() string {
     s.mu.RLock()
     defer s.mu.RUnlock()
 
@@ -43,7 +43,7 @@ func (s *CookiesKeyValueStore) GetAll() string {
 }
 
 // GetIncluded returns all values having listed key.
-func (s *CookiesKeyValueStore) GetIncluded(keys []string) string {
+func (s *CookieKeyValueStore) GetIncluded(keys []string) string {
     s.mu.RLock()
     defer s.mu.RUnlock()
 
@@ -57,7 +57,7 @@ func (s *CookiesKeyValueStore) GetIncluded(keys []string) string {
 }
 
 // GetExcluded returns all values but having listed key.
-func (s *CookiesKeyValueStore) GetExcluded(keys []string) string {
+func (s *CookieKeyValueStore) GetExcluded(keys []string) string {
     s.mu.RLock()
     defer s.mu.RUnlock()
 
@@ -71,7 +71,7 @@ func (s *CookiesKeyValueStore) GetExcluded(keys []string) string {
 }
 
 // Set stores a new key and value pair.
-func (s *CookiesKeyValueStore) Set(key, val string) {
+func (s *CookieKeyValueStore) Set(key, val string) {
     s.mu.Lock()
     defer s.mu.Unlock()
 
@@ -79,7 +79,7 @@ func (s *CookiesKeyValueStore) Set(key, val string) {
 }
 
 // SetAll stores a new key and value pair.
-func (s *CookiesKeyValueStore) SetAll(values string) {
+func (s *CookieKeyValueStore) SetAll(values string) {
     s.mu.Lock()
     defer s.mu.Unlock()
 
@@ -90,7 +90,7 @@ func (s *CookiesKeyValueStore) SetAll(values string) {
 }
 
 // Del deletes kay value pair by key.
-func (s *CookiesKeyValueStore) Del(key string) {
+func (s *CookieKeyValueStore) Del(key string) {
     s.mu.Lock()
     defer s.mu.Unlock()
 

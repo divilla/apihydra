@@ -19,6 +19,7 @@ var ErrExecutionCanceled = errors.New("execution canceled")
 // Executor prepares, schedules, executes, validates, and reports runtime
 // steps.
 type Executor struct {
+    ckvs   *CookieKeyValueStore
     binder *Binder
     val    *Validator
     report *reporting.Reporter
@@ -26,11 +27,13 @@ type Executor struct {
 
 // NewExecutor retains the collaborators used during execution.
 func NewExecutor(
+    ckvs *CookieKeyValueStore,
     binder *Binder,
     validator *Validator,
     report *reporting.Reporter,
 ) *Executor {
     return &Executor{
+        ckvs:   ckvs,
         binder: binder,
         val:    validator,
         report: report,
