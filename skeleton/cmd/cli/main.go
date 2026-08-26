@@ -1,16 +1,16 @@
 package main
 
 import (
-    "apih/skeleton/internal/definition"
-    "apih/skeleton/internal/domain"
-    "apih/skeleton/internal/execution"
-    "apih/skeleton/internal/reporting"
-    "apih/skeleton/pkg/errs"
-    "context"
-    "errors"
-    "log"
-    "os"
-    "path/filepath"
+	"apih/skeleton/internal/definition"
+	"apih/skeleton/internal/domain"
+	"apih/skeleton/internal/execution"
+	"apih/skeleton/internal/reporting"
+	"apih/skeleton/pkg/errs"
+	"context"
+	"errors"
+	"log"
+	"os"
+	"path/filepath"
 )
 
 // ErrInvalidPath classifies an invalid working-directory argument.
@@ -20,83 +20,83 @@ var ErrInvalidPath = errors.New("invalid path")
 var ErrWorkingDirectory = errors.New("working directory error")
 
 func main() {
-    log.SetFlags(0)
-    log.SetOutput(os.Stderr)
+	log.SetFlags(0)
+	log.SetOutput(os.Stderr)
 
-    exitCode, err := run(context.Background(), os.Args, reporting.NewReporter(os.Stdout))
-    if err != nil {
-        log.Print(err)
-    }
-    os.Exit(exitCode)
+	exitCode, err := run(context.Background(), os.Args, reporting.NewReporter(os.Stdout))
+	if err != nil {
+		log.Print(err)
+	}
+	os.Exit(exitCode)
 }
 
 func run(ctx context.Context, args []string, reporter *reporting.Reporter) (int, error) {
-    workDir, err := os.Getwd()
-    if err != nil {
-        return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrWorkingDirectory, err)
-    }
+	workDir, err := os.Getwd()
+	if err != nil {
+		return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrWorkingDirectory, err)
+	}
 
-    if len(args) > 1 {
-        subdir := args[1]
-        path := filepath.Join(workDir, subdir)
-        info, err := os.Stat(path)
-        if err != nil {
-            return errs.ExitConfiguration, errs.Build(errs.ExitConfiguration, ErrInvalidPath, err, path)
-        }
-        if !info.IsDir() {
-            return errs.ExitConfiguration, errs.Build(errs.ExitConfiguration, ErrInvalidPath, nil, path)
-        }
-        workDir = path
-    }
-    if err := reporter.WorkingDirectory(workDir); err != nil {
-        return errs.ExitInternal, err
-    }
+	if len(args) > 1 {
+		subdir := args[1]
+		path := filepath.Join(workDir, subdir)
+		info, err := os.Stat(path)
+		if err != nil {
+			return errs.ExitConfiguration, errs.Build(errs.ExitConfiguration, ErrInvalidPath, err, path)
+		}
+		if !info.IsDir() {
+			return errs.ExitConfiguration, errs.Build(errs.ExitConfiguration, ErrInvalidPath, nil, path)
+		}
+		workDir = path
+	}
+	if err := reporter.WorkingDirectory(workDir); err != nil {
+		return errs.ExitInternal, err
+	}
 
-    ctx, cancel := context.WithCancel(ctx)
-    defer cancel()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-    suite := &domain.Suite{WorkDir: workDir}
+	suite := &domain.Suite{WorkDir: workDir}
 
-    loader := definition.NewLoader()
-    if err = loader.LoadDirectoryStructure(ctx, suite); err != nil {
-        return errs.ExitConfiguration, err
-    }
-    if err = loader.LoadDirectoryFiles(ctx, suite); err != nil {
-        return errs.ExitConfiguration, err
-    }
-    if err = loader.DecodeBaseDefinitions(ctx, suite); err != nil {
-        return errs.ExitConfiguration, err
-    }
+	loader := definition.NewLoader()
+	if err = loader.LoadDirectoryStructure(ctx, suite); err != nil {
+		return errs.ExitConfiguration, err
+	}
+	if err = loader.LoadDirectoryFiles(ctx, suite); err != nil {
+		return errs.ExitConfiguration, err
+	}
+	if err = loader.DecodeBaseDefinitions(ctx, suite); err != nil {
+		return errs.ExitConfiguration, err
+	}
 
-    decoder := definition.NewDecoder()
-    if err = decoder.DecodeFiles(ctx, suite); err != nil {
-        return errs.ExitConfiguration, err
-    }
-    if err = decoder.ValidateDefaultsDefinitions(ctx, suite); err != nil {
-        return errs.ExitConfiguration, err
-    }
-    if err = decoder.ValidateStepsDefinitions(ctx, suite); err != nil {
-        return errs.ExitConfiguration, err
-    }
+	decoder := definition.NewDecoder()
+	if err = decoder.DecodeFiles(ctx, suite); err != nil {
+		return errs.ExitConfiguration, err
+	}
+	if err = decoder.ValidateDefaultsDefinitions(ctx, suite); err != nil {
+		return errs.ExitConfiguration, err
+	}
+	if err = decoder.ValidateStepsDefinitions(ctx, suite); err != nil {
+		return errs.ExitConfiguration, err
+	}
 
-    resolver := definition.NewResolver()
-    if err = resolver.ResolveDefaults(ctx, suite); err != nil {
-        return errs.ExitConfiguration, err
-    }
-    if err = resolver.ResolveSteps(ctx, suite); err != nil {
-        return errs.ExitConfiguration, err
-    }
+	resolver := definition.NewResolver()
+	if err = resolver.ResolveDefaults(ctx, suite); err != nil {
+		return errs.ExitConfiguration, err
+	}
+	if err = resolver.ResolveSteps(ctx, suite); err != nil {
+		return errs.ExitConfiguration, err
+	}
 
-    binder := execution.NewBinder(execution.NewKeyValueStore())
-    cookie := execution.NewCookie(execution.NewCookieKeyValueStore())
-    validator := execution.NewValidator()
-    executor := execution.NewExecutor(cookie, binder, validator, reporter)
-    exitCode, err := executor.ValidateDirectories(suite)
-    if err != nil {
-        return exitCode, err
-    }
-    executor.Prepare(suite)
-    stagesPlan := executor.PlanStages(suite)
+	binder := execution.NewBinder(execution.NewKeyValueStore())
+	cookie := execution.NewCookie(execution.NewCookieKeyValueStore())
+	validator := execution.NewValidator()
+	executor := execution.NewExecutor(cookie, binder, validator, reporter)
+	exitCode, err := executor.ValidateDirectories(suite)
+	if err != nil {
+		return exitCode, err
+	}
+	executor.Prepare(suite)
+	stagesPlan := executor.PlanStages(suite)
 
-    return executor.Execute(ctx, stagesPlan)
+	return executor.Execute(ctx, stagesPlan)
 }
