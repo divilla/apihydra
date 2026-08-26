@@ -296,10 +296,10 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 			body, status, err := runner.Curl(
 				ctx,
 				step.Request.Method,
-				step.Request.BaseURL+step.Request.BasePath+step.Request.Path,
-				step.Request.Headers,
-				step.Request.Timeout,
-				step.Request.Retries,
+				step.Request.Defaults.BaseURL+step.Request.Defaults.BasePath+step.Request.Path,
+				step.Request.Defaults.Headers,
+				step.Request.Defaults.Timeout,
+				step.Request.Defaults.Retries,
 				step.Request.Query,
 				string(step.Request.Body),
 			)
@@ -411,7 +411,7 @@ func cloneStepGroups(groups [][]domain.Step) [][]domain.Step {
 func cloneStep(step domain.Step) domain.Step {
 	cloned := step
 	cloned.Vars = cloneMap(step.Vars)
-	cloned.Request.Headers = cloneMap(step.Request.Headers)
+	cloned.Request.Defaults.Headers = cloneMap(step.Request.Defaults.Headers)
 	cloned.Response.Capture = cloneMap(step.Response.Capture)
 	if step.Response.ExpectedTypes != nil {
 		cloned.Response.ExpectedTypes = make(map[string][]string, len(step.Response.ExpectedTypes))

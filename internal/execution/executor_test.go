@@ -48,7 +48,7 @@ func TestPrepareDeepCopiesAllMutableStepStateAcrossTree(t *testing.T) {
 		Index:      4,
 	}
 	step.Request.Body = `{"value":"$request"}`
-	step.Request.Headers = map[string]string{"Accept": "application/json"}
+	step.Request.Defaults.Headers = map[string]string{"Accept": "application/json"}
 	step.Response.ExpectedBody = `{"value":"$request"}`
 	step.Response.ExpectedTypes = map[string][]string{
 		".empty": {},
@@ -83,16 +83,19 @@ func TestPrepareDeepCopiesAllMutableStepStateAcrossTree(t *testing.T) {
 	if runtimeStep.Definition != definition {
 		t.Fatalf("Prepare() Definition = %p, want preserved pointer %p", runtimeStep.Definition, definition)
 	}
+	if runtimeStep.Index != 4 {
+		t.Fatalf("Prepare() Index = %d, want 4", runtimeStep.Index)
+	}
 
 	runtimeStep.Vars["request"] = "changed"
-	runtimeStep.Request.Headers["Accept"] = "text/plain"
+	runtimeStep.Request.Defaults.Headers["Accept"] = "text/plain"
 	runtimeStep.Response.ExpectedTypes[".value"][0] = "number"
 	runtimeStep.Response.Capture["captured"] = ".other"
 	runtimeStep.Request.Body = "interpolated"
 	if got := root.ResolvedSteps[0][0].Vars["request"]; got != "one" {
 		t.Fatalf("Prepare() shared Vars map, resolved value = %q", got)
 	}
-	if got := root.ResolvedSteps[0][0].Request.Headers["Accept"]; got != "application/json" {
+	if got := root.ResolvedSteps[0][0].Request.Defaults.Headers["Accept"]; got != "application/json" {
 		t.Fatalf("Prepare() shared Headers map, resolved value = %q", got)
 	}
 	if got := root.ResolvedSteps[0][0].Response.ExpectedTypes[".value"][0]; got != "string" {
@@ -112,7 +115,7 @@ func TestPrepareDeepCopiesAllMutableStepStateAcrossTree(t *testing.T) {
 func TestPreparePreservesNilResolvedSteps(t *testing.T) {
 	root := &domain.Directory{ResolvedSteps: [][]domain.Step{{{}}}}
 	NewExecutor(nil, nil, nil).Prepare(&domain.Suite{Root: root})
-	if root.RuntimeSteps[0][0].Vars != nil || root.RuntimeSteps[0][0].Request.Headers != nil || root.RuntimeSteps[0][0].Response.Capture != nil {
+	if root.RuntimeSteps[0][0].Vars != nil || root.RuntimeSteps[0][0].Request.Defaults.Headers != nil || root.RuntimeSteps[0][0].Response.Capture != nil {
 		t.Fatalf("Prepare() changed nil maps: %+v", root.RuntimeSteps[0][0])
 	}
 
@@ -541,8 +544,8 @@ esac
 	first := executorStep("steps.yaml", 0)
 	first.Vars = map[string]domain.YAMLString{"request": "one"}
 	first.Request.Method = "POST"
-	first.Request.BaseURL = "https://example.test"
-	first.Request.BasePath = "/api"
+	first.Request.Defaults.BaseURL = "https://example.test"
+	first.Request.Defaults.BasePath = "/api"
 	first.Request.Path = "/first"
 	first.Request.Body = `{"token":"$request"}`
 	first.Response.ExpectedStatus = 201
@@ -551,8 +554,8 @@ esac
 
 	second := executorStep("steps.yaml", 1)
 	second.Request.Method = "POST"
-	second.Request.BaseURL = "https://example.test"
-	second.Request.BasePath = "/api"
+	second.Request.Defaults.BaseURL = "https://example.test"
+	second.Request.Defaults.BasePath = "/api"
 	second.Request.Path = "/second"
 	second.Request.Body = `{"token":$captured}`
 	second.Response.ExpectedStatus = 201
@@ -560,7 +563,7 @@ esac
 	second.Debug = true
 	third := executorStep("steps.yaml", 2)
 	third.Request.Method = "GET"
-	third.Request.BaseURL = "https://example.test"
+	third.Request.Defaults.BaseURL = "https://example.test"
 	third.Request.Path = "/must-not-run"
 
 	dir := first.Definition.File.Directory
@@ -665,7 +668,7 @@ exit 1
 
 	bad := executorStep("steps.yaml", 0)
 	bad.Request.Method = "GET"
-	bad.Request.BaseURL = "https://example.test"
+	bad.Request.Defaults.BaseURL = "https://example.test"
 	bad.Request.Path = "/bad"
 	bad.Response.ExpectedStatus = 200
 	bad.Response.ExpectedBody = "expected"
@@ -673,7 +676,7 @@ exit 1
 	bad.Response.Capture = map[string]domain.YAMLString{"saved": ".saved"}
 	ok := executorStep("steps.yaml", 1)
 	ok.Request.Method = "GET"
-	ok.Request.BaseURL = "https://example.test"
+	ok.Request.Defaults.BaseURL = "https://example.test"
 	ok.Request.Path = "/ok"
 	ok.Response.ExpectedStatus = 200
 	ok.Response.ExpectedBody = "same"

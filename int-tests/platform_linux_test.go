@@ -20,6 +20,7 @@ func runPlatformSpecificScenarios(t *testing.T, ctx context.Context, binary, wor
 	t.Run("closed PTY output failures", func(t *testing.T) {
 		for _, suite := range []string{
 			filepath.Join("scenarios", "success-output"),
+			filepath.Join("scenarios", "debug-defaults"),
 			"test1",
 			filepath.Join("test2", "type-only"),
 			filepath.Join("test2", "status-only"),

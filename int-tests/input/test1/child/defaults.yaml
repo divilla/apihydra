@@ -3,4 +3,4 @@ kind: defaults
 metadata:
   name: integration-child-defaults
 spec:
-  basePath: /child-api
+  base_path: /child-api

@@ -4,19 +4,22 @@ spec:
   steps:
     - request:
         method: GET
-        baseUrl: http://APIH_TEST_SERVER?
         query: first=1
+        defaults:
+          base_url: http://APIH_TEST_SERVER?
       response:
         expected_body: '{"id":7,"ok":true}'
     - request:
         method: GET
-        baseUrl: http://APIH_TEST_SERVER?first=1&
         query: second=2
+        defaults:
+          base_url: http://APIH_TEST_SERVER?first=1&
       response:
         expected_body: '{"id":7,"ok":true}'
     - request:
         method: GET
-        baseUrl: http://APIH_TEST_SERVER#integration
         query: fragment=1
+        defaults:
+          base_url: http://APIH_TEST_SERVER#integration
       response:
         expected_body: '{"id":7,"ok":true}'

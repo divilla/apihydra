@@ -50,8 +50,11 @@ nonfatal validation failures.
 1. Public names, signatures, constructor state, and static error text match the
    reference.
 2. `Prepare` deep-copies `ResolvedSteps` into `RuntimeSteps`, including all
-   mutable slices and maps, preserves the original `Step.Definition` pointers,
-   does not mutate `ResolvedSteps`, and does not load or interpolate variables.
+   mutable slices and maps such as each value-typed
+   `Step.Request.Defaults.Headers`, preserves the original `Step.Definition`
+   pointers and `Step.Index` values, does not mutate `ResolvedSteps`, and does
+   not load or interpolate variables. It retains the unified `domain.Defaults`
+   structure and does not introduce `*domain.Defaults` pointers.
 3. `ValidateDirectories` returns configuration code and
    `ErrInvalidDirectoryTree` without panic for every invalid tree shape covered
    by the reference.
@@ -62,7 +65,8 @@ nonfatal validation failures.
    fatal result replaces provisional validation and retains its associated code
    and error without being replaced by later results.
 6. Per-step execution uses the eight phases in the reference order, assigns the
-   Curl response status and body to `Step.Response.ActualStatus` and
+   Curl response status to `Step.Response.ActualStatus`, converts and assigns
+   the Curl response body to the `domain.YAMLString`
    `Step.Response.ActualBody`, interpolates expected values before Curl runs,
    and sends a non-empty `ValidateTypes` failed string to
    `Reporter.ValidationTypes`.

@@ -38,54 +38,52 @@ type File struct {
 }
 
 type BaseDefinition struct {
-    App  string     `yaml:"app"`
-    Kind string     `yaml:"kind"`
-    Spec YAMLString `yaml:"spec"`
+    App  string     `yaml:"app" json:"app"`
+    Kind string     `yaml:"kind" json:"kind"`
+    Spec YAMLString `yaml:"spec" json:"spec"`
 }
 
 type DefaultsDefinition struct {
-    App      string       `yaml:"app"`
-    Kind     DocumentKind `yaml:"kind"`
-    Metadata Metadata     `yaml:"metadata"`
-    Spec     Defaults     `yaml:"spec"`
-    File     *File        `yaml:"-"`
+    App      string       `yaml:"app" json:"app"`
+    Kind     DocumentKind `yaml:"kind" json:"kind"`
+    Metadata Metadata     `yaml:"metadata" json:"metadata"`
+    Spec     Defaults     `yaml:"spec" json:"spec"`
+    File     *File        `yaml:"-" json:"-"`
 }
 
 type StepsDefinition struct {
-    App      string       `yaml:"app"`
-    Kind     DocumentKind `yaml:"kind"`
-    Metadata Metadata     `yaml:"metadata"`
+    App      string       `yaml:"app" json:"app"`
+    Kind     DocumentKind `yaml:"kind" json:"kind"`
+    Metadata Metadata     `yaml:"metadata" json:"metadata"`
     Spec     struct {
-        Steps []Step `yaml:"steps"`
-    } `yaml:"spec"`
-    File *File `yaml:"-"`
+        Defaults Defaults `yaml:"defaults" json:"defaults"`
+        Steps    []Step   `yaml:"steps" json:"steps"`
+    } `yaml:"spec" json:"spec"`
+    File *File `yaml:"-" json:"-"`
 }
 
 type Metadata struct {
-    Name   string   `yaml:"name"`
-    Labels []string `yaml:"labels"`
+    Name   string   `yaml:"name" json:"name"`
+    Labels []string `yaml:"labels" json:"labels"`
 }
 
 type Defaults struct {
-    BaseURL  string            `yaml:"baseUrl"`
-    BasePath string            `yaml:"basePath"`
-    Headers  map[string]string `yaml:"headers"`
-    Timeout  int               `yaml:"timeout"`
-    Retries  int               `yaml:"retries"`
+    BaseURL  string            `yaml:"base_url" json:"base_url"`
+    BasePath string            `yaml:"base_path" json:"base_path"`
+    Headers  map[string]string `yaml:"headers" json:"headers"`
+    Timeout  int               `yaml:"timeout" json:"timeout"`
+    Retries  int               `yaml:"retries" json:"retries"`
 }
 
 type Step struct {
+    Index   int                   `yaml:"-" json:"index"`
     Vars    map[string]YAMLString `yaml:"vars" json:"vars"`
     Request struct {
-        Method   string            `yaml:"method" json:"method"`
-        BaseURL  string            `yaml:"baseUrl" json:"baseUrl"`
-        BasePath string            `yaml:"basePath" json:"basePath"`
-        Path     string            `yaml:"path" json:"path"`
-        Headers  map[string]string `yaml:"headers" json:"headers"`
-        Timeout  int               `yaml:"timeout" json:"timeout"`
-        Retries  int               `yaml:"retries" json:"retries"`
-        Query    string            `yaml:"query" json:"query"`
-        Body     YAMLString        `yaml:"body" json:"body"`
+        Path     string     `yaml:"path" json:"path"`
+        Method   string     `yaml:"method" json:"method"`
+        Query    string     `yaml:"query" json:"query"`
+        Body     YAMLString `yaml:"body" json:"body"`
+        Defaults Defaults   `yaml:"defaults" json:"defaults"`
     } `yaml:"request" json:"request"`
     Response struct {
         ExpectedStatus int                   `yaml:"expected_status" json:"expected_status"`
@@ -97,7 +95,6 @@ type Step struct {
     } `yaml:"response" json:"response"`
     Debug      bool             `yaml:"debug" json:"debug"`
     Definition *StepsDefinition `yaml:"-" json:"-"`
-    Index      int              `yaml:"-" json:"index"`
 }
 
 func (s *Step) DirectoryStage() int {

@@ -2,6 +2,6 @@
 app: apihydra
 kind: defaults
 spec:
-  basePath: /api/v2
+  base_path: /api/v2
   headers:
     X-Suite-Area: billing

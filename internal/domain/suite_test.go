@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"reflect"
 	"slices"
@@ -75,58 +76,55 @@ func TestDomainSchemaMatchesReference(t *testing.T) {
 		{"Directory", reflect.TypeOf((*Directory)(nil)), ""},
 	})
 	assertFields(t, reflect.TypeOf(BaseDefinition{}), []fieldSchema{
-		{"App", reflect.TypeOf(""), `yaml:"app"`},
-		{"Kind", reflect.TypeOf(""), `yaml:"kind"`},
-		{"Spec", reflect.TypeOf(YAMLString("")), `yaml:"spec"`},
+		{"App", reflect.TypeOf(""), `yaml:"app" json:"app"`},
+		{"Kind", reflect.TypeOf(""), `yaml:"kind" json:"kind"`},
+		{"Spec", reflect.TypeOf(YAMLString("")), `yaml:"spec" json:"spec"`},
 	})
 	assertFields(t, reflect.TypeOf(DefaultsDefinition{}), []fieldSchema{
-		{"App", reflect.TypeOf(""), `yaml:"app"`},
-		{"Kind", reflect.TypeOf(DocumentKind("")), `yaml:"kind"`},
-		{"Metadata", reflect.TypeOf(Metadata{}), `yaml:"metadata"`},
-		{"Spec", reflect.TypeOf(Defaults{}), `yaml:"spec"`},
-		{"File", reflect.TypeOf((*File)(nil)), `yaml:"-"`},
+		{"App", reflect.TypeOf(""), `yaml:"app" json:"app"`},
+		{"Kind", reflect.TypeOf(DocumentKind("")), `yaml:"kind" json:"kind"`},
+		{"Metadata", reflect.TypeOf(Metadata{}), `yaml:"metadata" json:"metadata"`},
+		{"Spec", reflect.TypeOf(Defaults{}), `yaml:"spec" json:"spec"`},
+		{"File", reflect.TypeOf((*File)(nil)), `yaml:"-" json:"-"`},
 	})
 	assertFields(t, reflect.TypeOf(StepsDefinition{}), []fieldSchema{
-		{"App", reflect.TypeOf(""), `yaml:"app"`},
-		{"Kind", reflect.TypeOf(DocumentKind("")), `yaml:"kind"`},
-		{"Metadata", reflect.TypeOf(Metadata{}), `yaml:"metadata"`},
-		{"Spec", nil, `yaml:"spec"`},
-		{"File", reflect.TypeOf((*File)(nil)), `yaml:"-"`},
+		{"App", reflect.TypeOf(""), `yaml:"app" json:"app"`},
+		{"Kind", reflect.TypeOf(DocumentKind("")), `yaml:"kind" json:"kind"`},
+		{"Metadata", reflect.TypeOf(Metadata{}), `yaml:"metadata" json:"metadata"`},
+		{"Spec", nil, `yaml:"spec" json:"spec"`},
+		{"File", reflect.TypeOf((*File)(nil)), `yaml:"-" json:"-"`},
 	})
 	assertFields(t, reflect.TypeOf(StepsDefinition{}).Field(3).Type, []fieldSchema{
-		{"Steps", reflect.TypeOf([]Step(nil)), `yaml:"steps"`},
+		{"Defaults", reflect.TypeOf(Defaults{}), `yaml:"defaults" json:"defaults"`},
+		{"Steps", reflect.TypeOf([]Step(nil)), `yaml:"steps" json:"steps"`},
 	})
 	assertFields(t, reflect.TypeOf(Metadata{}), []fieldSchema{
-		{"Name", reflect.TypeOf(""), `yaml:"name"`},
-		{"Labels", reflect.TypeOf([]string(nil)), `yaml:"labels"`},
+		{"Name", reflect.TypeOf(""), `yaml:"name" json:"name"`},
+		{"Labels", reflect.TypeOf([]string(nil)), `yaml:"labels" json:"labels"`},
 	})
 	assertFields(t, reflect.TypeOf(Defaults{}), []fieldSchema{
-		{"BaseURL", reflect.TypeOf(""), `yaml:"baseUrl"`},
-		{"BasePath", reflect.TypeOf(""), `yaml:"basePath"`},
-		{"Headers", reflect.TypeOf(map[string]string(nil)), `yaml:"headers"`},
-		{"Timeout", reflect.TypeOf(0), `yaml:"timeout"`},
-		{"Retries", reflect.TypeOf(0), `yaml:"retries"`},
+		{"BaseURL", reflect.TypeOf(""), `yaml:"base_url" json:"base_url"`},
+		{"BasePath", reflect.TypeOf(""), `yaml:"base_path" json:"base_path"`},
+		{"Headers", reflect.TypeOf(map[string]string(nil)), `yaml:"headers" json:"headers"`},
+		{"Timeout", reflect.TypeOf(0), `yaml:"timeout" json:"timeout"`},
+		{"Retries", reflect.TypeOf(0), `yaml:"retries" json:"retries"`},
 	})
 	assertFields(t, reflect.TypeOf(Step{}), []fieldSchema{
+		{"Index", reflect.TypeOf(0), `yaml:"-" json:"index"`},
 		{"Vars", reflect.TypeOf(map[string]YAMLString(nil)), `yaml:"vars" json:"vars"`},
 		{"Request", nil, `yaml:"request" json:"request"`},
 		{"Response", nil, `yaml:"response" json:"response"`},
 		{"Debug", reflect.TypeOf(false), `yaml:"debug" json:"debug"`},
 		{"Definition", reflect.TypeOf((*StepsDefinition)(nil)), `yaml:"-" json:"-"`},
-		{"Index", reflect.TypeOf(0), `yaml:"-" json:"index"`},
-	})
-	assertFields(t, reflect.TypeOf(Step{}).Field(1).Type, []fieldSchema{
-		{"Method", reflect.TypeOf(""), `yaml:"method" json:"method"`},
-		{"BaseURL", reflect.TypeOf(""), `yaml:"baseUrl" json:"baseUrl"`},
-		{"BasePath", reflect.TypeOf(""), `yaml:"basePath" json:"basePath"`},
-		{"Path", reflect.TypeOf(""), `yaml:"path" json:"path"`},
-		{"Headers", reflect.TypeOf(map[string]string(nil)), `yaml:"headers" json:"headers"`},
-		{"Timeout", reflect.TypeOf(0), `yaml:"timeout" json:"timeout"`},
-		{"Retries", reflect.TypeOf(0), `yaml:"retries" json:"retries"`},
-		{"Query", reflect.TypeOf(""), `yaml:"query" json:"query"`},
-		{"Body", reflect.TypeOf(YAMLString("")), `yaml:"body" json:"body"`},
 	})
 	assertFields(t, reflect.TypeOf(Step{}).Field(2).Type, []fieldSchema{
+		{"Path", reflect.TypeOf(""), `yaml:"path" json:"path"`},
+		{"Method", reflect.TypeOf(""), `yaml:"method" json:"method"`},
+		{"Query", reflect.TypeOf(""), `yaml:"query" json:"query"`},
+		{"Body", reflect.TypeOf(YAMLString("")), `yaml:"body" json:"body"`},
+		{"Defaults", reflect.TypeOf(Defaults{}), `yaml:"defaults" json:"defaults"`},
+	})
+	assertFields(t, reflect.TypeOf(Step{}).Field(3).Type, []fieldSchema{
 		{"ExpectedStatus", reflect.TypeOf(0), `yaml:"expected_status" json:"expected_status"`},
 		{"ActualStatus", reflect.TypeOf(0), `yaml:"actual_status" json:"actual_status"`},
 		{"ExpectedBody", reflect.TypeOf(YAMLString("")), `yaml:"expected_body" json:"expected_body"`},
@@ -134,6 +132,94 @@ func TestDomainSchemaMatchesReference(t *testing.T) {
 		{"ExpectedTypes", reflect.TypeOf(map[string][]string(nil)), `yaml:"expected_types" json:"expected_types"`},
 		{"Capture", reflect.TypeOf(map[string]YAMLString(nil)), `yaml:"capture" json:"capture"`},
 	})
+}
+
+func TestUnifiedDefaultsSchemaDecodesAndEncodesNestedValues(t *testing.T) {
+	definitionYAML := []byte(`
+app: apihydra
+kind: steps
+spec:
+  defaults:
+    base_path: /v1
+    headers:
+      Accept: application/json
+    timeout: 8
+  steps:
+    - request:
+        path: /items
+        defaults:
+          base_url: https://example.test
+          retries: 2
+      response:
+        expected_body: '{"expected":true}'
+        actual_body: '{"actual":true}'
+`)
+
+	var definition StepsDefinition
+	if err := yaml.Unmarshal(definitionYAML, &definition); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if got, want := definition.Spec.Defaults, (Defaults{
+		BasePath: "/v1",
+		Headers:  map[string]string{"Accept": "application/json"},
+		Timeout:  8,
+	}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("steps defaults = %+v, want %+v", got, want)
+	}
+	step := definition.Spec.Steps[0]
+	if got, want := step.Request.Defaults, (Defaults{BaseURL: "https://example.test", Retries: 2}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("request defaults = %+v, want %+v", got, want)
+	}
+	if step.Response.ExpectedBody != `{"expected":true}` || step.Response.ActualBody != `{"actual":true}` {
+		t.Fatalf("response bodies = %q/%q, want YAMLString values", step.Response.ExpectedBody, step.Response.ActualBody)
+	}
+
+	encodedYAML, err := yaml.Marshal(definition)
+	if err != nil {
+		t.Fatalf("Marshal YAML error = %v", err)
+	}
+	var roundTrip StepsDefinition
+	if err := yaml.Unmarshal(encodedYAML, &roundTrip); err != nil {
+		t.Fatalf("Unmarshal round-trip YAML error = %v", err)
+	}
+	if !reflect.DeepEqual(roundTrip.Spec.Defaults, definition.Spec.Defaults) ||
+		roundTrip.Spec.Steps[0].Request.Defaults.BaseURL != step.Request.Defaults.BaseURL ||
+		roundTrip.Spec.Steps[0].Request.Defaults.Retries != step.Request.Defaults.Retries ||
+		roundTrip.Spec.Steps[0].Response.ActualBody != step.Response.ActualBody {
+		t.Fatalf("YAML round trip = %+v, want nested defaults and YAMLString actual body", roundTrip)
+	}
+
+	step.Index = 4
+	encodedJSON, err := json.Marshal(step)
+	if err != nil {
+		t.Fatalf("Marshal JSON error = %v", err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(encodedJSON, &document); err != nil {
+		t.Fatalf("Unmarshal JSON error = %v", err)
+	}
+	request, ok := document["request"].(map[string]any)
+	if !ok {
+		t.Fatalf("JSON request = %#v, want object", document["request"])
+	}
+	defaults, ok := request["defaults"].(map[string]any)
+	if !ok {
+		t.Fatalf("JSON request.defaults = %#v, want nested object", request["defaults"])
+	}
+	if got := defaults["base_url"]; got != "https://example.test" {
+		t.Fatalf("JSON request.defaults.base_url = %#v, want https://example.test", got)
+	}
+	if got, exists := defaults["base_path"]; !exists || got != "" {
+		t.Fatalf("JSON request.defaults.base_path = %#v (exists %t), want empty string", got, exists)
+	}
+	for _, direct := range []string{"base_url", "base_path", "headers", "timeout", "retries"} {
+		if _, exists := request[direct]; exists {
+			t.Fatalf("JSON request contains direct defaults field %q", direct)
+		}
+	}
+	if got := document["index"]; got != float64(4) {
+		t.Fatalf("JSON index = %#v, want 4", got)
+	}
 }
 
 func TestStepResponseExpectationSchema(t *testing.T) {

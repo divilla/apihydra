@@ -17,8 +17,9 @@ spec:
         expected_body: '{"status":"ok","api":"ok"}'
     - request:
         method: GET
-        basePath: /api
         path: /health
+        defaults:
+          base_path: /api
       response:
         expected_status: 200
         expected_types:

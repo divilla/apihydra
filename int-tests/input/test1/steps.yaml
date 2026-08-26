@@ -4,16 +4,25 @@ metadata:
   name: integration-success-steps
   labels: [integration, success]
 spec:
+  defaults:
+    base_path: /api
+    headers:
+      X-Definition: inherited
+    timeout: 11
+    retries: 2
   steps:
     - vars:
         name: alpha
         expected_id: '7'
       request:
         path: /items
-        headers:
-          X-Step: local
         query: source=integration
         body: '{"name":"$name"}'
+        defaults:
+          headers:
+            X-Step: local
+          timeout: 10
+          retries: 1
       response:
         expected_status: 200
         expected_body: '{"id":$expected_id,"ok":true,"metadata":{"state":"ready"}}'
