@@ -3,8 +3,11 @@
 package runner
 
 import (
+	"bytes"
 	"context"
+	"os/exec"
 	"strings"
+	"syscall"
 )
 
 func shellQuote(value string) string {
@@ -24,5 +27,13 @@ func curlShellCommand(command, body string) (string, error) {
 }
 
 func executeCurlShellCommand(ctx context.Context, command string) (string, string, int, error) {
-	return execute(ctx, "/bin/sh", command)
+	cmd := exec.CommandContext(ctx, "/bin/sh")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	}
+
+	var stdout bytes.Buffer
+	stderr, exitCode, err := runPreparedCommand(ctx, cmd, command, &stdout)
+	return stdout.String(), stderr, exitCode, err
 }

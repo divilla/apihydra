@@ -203,6 +203,10 @@ func executeInDir(ctx context.Context, dir, name, input string, args ...string) 
 func runCommand(ctx context.Context, dir, name, input string, stdout io.Writer, args ...string) (string, int, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
+	return runPreparedCommand(ctx, cmd, input, stdout)
+}
+
+func runPreparedCommand(ctx context.Context, cmd *exec.Cmd, input string, stdout io.Writer) (string, int, error) {
 	cmd.Stdin = strings.NewReader(input)
 	var stderr bytes.Buffer
 	cmd.Stdout = stdout
