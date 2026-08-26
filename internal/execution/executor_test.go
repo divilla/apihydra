@@ -501,14 +501,16 @@ func TestProcessDirRunsEightPhasesMutatesRuntimeAndReportsDebugSuccess(t *testin
 	t.Setenv("APIH_EXECUTOR_LOG", logPath)
 	installExecutorCommand(t, commandDir, "curl", `
 url=
-body=$(/bin/cat)
+body=
 previous=
 for argument do
   case "$previous" in
     url) url=$argument; previous=; continue ;;
+    body) body=$argument; previous=; continue ;;
   esac
   case "$argument" in
     --url) previous=url ;;
+    --data-binary) previous=body ;;
   esac
 done
 printf 'curl|%s|%s\n' "$url" "$body" >> "$APIH_EXECUTOR_LOG"

@@ -74,10 +74,12 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 	if retries > 0 {
 		args = append(args, "--retry", strconv.Itoa(retries))
 	}
-	bodyArgument := -1
 	if body != "" {
-		bodyArgument = len(args)
-		args = append(args, "--data-binary", "@-")
+		dataOption := "--data-binary"
+		if strings.HasPrefix(body, "@") {
+			dataOption = "--data-raw"
+		}
+		args = append(args, dataOption, body)
 	}
 
 	responsePath := ""
@@ -96,16 +98,8 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 	}
 	args = append(args, "--write-out", curlWriteOut)
 
-	debugArgs := args
-	if bodyArgument >= 0 {
-		debugArgs = slices.Clone(args)
-		if strings.HasPrefix(body, "@") {
-			debugArgs[bodyArgument] = "--data-raw"
-		}
-		debugArgs[bodyArgument+1] = body
-	}
-	retainCurlCommand(ctx, shellCommand("curl", debugArgs...))
-	output, stderr, _, err := execute(ctx, "curl", body, args...)
+	retainCurlCommand(ctx, shellCommand("curl", args...))
+	output, stderr, _, err := execute(ctx, "curl", "", args...)
 	if err != nil {
 		return "", 0, newCommandFailure(ErrCurl, err, stderr)
 	}
@@ -242,15 +236,6 @@ func shellCommand(name string, args ...string) string {
 		command = append(command, shellQuote(arg))
 	}
 	return strings.Join(command, " ")
-}
-
-func shellQuote(value string) string {
-	if value != "" && strings.IndexFunc(value, func(char rune) bool {
-		return !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-", char)
-	}) < 0 {
-		return value
-	}
-	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
 type commandFailure struct {

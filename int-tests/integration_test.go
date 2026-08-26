@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -320,7 +321,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if strings.Contains(debugDefaults.stdout, "[\x1b[38;5;10m✓\x1b[0m]") || !strings.HasSuffix(debugDefaults.stdout, rawDebugJSON+"\n") {
 		t.Fatalf("debug defaults stdout = %q, want raw Debug dump as final output", debugDefaults.stdout)
 	}
-	copyPaste := exec.CommandContext(ctx, "/bin/sh", "-c", rawCurlCommand)
+	copyPaste := platformShellCommand(ctx, rawCurlCommand)
 	if output, err := copyPaste.CombinedOutput(); err != nil {
 		t.Fatalf("copy-pasted Debug Curl command error = %v; output = %q; command = %q", err, output, rawCurlCommand)
 	}
@@ -558,6 +559,13 @@ func parseDebugDump(t *testing.T, output string) (string, string, string) {
 		t.Fatalf("Debug output = %q, want command and JSON payload", output)
 	}
 	return header, command, payload
+}
+
+func platformShellCommand(ctx context.Context, command string) *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.CommandContext(ctx, "cmd.exe", "/d", "/s", "/c", command)
+	}
+	return exec.CommandContext(ctx, "/bin/sh", "-c", command)
 }
 
 func repositoryRoot(t *testing.T) string {

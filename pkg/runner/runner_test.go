@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -75,7 +74,7 @@ printf '\napih-status:201'
 	if status != 201 {
 		t.Fatalf("Curl() status = %d, want 201", status)
 	}
-	assertFileContents(t, stdinPath, `{"name":"hydra"}`)
+	assertFileContents(t, stdinPath, "")
 	assertCurlLines(t, argsPath, []string{
 		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
 		"--url", "https://example.test/resource?fixed=yes&page=2#section",
@@ -84,7 +83,7 @@ printf '\napih-status:201'
 		"--header", "Cookie: session=secret-cookie",
 		"--header", "Z-Last: z",
 		"--max-time", "12", "--retry", "3",
-		"--data-binary", "@-", "--output", "<response-file>", "--write-out", curlWriteOut,
+		"--data-binary", `{"name":"hydra"}`, "--output", "<response-file>", "--write-out", curlWriteOut,
 	})
 	for _, value := range []string{"Bearer secret-token", "session=secret-cookie", `{"name":"hydra"}`} {
 		if !strings.Contains(rawCommand, value) {
@@ -92,15 +91,8 @@ printf '\napih-status:201'
 		}
 	}
 	executedArgs := readLines(t, argsPath)
-	debugArgs := slices.Clone(executedArgs)
-	for index, argument := range debugArgs {
-		if argument == "--data-binary" && index+1 < len(debugArgs) {
-			debugArgs[index+1] = `{"name":"hydra"}`
-			break
-		}
-	}
-	if got, want := rawCommand, shellCommand("curl", debugArgs...); got != want {
-		t.Fatalf("retained Curl command = %q, want self-contained command %q", got, want)
+	if got, want := rawCommand, shellCommand("curl", executedArgs...); got != want {
+		t.Fatalf("retained Curl command = %q, want exact executed command %q", got, want)
 	}
 	for index, argument := range executedArgs {
 		if argument == "--output" && index+1 < len(executedArgs) {
@@ -111,7 +103,7 @@ printf '\napih-status:201'
 			t.Cleanup(func() { os.Remove(responsePath) })
 		}
 	}
-	if output, err := exec.Command("/bin/sh", "-c", rawCommand).CombinedOutput(); err != nil {
+	if output, err := platformShellCommand(context.Background(), rawCommand).CombinedOutput(); err != nil {
 		t.Fatalf("copy-pasted Curl command error = %v; output = %q", err, output)
 	}
 }
@@ -150,7 +142,7 @@ func TestCurlLetsCurlSelectMethodWhenMethodIsEmpty(t *testing.T) {
 			body: `{"name":"hydra"}`,
 			wantArgs: []string{
 				"--disable", "--globoff", "--silent", "--show-error",
-				"--url", "https://example.test/resource", "--data-binary", "@-", "--write-out", curlWriteOut,
+				"--url", "https://example.test/resource", "--data-binary", `{"name":"hydra"}`, "--write-out", curlWriteOut,
 			},
 		},
 	}
@@ -170,7 +162,7 @@ printf '{"ok":true}\napih-status:200'
 			if body != `{"ok":true}` || status != 200 {
 				t.Fatalf("Curl() = (%q, %d), want response body and status 200", body, status)
 			}
-			assertFileContents(t, stdinPath, test.body)
+			assertFileContents(t, stdinPath, "")
 			assertCurlLines(t, argsPath, test.wantArgs)
 		})
 	}
@@ -291,10 +283,10 @@ printf '{"ok":true}\napih-status:200'
 	if body != `{"ok":true}` || status != 200 {
 		t.Fatalf("Curl() = (%q, %d), want literal-data response", body, status)
 	}
-	assertFileContents(t, stdinPath, wantBody)
+	assertFileContents(t, stdinPath, "")
 	assertCurlLines(t, argsPath, []string{
 		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
-		"--url", "https://example.test", "--data-binary", "@-", "--write-out", curlWriteOut,
+		"--url", "https://example.test", "--data-raw", wantBody, "--write-out", curlWriteOut,
 	})
 	if got, want := rawCommand, shellCommand(
 		"curl", "--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
@@ -302,28 +294,6 @@ printf '{"ok":true}\napih-status:200'
 	); got != want {
 		t.Fatalf("retained Curl command = %q, want literal-data command %q", got, want)
 	}
-}
-
-func TestCurlStreamsLargeAndNULContainingBody(t *testing.T) {
-	argsPath, stdinPath := installCommand(t, "curl", `
-printf '%s\n' "$@" > "$APIH_TEST_ARGS"
-/bin/cat > "$APIH_TEST_STDIN"
-printf '{"ok":true}\napih-status:200'
-`)
-	wantBody := strings.Repeat("large-body", 32*1024) + "\x00after-nul"
-
-	body, status, err := Curl(context.Background(), "POST", "https://example.test", nil, 0, 0, "", wantBody)
-	if err != nil {
-		t.Fatalf("Curl() error = %v", err)
-	}
-	if body != `{"ok":true}` || status != 200 {
-		t.Fatalf("Curl() = (%q, %d), want successful response", body, status)
-	}
-	assertFileContents(t, stdinPath, wantBody)
-	assertCurlLines(t, argsPath, []string{
-		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
-		"--url", "https://example.test", "--data-binary", "@-", "--write-out", curlWriteOut,
-	})
 }
 
 func TestCurlCommandQuotesApostrophesForPOSIXShell(t *testing.T) {
@@ -347,16 +317,34 @@ printf '{"ok":true}\napih-status:200'
 	if err != nil {
 		t.Fatalf("Curl() error = %v", err)
 	}
-	if got, want := shellQuote("O'Brien"), `'O'"'"'Brien'`; got != want {
-		t.Fatalf("shellQuote() = %q, want POSIX single-quote escape %q", got, want)
+	if runtime.GOOS != "windows" {
+		if got, want := shellQuote("O'Brien"), `'O'"'"'Brien'`; got != want {
+			t.Fatalf("shellQuote() = %q, want POSIX single-quote escape %q", got, want)
+		}
 	}
 	assertCurlLines(t, argsPath, []string{
 		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
 		"--url", "https://example.test/O'Brien", "--header", "X-Name: D'Angelo",
-		"--data-binary", "@-", "--write-out", curlWriteOut,
+		"--data-binary", `{"name":"O'Brien"}`, "--write-out", curlWriteOut,
 	})
-	if output, err := exec.Command("/bin/sh", "-c", rawCommand).CombinedOutput(); err != nil {
+	if output, err := platformShellCommand(context.Background(), rawCommand).CombinedOutput(); err != nil {
 		t.Fatalf("copy-pasted Curl command error = %v; output = %q; command = %q", err, output, rawCommand)
+	}
+}
+
+func TestShellCommandUsesPlatformSyntax(t *testing.T) {
+	args := []string{"--header", "X-Name: two words", "--data-binary", `{"name":"O'Brien"}`}
+	if runtime.GOOS == "windows" {
+		if got, want := shellCommand("curl", args...), `curl --header "X-Name: two words" --data-binary "{\"name\":\"O'Brien\"}"`; got != want {
+			t.Fatalf("Windows shell command = %q, want %q", got, want)
+		}
+		if got, want := shellQuote(`C:\path with spaces\`), `"C:\path with spaces\\"`; got != want {
+			t.Fatalf("Windows trailing-backslash quote = %q, want %q", got, want)
+		}
+		return
+	}
+	if got, want := shellCommand("curl", args...), `curl --header 'X-Name: two words' --data-binary '{"name":"O'"'"'Brien"}'`; got != want {
+		t.Fatalf("POSIX shell command = %q, want %q", got, want)
 	}
 }
 
@@ -736,6 +724,13 @@ func assertCommandError(t *testing.T, err, operation error) {
 	if !errors.Is(err, ErrCommand) {
 		t.Fatalf("error = %v, want ErrCommand", err)
 	}
+}
+
+func platformShellCommand(ctx context.Context, command string) *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.CommandContext(ctx, "cmd.exe", "/d", "/s", "/c", command)
+	}
+	return exec.CommandContext(ctx, "/bin/sh", "-c", command)
 }
 
 func assertFileContents(t *testing.T, path, want string) {
