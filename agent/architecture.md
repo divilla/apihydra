@@ -53,6 +53,20 @@ WorkDir
   -> RuntimeSteps
 ```
 
+Defaults follow a single value-typed path through that lifecycle:
+
+```text
+DefaultsDefinition.Spec / inherited directory defaults
+  -> Directory.ResolvedDefaults
+  -> StepsDefinition.Spec.Defaults
+  -> Step.Request.Defaults
+  -> ResolvedSteps
+  -> RuntimeSteps
+```
+
+Every defaults position uses `domain.Defaults`; the lifecycle does not use
+`*domain.Defaults` pointers or a second step-specific defaults shape.
+
 The field schema and provenance helpers are owned by the PRD. Mutation behavior
 is defined by the applicable skeleton code and comments.
 

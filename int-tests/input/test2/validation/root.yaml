@@ -3,7 +3,7 @@ kind: root
 metadata:
   name: integration-validation
 spec:
-  baseUrl: http://APIH_TEST_SERVER
-  basePath: /api
+  base_url: http://APIH_TEST_SERVER
+  base_path: /api
   timeout: 10
   retries: 1

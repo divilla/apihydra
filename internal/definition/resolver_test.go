@@ -130,13 +130,15 @@ func TestResolveDefaultsAppliesProductTimeoutAndRetryFallbacks(t *testing.T) {
 	assertDefaults(t, child.ResolvedDefaults, domain.Defaults{Timeout: 4, Retries: 3})
 
 	definition := stepsDefinition(root, "steps.yaml", 1)
+	definition.Spec.Defaults.Timeout = 7
+	definition.Spec.Steps[0].Request.Defaults.Retries = 9
 	root.StepsDefinitions = []*domain.StepsDefinition{definition}
 	if err := resolver.ResolveSteps(context.Background(), &domain.Suite{Root: root}); err != nil {
 		t.Fatalf("ResolveSteps() error = %v", err)
 	}
 	request := root.ResolvedSteps[0][0].Request
-	if request.Timeout != 10 || request.Retries != 3 {
-		t.Fatalf("resolved request timeout/retries = %d/%d, want 10/3", request.Timeout, request.Retries)
+	if request.Defaults.Timeout != 7 || request.Defaults.Retries != 9 {
+		t.Fatalf("resolved request timeout/retries = %d/%d, want 7/9", request.Defaults.Timeout, request.Defaults.Retries)
 	}
 }
 
@@ -197,12 +199,17 @@ func TestResolveStepsAppliesDefaultsAndPreservesOrderAndProvenance(t *testing.T)
 	root.Children = []*domain.Directory{child}
 
 	first := stepsDefinition(root, "first.yaml", 2)
+	first.Spec.Defaults = domain.Defaults{
+		BasePath: "/definition",
+		Headers:  map[string]string{"Accept": "definition", "X-Definition": "yes"},
+		Timeout:  6,
+	}
 	first.Spec.Steps[0].Vars = map[string]domain.YAMLString{"name": "alice"}
 	first.Spec.Steps[0].Request.Method = "POST"
-	first.Spec.Steps[0].Request.BasePath = "/local"
+	first.Spec.Steps[0].Request.Defaults.BasePath = "/local"
 	first.Spec.Steps[0].Request.Path = "/users"
-	first.Spec.Steps[0].Request.Headers = map[string]string{"Accept": "step", "X-Step": "yes"}
-	first.Spec.Steps[0].Request.Retries = 7
+	first.Spec.Steps[0].Request.Defaults.Headers = map[string]string{"Accept": "step", "X-Step": "yes"}
+	first.Spec.Steps[0].Request.Defaults.Retries = 7
 	first.Spec.Steps[0].Request.Query = "active=true"
 	first.Spec.Steps[0].Request.Body = `{"name":"$name"}`
 	first.Spec.Steps[0].Response.ExpectedStatus = 201
@@ -212,8 +219,9 @@ func TestResolveStepsAppliesDefaultsAndPreservesOrderAndProvenance(t *testing.T)
 	first.Spec.Steps[0].Debug = true
 
 	second := stepsDefinition(root, "second.yaml", 1)
-	second.Spec.Steps[0].Request.BaseURL = "https://step.example"
-	second.Spec.Steps[0].Request.Timeout = 1
+	second.Spec.Defaults = domain.Defaults{BaseURL: "https://definition.example", Retries: 5}
+	second.Spec.Steps[0].Request.Defaults.BaseURL = "https://step.example"
+	second.Spec.Steps[0].Request.Defaults.Timeout = 1
 	root.StepsDefinitions = []*domain.StepsDefinition{first, second, nil}
 
 	childDefinition := stepsDefinition(child, "child/steps.yaml", 1)
@@ -242,29 +250,29 @@ func TestResolveStepsAppliesDefaultsAndPreservesOrderAndProvenance(t *testing.T)
 	if resolved.Definition != first || resolved.Index != 0 {
 		t.Fatalf("resolved provenance = {%p %d}, want {%p 0}", resolved.Definition, resolved.Index, first)
 	}
-	if resolved.Request.Method != "POST" || resolved.Request.BaseURL != "https://root.example" || resolved.Request.BasePath != "/local" || resolved.Request.Path != "/users" {
+	if resolved.Request.Method != "POST" || resolved.Request.Defaults.BaseURL != "https://root.example" || resolved.Request.Defaults.BasePath != "/local" || resolved.Request.Path != "/users" {
 		t.Fatalf("resolved request strings = %+v", resolved.Request)
 	}
-	if resolved.Request.Timeout != 10 || resolved.Request.Retries != 7 || resolved.Request.Query != "active=true" || resolved.Request.Body != `{"name":"$name"}` {
+	if resolved.Request.Defaults.Timeout != 6 || resolved.Request.Defaults.Retries != 7 || resolved.Request.Query != "active=true" || resolved.Request.Body != `{"name":"$name"}` {
 		t.Fatalf("resolved request values = %+v", resolved.Request)
 	}
-	if !reflect.DeepEqual(resolved.Request.Headers, map[string]string{"Accept": "step", "X-Default": "yes", "X-Step": "yes"}) {
-		t.Fatalf("resolved headers = %v", resolved.Request.Headers)
+	if !reflect.DeepEqual(resolved.Request.Defaults.Headers, map[string]string{"Accept": "step", "X-Default": "yes", "X-Definition": "yes", "X-Step": "yes"}) {
+		t.Fatalf("resolved headers = %v", resolved.Request.Defaults.Headers)
 	}
 	if resolved.Response.ExpectedStatus != 201 || resolved.Response.ExpectedBody != `{"created":true}` || !resolved.Debug {
 		t.Fatalf("resolved response/debug = response:%+v debug:%t", resolved.Response, resolved.Debug)
 	}
 
 	inherited := root.ResolvedSteps[0][1]
-	if inherited.Definition != first || inherited.Index != 1 || inherited.Request.BaseURL != "https://root.example" || inherited.Request.BasePath != "/v1" || inherited.Request.Timeout != 10 || inherited.Request.Retries != 2 {
+	if inherited.Definition != first || inherited.Index != 1 || inherited.Request.Defaults.BaseURL != "https://root.example" || inherited.Request.Defaults.BasePath != "/definition" || inherited.Request.Defaults.Timeout != 6 || inherited.Request.Defaults.Retries != 2 || inherited.Request.Defaults.Headers["X-Definition"] != "yes" {
 		t.Fatalf("second resolved step = %+v", inherited)
 	}
 	overridden := root.ResolvedSteps[1][0]
-	if overridden.Definition != second || overridden.Request.BaseURL != "https://step.example" || overridden.Request.Timeout != 1 || overridden.Request.BasePath != "/v1" || overridden.Request.Retries != 2 {
+	if overridden.Definition != second || overridden.Request.Defaults.BaseURL != "https://step.example" || overridden.Request.Defaults.Timeout != 1 || overridden.Request.Defaults.BasePath != "/v1" || overridden.Request.Defaults.Retries != 5 {
 		t.Fatalf("second definition resolved step = %+v", overridden)
 	}
 	childResolved := child.ResolvedSteps[0][0]
-	if childResolved.Definition != childDefinition || childResolved.Request.BaseURL != "https://child.example" || childResolved.Request.Timeout != 3 || childResolved.Request.BasePath != "" || childResolved.Request.Retries != 0 || childResolved.Request.Headers["X-Child"] != "yes" {
+	if childResolved.Definition != childDefinition || childResolved.Request.Defaults.BaseURL != "https://child.example" || childResolved.Request.Defaults.Timeout != 3 || childResolved.Request.Defaults.BasePath != "" || childResolved.Request.Defaults.Retries != 0 || childResolved.Request.Defaults.Headers["X-Child"] != "yes" {
 		t.Fatalf("child resolved step = %+v", childResolved)
 	}
 	if !root.RuntimeSteps[0][0].Debug {
@@ -283,9 +291,10 @@ func TestResolveStepsDeepCopiesMutableValues(t *testing.T) {
 		},
 	}
 	definition := stepsDefinition(root, "steps.yaml", 2)
+	definition.Spec.Defaults.Headers = map[string]string{"Definition": "original"}
 	for index := range definition.Spec.Steps {
 		definition.Spec.Steps[index].Vars = map[string]domain.YAMLString{"var": "original"}
-		definition.Spec.Steps[index].Request.Headers = map[string]string{"Step": "original"}
+		definition.Spec.Steps[index].Request.Defaults.Headers = map[string]string{"Step": "original"}
 		definition.Spec.Steps[index].Response.ExpectedTypes = map[string][]string{".value": {"string", "null"}}
 		definition.Spec.Steps[index].Response.Capture = map[string]domain.YAMLString{"captured": ".value"}
 	}
@@ -296,20 +305,21 @@ func TestResolveStepsDeepCopiesMutableValues(t *testing.T) {
 	}
 	resolved := &root.ResolvedSteps[0][0]
 	resolved.Vars["var"] = "changed"
-	resolved.Request.Headers["Default"] = "changed"
-	resolved.Request.Headers["Step"] = "changed"
+	resolved.Request.Defaults.Headers["Default"] = "changed"
+	resolved.Request.Defaults.Headers["Step"] = "changed"
 	resolved.Response.ExpectedTypes[".value"][0] = "changed"
 	resolved.Response.Capture["captured"] = ".changed"
+	resolved.Request.Defaults.Headers["Definition"] = "changed"
 
 	source := definition.Spec.Steps[0]
 	sibling := root.ResolvedSteps[0][1]
-	if source.Vars["var"] != "original" || source.Request.Headers["Step"] != "original" || source.Response.ExpectedTypes[".value"][0] != "string" || source.Response.Capture["captured"] != ".value" {
+	if source.Vars["var"] != "original" || source.Request.Defaults.Headers["Step"] != "original" || source.Response.ExpectedTypes[".value"][0] != "string" || source.Response.Capture["captured"] != ".value" || definition.Spec.Defaults.Headers["Definition"] != "original" {
 		t.Fatal("resolved mutable values alias the decoded step")
 	}
 	if root.ResolvedDefaults.Headers["Default"] != "original" {
 		t.Fatal("resolved request headers alias ResolvedDefaults")
 	}
-	if sibling.Vars["var"] != "original" || sibling.Request.Headers["Default"] != "original" || sibling.Request.Headers["Step"] != "original" || sibling.Response.ExpectedTypes[".value"][0] != "string" || sibling.Response.Capture["captured"] != ".value" {
+	if sibling.Vars["var"] != "original" || sibling.Request.Defaults.Headers["Default"] != "original" || sibling.Request.Defaults.Headers["Definition"] != "original" || sibling.Request.Defaults.Headers["Step"] != "original" || sibling.Response.ExpectedTypes[".value"][0] != "string" || sibling.Response.Capture["captured"] != ".value" {
 		t.Fatal("resolved mutable values alias a sibling step")
 	}
 }

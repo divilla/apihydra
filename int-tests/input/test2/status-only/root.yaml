@@ -1,4 +1,4 @@
 app: apihydra
 kind: root
 spec:
-  baseUrl: http://APIH_TEST_SERVER
+  base_url: http://APIH_TEST_SERVER

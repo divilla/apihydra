@@ -33,6 +33,10 @@ The skeleton does not define:
 Duplicate storage behavior is inherited from `KeyValueStore.Set`; this guide
 does not redefine it.
 
+Capture reads `Step.Response.ActualBody` from its binding
+`domain.YAMLString` field. Binder may pass its string content to Runner, but it
+does not replace the shared field with a parallel `string` carrier.
+
 ## Required implementation and tests
 
 - Production output: `internal/execution/binder.go` replaces all canonical

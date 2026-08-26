@@ -20,6 +20,17 @@ The type declarations in the skeleton are implementation, not illustrative
 schema. Their field types, tags, constants, and method behavior are retained
 exactly after removing only the `apih/skeleton/` package location.
 
+`DefaultsDefinition.Spec`, `Directory.ResolvedDefaults`,
+`StepsDefinition.Spec.Defaults`, and `Step.Request.Defaults` are all
+value-typed `domain.Defaults`. Steps do not redeclare `BaseURL`, `BasePath`,
+`Headers`, `Timeout`, or `Retries` directly, and none of these defaults
+positions uses `*domain.Defaults`.
+
+`Step.Response.ExpectedBody` and `Step.Response.ActualBody` both use
+`domain.YAMLString`, retaining its marshaling and unmarshaling behavior for the
+expected and runtime body values. `Step.Index` is an `int`, is omitted from
+YAML, and is encoded in JSON as `index`.
+
 ## Boundaries
 
 `internal/domain` owns data and provenance access only. It does not discover or
@@ -36,7 +47,11 @@ with the packages named in the PRD.
   package list before this guide is implemented, and begin checking production
   packages as soon as they exist.
 - Test outputs: `internal/domain/suite_test.go` covers YAML and JSON schema,
-  zero values, rejected incompatible shapes, and every provenance helper;
+  including steps-file and request `defaults` nesting, zero values, rejected
+  incompatible shapes, the absence of the former direct default-related
+  request fields, value rather than pointer defaults fields, `YAMLString`
+  expected/actual body round trips, the step index schema, and every provenance
+  helper;
   root `architecture_test.go` enforces the package boundaries against
   production paths rather than the protected skeleton tree and preserves the
   canonical skeleton TODO convention.
@@ -56,11 +71,16 @@ Such behavior belongs to an owning service or requires a prior skeleton change.
 1. Production constants, types, fields, tags, and method signatures match the
    domain reference exactly.
 2. YAML decoding and JSON encoding preserve the response expectation/runtime
-   schema and reject a list where the scalar `ExpectedStatus` is required.
+   schema, keep both response bodies as `YAMLString`, encode `Step.Index` under
+   `index` while omitting it from YAML, and reject a list where the scalar
+   `ExpectedStatus` is required.
 3. `ExpectedStatus` defaults to the zero-value `<any>` sentinel, and provenance
    helpers return the values reached through the binding definition/file/tree
    relationships.
 4. Shared workflow state is carried only by `internal/domain` values.
+   Directory, steps-file, and step request defaults all use the same
+   `domain.Defaults` value type; no parallel fields or `*domain.Defaults`
+   carriers are introduced.
 5. The root architecture test enforces command, contextual-error,
    execution-output, fatal-diagnostic, and no-`bat` ownership rules across
    production code.

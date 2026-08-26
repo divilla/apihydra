@@ -37,9 +37,10 @@ Working Directory: /home/vito/go/src/apihydra/work/mch
 A definition file with validation failures is headed once by a cross in
 terminal palette color 210 (`#ff8787`), matching failed type values and removed
 body-diff values. Every failing step is also headed by one palette-210 cross,
-followed without indentation by its resolved `basePath + path`, effective
-method, and one-based step number in cyan. An omitted method is effectively
-`POST` when the request has a body and `GET` otherwise.
+followed without indentation by its resolved
+`request.defaults.base_path + request.path`, effective method, and one-based
+step number in cyan. An omitted method is effectively `POST` when the request
+has a body and `GET` otherwise.
 
 Failed type declarations use the original `expected_types` key and complete
 value. The label has exactly four leading spaces; each declaration has exactly
@@ -85,11 +86,14 @@ validation failures, and valid sibling definitions are reported before the
 directory returns validation exit status.
 
 Debug output starts with `Debug <file> step <zero-based-index>:` and renders the
-final runtime step as recursively key-sorted JSON using jq's ANSI token palette:
-blue keys, green string values, gray nulls, and jq's scalar and punctuation
-styles. The debug JSON ends with one blank line. Once Reporter successfully
-writes it, all later reporting calls are no-ops so nothing can appear beneath
-the breakpoint, including output racing from another directory.
+final runtime step as recursively key-sorted JSON using jq's ANSI token
+palette: blue keys, green string values, gray nulls, and jq's scalar and
+punctuation styles. The serialized representation includes `index` in the
+recursively sorted output. Its `ActualBody` remains the `domain.YAMLString`
+value defined by the shared model. The debug JSON ends with one blank line.
+Once Reporter successfully writes it, all later reporting calls are no-ops so
+nothing can appear beneath the breakpoint, including output racing from
+another directory.
 
 ## Deliberately unspecified
 
@@ -133,8 +137,9 @@ zero-value TODO bodies are not acceptable production implementations.
    calculated actual-to-expected colors. Its rendered body block contains only
    changed red and green values, with no diff metadata or unchanged context.
 7. `Debug` normalizes the marshaled final step through `runner.JQPretty`, emits
-   jq-palette colored JSON, and atomically suppresses every later reporting
-   call after the debug block is successfully written. Reporter does not
-   perform validation, schedule debug steps, or call `os.Exit`.
+   jq-palette colored JSON containing `index` in recursively sorted order, and
+   atomically suppresses every later reporting call after the debug block is
+   successfully written. Reporter does not perform validation, schedule debug
+   steps, or call `os.Exit`.
 8. No TODO or zero-value placeholder remains in a reporting method; package
    tests, race tests, the ownership test, and `git diff --check` pass.

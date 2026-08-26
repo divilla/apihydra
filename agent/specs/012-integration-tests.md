@@ -36,8 +36,8 @@ YAML remains static and unchanged.
   validation mismatches plus a valid sibling definition in the same directory;
   and `int-tests/input/scenarios/` contains auxiliary
   failure and edge-case suites, including a debug step that exposes the
-  resolved 10-second timeout and 3 retries, that must not affect either
-  top-level fixture.
+  resolved `request.defaults` value with its 10-second timeout and 3 retries,
+  that must not affect either top-level fixture.
 - Build output is temporary. The harness builds `./cmd/cli` with Go coverage
   instrumentation over `apih/...`, runs the scenarios with `GOCOVERDIR`, and
   removes artifacts through the test temporary directory lifecycle.
@@ -78,9 +78,14 @@ a fatal diagnostic.
    copies, and a loopback HTTP server; it needs no remote service.
 7. An unavailable loopback server produces a fatal nonzero process result and
    stderr diagnostic, with its coverage merged into the same profile.
-8. A step with `debug: true` and no configured timeout or retries prints its
-   resolved request with timeout `10` and retries `3` as jq-palette colored
-   JSON, exits successfully, and leaves its later sibling step unexecuted. The
-   debug JSON is the final process output.
+8. Fixtures exercise directory-to-steps-file-to-individual-step defaults
+   propagation using the same `domain.Defaults` structure at all three levels.
+   A step with `debug: true` and no configured timeout or retries prints its
+   resolved `request.defaults` with timeout `10` and retries `3` as jq-palette
+   colored JSON, exits successfully, and leaves its later sibling step
+   unexecuted. The debug JSON is the final process output, and no legacy direct
+   request defaults fields appear. Its `index` field is present in recursively
+   sorted order, and runtime `actual_body` remains serialized from the shared
+   `domain.YAMLString` field.
 9. `make integration-test`, `go test ./...`, `go test -race ./...`, and
    `git diff --check` pass after guides `000` through `011` are implemented.

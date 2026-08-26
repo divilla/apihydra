@@ -5,25 +5,28 @@ metadata:
   name: create-steps
   labels: [create, steps]
 spec:
+  defaults:
+    base_path: /api/v1
+    headers:
+      Accept: application/json
+    timeout: 10
+    retries: 3
   steps:
     - vars:
         project_id: example-project
       request:
         method: POST
-        baseUrl: https://api.example.com
-        basePath: /api/v1
         path: /api/users
-        headers:
-          Content-Type: application/json
-          Accept: application/json
-        timeout: 10
-        retries: 3
         query: page=1&limit=20&sort=name
         body: |
           {
             "project_id": "example-project",
             "title": "Example title"
           }
+        defaults:
+          base_url: https://api.example.com
+          headers:
+            Content-Type: application/json
       response:
         expected_status: 201
         capture:

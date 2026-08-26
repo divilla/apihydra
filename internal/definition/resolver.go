@@ -72,12 +72,13 @@ func (l *Resolver) ResolveSteps(
 				continue
 			}
 
+			definitionDefaults := mergeDefaults(directory.ResolvedDefaults, definition.Spec.Defaults)
 			steps := make([]domain.Step, len(definition.Spec.Steps))
 			for stepIndex, step := range definition.Spec.Steps {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				steps[stepIndex] = resolveStep(directory.ResolvedDefaults, step)
+				steps[stepIndex] = resolveStep(definitionDefaults, step)
 			}
 			groups[definitionIndex] = steps
 		}
@@ -132,21 +133,8 @@ func mergeDefaults(parent, local domain.Defaults) domain.Defaults {
 
 func resolveStep(defaults domain.Defaults, step domain.Step) domain.Step {
 	resolved := step
-	if resolved.Request.BaseURL == "" {
-		resolved.Request.BaseURL = defaults.BaseURL
-	}
-	if resolved.Request.BasePath == "" {
-		resolved.Request.BasePath = defaults.BasePath
-	}
-	if resolved.Request.Timeout == 0 {
-		resolved.Request.Timeout = defaults.Timeout
-	}
-	if resolved.Request.Retries == 0 {
-		resolved.Request.Retries = defaults.Retries
-	}
-
 	resolved.Vars = cloneMap(step.Vars)
-	resolved.Request.Headers = mergeMaps(defaults.Headers, step.Request.Headers)
+	resolved.Request.Defaults = mergeDefaults(defaults, step.Request.Defaults)
 	resolved.Response.ExpectedTypes = cloneStringSlices(step.Response.ExpectedTypes)
 	resolved.Response.Capture = cloneMap(step.Response.Capture)
 	return resolved

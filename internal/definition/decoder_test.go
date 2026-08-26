@@ -36,8 +36,8 @@ metadata:
   name: root defaults
   labels: [root, shared]
 spec:
-  baseUrl: https://example.test
-  basePath: /v1
+  base_url: https://example.test
+  base_path: /v1
   headers:
     Accept: application/json
   timeout: 8
@@ -50,6 +50,12 @@ kind: steps
 metadata:
   name: first steps
 spec:
+  defaults:
+    base_path: /steps
+    headers:
+      X-Definition: yes
+    timeout: 6
+    retries: 2
   steps:
     - vars:
         account: primary
@@ -57,6 +63,11 @@ spec:
         method: POST
         path: /accounts
         body: '{"active":true}'
+        defaults:
+          base_url: https://step.example
+          headers:
+            X-Step: local
+          timeout: 1
       response:
         expected_status: 201
         expected_body: '{"created":true}'
@@ -71,7 +82,7 @@ spec:
 `),
 		definitionFile(root, "steps-b.yml", "app: apihydra\nkind: steps\nspec:\n  steps: []\n"),
 	}
-	child.DefaultsFile = definitionFile(child, "child/defaults.yaml", "app: apihydra\nkind: defaults\nspec:\n  basePath: /child\n")
+	child.DefaultsFile = definitionFile(child, "child/defaults.yaml", "app: apihydra\nkind: defaults\nspec:\n  base_path: /child\n")
 	child.StepsFiles = []*domain.File{
 		definitionFile(child, "child/steps.yaml", "app: apihydra\nkind: steps\nspec:\n  steps:\n    - request:\n        path: /child\n"),
 	}
@@ -105,12 +116,27 @@ spec:
 	if got, want := len(stepsDefinition.Spec.Steps), 2; got != want {
 		t.Fatalf("len(steps) = %d, want %d", got, want)
 	}
+	if got, want := stepsDefinition.Spec.Defaults, (domain.Defaults{
+		BasePath: "/steps",
+		Headers:  map[string]string{"X-Definition": "yes"},
+		Timeout:  6,
+		Retries:  2,
+	}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("steps-file defaults = %+v, want %+v", got, want)
+	}
 	first := &stepsDefinition.Spec.Steps[0]
 	if first.Definition != stepsDefinition || first.Index != 0 {
 		t.Fatalf("first step provenance = {%p %d}, want {%p 0}", first.Definition, first.Index, stepsDefinition)
 	}
 	if first.Vars["account"] != "primary" || first.Request.Method != "POST" || first.Request.Path != "/accounts" || first.Request.Body != `{"active":true}` {
 		t.Fatalf("first request = vars:%v request:%+v", first.Vars, first.Request)
+	}
+	if got, want := first.Request.Defaults, (domain.Defaults{
+		BaseURL: "https://step.example",
+		Headers: map[string]string{"X-Step": "local"},
+		Timeout: 1,
+	}); !reflect.DeepEqual(got, want) {
+		t.Fatalf("step request defaults = %+v, want %+v", got, want)
 	}
 	if first.Response.ExpectedStatus != 201 || first.Response.ExpectedBody != `{"created":true}` || !slices.Equal(first.Response.ExpectedTypes[".created"], []string{"boolean"}) || first.Response.Capture["account_id"] != ".id" || !first.Debug {
 		t.Fatalf("first response/debug = response:%+v debug:%t", first.Response, first.Debug)
@@ -132,7 +158,7 @@ spec:
 
 func TestDecodeFilesMutatesOnlyDecodedDefinitionFields(t *testing.T) {
 	root := &domain.Directory{Stage: 4, Path: "/keep"}
-	defaultsFile := definitionFile(root, "defaults.yaml", "kind: defaults\nspec:\n  basePath: /new\n")
+	defaultsFile := definitionFile(root, "defaults.yaml", "kind: defaults\nspec:\n  base_path: /new\n")
 	stepsFile := definitionFile(root, "steps.yaml", "kind: steps\nspec:\n  steps: []\n")
 	defaultsFile.Kind = domain.KindDefaults
 	stepsFile.Kind = domain.KindSteps
@@ -183,7 +209,7 @@ func TestDecodeFilesReturnsContextualErrorsWithoutPartialMutation(t *testing.T) 
 			wantPath: "defaults.yaml",
 		},
 		"malformed steps": {
-			defaults: "kind: defaults\nspec:\n  basePath: /valid\n",
+			defaults: "kind: defaults\nspec:\n  base_path: /valid\n",
 			steps:    "kind: steps\nspec:\n  steps: [\n",
 			wantPath: "steps.yaml",
 		},

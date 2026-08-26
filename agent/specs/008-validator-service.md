@@ -46,6 +46,10 @@ from failed type output.
 
 ## Body projection contract
 
+Both `ExpectedBody` and `ActualBody` remain `domain.YAMLString` values in the
+shared step. Validator consumes their string content without changing the
+domain field types.
+
 `ValidateBody` passes `ExpectedBody` through `runner.JQPretty` without changing
 its shape. It filters `ActualBody` recursively to fields declared by the
 expected body, but only when those fields are present in the actual response.
@@ -73,7 +77,8 @@ expected.
 1. Exported names, signatures, and static error text match the reference, and
    production methods do not retain zero-value TODO bodies.
 2. Type validation builds a filter from `ExpectedTypes`, evaluates it against
-   `ActualBody` with `runner.JQFilter`, and returns `(failed string, error)`.
+   the `YAMLString` `ActualBody` with `runner.JQFilter`, and returns
+   `(failed string, error)`.
    Empty `failed` means all types validate; non-empty `failed` is a nonfatal
    mismatch; `error` means filtering failed. Current filter behavior treats
    declarations as alternatives, supports native jq types, matches `int` to

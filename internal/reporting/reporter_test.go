@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -117,6 +118,16 @@ func TestReporterExportedContract(t *testing.T) {
 	}
 }
 
+func TestDebugRequestReusesDomainDefaults(t *testing.T) {
+	field, ok := reflect.TypeOf(debugRequest{}).FieldByName("Defaults")
+	if !ok {
+		t.Fatal("debugRequest.Defaults field is missing")
+	}
+	if got, want := field.Type, reflect.TypeOf(domain.Defaults{}); got != want {
+		t.Fatalf("debugRequest.Defaults type = %v, want %v", got, want)
+	}
+}
+
 func TestWorkingDirectoryUsesInjectedWriterByteExactly(t *testing.T) {
 	var output bytes.Buffer
 	report := NewReporter(&output)
@@ -220,6 +231,7 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 func TestDebugFormatsRequestBodyAsSortedJSON(t *testing.T) {
 	step := &domain.Step{Index: 2}
 	step.Request.Body = `{"b":2,"a":1}`
+	step.Request.Defaults = domain.Defaults{BaseURL: "https://example.test", BasePath: "/api", Timeout: 10, Retries: 3}
 	var output bytes.Buffer
 
 	if err := NewReporter(&output).Debug(context.Background(), step); err != nil {
@@ -236,11 +248,18 @@ func TestDebugFormatsRequestBodyAsSortedJSON(t *testing.T) {
 	if body < 0 || a < body || b < a {
 		t.Fatalf("Debug() output = %q, want request body as key-sorted JSON object", got)
 	}
+	defaults := strings.Index(got, colorizeJQJSON(`"defaults": {`))
+	basePath := strings.Index(got, colorizeJQJSON(`"base_path": "/api"`))
+	baseURL := strings.Index(got, colorizeJQJSON(`"base_url": "https://example.test"`))
+	timeout := strings.Index(got, colorizeJQJSON(`"timeout": 10`))
+	if defaults < 0 || basePath < defaults || baseURL < defaults || timeout < defaults {
+		t.Fatalf("Debug() output = %q, want defaults nested under request", got)
+	}
 }
 
 func TestReporterGroupsEveryValidationForOneStepUnderOneFailureHeader(t *testing.T) {
 	step := reporterStep("change/create.yaml", 2)
-	step.Request.BasePath = "/api/v1"
+	step.Request.Defaults.BasePath = "/api/v1"
 	step.Request.Path = "/change/create"
 	step.Request.Body = `{}`
 	step.Response.ExpectedTypes = map[string][]string{

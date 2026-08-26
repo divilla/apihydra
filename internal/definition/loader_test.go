@@ -231,7 +231,7 @@ func TestDecodeBaseDefinitionsClassifiesFilesOnly(t *testing.T) {
 	child := &domain.Directory{Stage: 1, Path: "/child", Parent: root}
 	root.Children = []*domain.Directory{child}
 	root.Files = []*domain.File{
-		definitionFile(root, "root.yaml", "app: apihydra\nkind: root\nspec:\n  baseUrl: https://example.test\n"),
+		definitionFile(root, "root.yaml", "app: apihydra\nkind: root\nspec:\n  base_url: https://example.test\n"),
 		definitionFile(root, "defaults.yaml", "app: apihydra\nkind: defaults\nspec: defaults\n"),
 		definitionFile(root, "steps-a.yaml", "app: apihydra\nkind: steps\nspec: steps\n"),
 		definitionFile(root, "steps-b.yml", "app: apihydra\nkind: steps\nspec: steps\n"),
@@ -281,7 +281,7 @@ func TestDecodeBaseDefinitionsClassifiesRootFileAsDefaults(t *testing.T) {
 	rootFile := definitionFile(
 		root,
 		"root.yaml",
-		"app: apihydra\nkind: root\nspec:\n  baseUrl: https://example.test\n",
+		"app: apihydra\nkind: root\nspec:\n  base_url: https://example.test\n",
 	)
 	root.Files = []*domain.File{rootFile}
 

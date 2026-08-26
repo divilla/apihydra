@@ -66,3 +66,7 @@
 
 2026-25-08 10:47 001-runner-pkg-009-reporter-service
 +7 -0 code - +7 -0 tests --- spec
+
+2026-26-08 15:46 013-unified-defaults-structure
++13 -13 code - +78 -69 tests --- review fixes 01
++2 -16 code - +11 -0 tests --- review fixes 02

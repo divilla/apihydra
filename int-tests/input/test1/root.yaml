@@ -3,10 +3,10 @@ kind: root
 metadata:
   name: integration-success
 spec:
-  baseUrl: http://APIH_TEST_SERVER
-  basePath: /api
+  base_url: http://APIH_TEST_SERVER
+  base_path: /directory
   headers:
     Content-Type: application/json
     X-Root: inherited
-  timeout: 10
-  retries: 1
+  timeout: 12
+  retries: 4

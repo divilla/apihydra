@@ -58,6 +58,18 @@ func runUnixSpecificScenarios(t *testing.T, ctx context.Context, binary, runRoot
 		t.Fatalf("jq-project failure result = code %d, stderr %q, want fatal diagnostic", jqFailure.exitCode, jqFailure.stderr)
 	}
 
+	jqPath, err := exec.LookPath("jq")
+	if err != nil {
+		t.Fatalf("locate jq: %v", err)
+	}
+	debugJQCounter := filepath.Join(tempRoot, "debug-jq-counter")
+	debugJQScript := fmt.Sprintf("#!/bin/sh\ninput=$(/bin/cat)\ncount=0\nif [ -f %q ]; then read count < %q; fi\ncount=$((count + 1))\nprintf '%%s' \"$count\" > %q\nif [ \"$count\" -eq 4 ]; then printf 'debug pretty failed' >&2; exit 4; fi\nprintf '%%s' \"$input\" | %q \"$@\"\n", debugJQCounter, debugJQCounter, debugJQCounter, jqPath)
+	debugJQTools := createToolDirectory(t, map[string]string{"jq": debugJQScript}, []string{"curl", "git"})
+	debugJQFailure := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "debug-defaults"), "PATH="+debugJQTools)
+	if debugJQFailure.exitCode == 0 || debugJQFailure.exitCode == 101 || debugJQFailure.stderr == "" {
+		t.Fatalf("debug-jq failure result = code %d, stderr %q, want fatal diagnostic", debugJQFailure.exitCode, debugJQFailure.stderr)
+	}
+
 	t.Run("permission-denial scenarios", func(t *testing.T) {
 		requirePermissionDenialScenarios(t)
 

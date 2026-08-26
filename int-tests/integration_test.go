@@ -4,6 +4,7 @@ package inttests
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -273,6 +274,9 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Debug steps.yaml step 0:\n",
+		"\x1b[1;34m\"defaults\"\x1b[0m",
+		"\x1b[1;34m\"index\"\x1b[0m\x1b[1;39m:\x1b[0m \x1b[0;39m0\x1b[0m",
+		"\x1b[1;34m\"actual_body\"\x1b[0m",
 		"\x1b[1;34m\"timeout\"\x1b[0m\x1b[1;39m:\x1b[0m \x1b[0;39m10\x1b[0m",
 		"\x1b[1;34m\"retries\"\x1b[0m\x1b[1;39m:\x1b[0m \x1b[0;39m3\x1b[0m",
 	} {
@@ -282,6 +286,39 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	}
 	if strings.Contains(debugDefaults.stdout, "[\x1b[38;5;10m✓\x1b[0m]") || !strings.HasSuffix(debugDefaults.stdout, "\x1b[0m\n\n") {
 		t.Fatalf("debug defaults stdout = %q, want debug JSON as final output", debugDefaults.stdout)
+	}
+	plainDebug := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(debugDefaults.stdout, "")
+	jsonStart := strings.IndexByte(plainDebug, '{')
+	if jsonStart < 0 {
+		t.Fatalf("debug defaults stdout = %q, want JSON object", debugDefaults.stdout)
+	}
+	var debugStep map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(plainDebug[jsonStart:])), &debugStep); err != nil {
+		t.Fatalf("decode debug defaults JSON: %v; stdout = %q", err, debugDefaults.stdout)
+	}
+	request, ok := debugStep["request"].(map[string]any)
+	if !ok {
+		t.Fatalf("debug request = %#v, want object", debugStep["request"])
+	}
+	defaults, ok := request["defaults"].(map[string]any)
+	baseURL, hasBaseURL := defaults["base_url"].(string)
+	if !ok || !hasBaseURL || baseURL == "" || defaults["timeout"] != float64(10) || defaults["retries"] != float64(3) {
+		t.Fatalf("debug request.defaults = %#v, want base_url plus timeout 10 and retries 3", request["defaults"])
+	}
+	for _, direct := range []string{"base_url", "base_path", "headers", "timeout", "retries"} {
+		if _, exists := request[direct]; exists {
+			t.Fatalf("debug request contains direct defaults field %q: %#v", direct, request)
+		}
+	}
+	if debugStep["index"] != float64(0) {
+		t.Fatalf("debug index = %#v, want 0", debugStep["index"])
+	}
+	response, ok := debugStep["response"].(map[string]any)
+	if !ok {
+		t.Fatalf("debug response = %#v, want object", debugStep["response"])
+	}
+	if _, ok := response["actual_body"].(map[string]any); !ok {
+		t.Fatalf("debug actual_body = %#v, want JSON object serialized from YAMLString", response["actual_body"])
 	}
 	nilExpectedTypes := runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "nil-expected-types"))
 	if nilExpectedTypes.exitCode != 101 || nilExpectedTypes.stderr != "" {
@@ -295,6 +332,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 			rawQuery: "source=integration",
 			headers: http.Header{
 				"Content-Type": []string{"application/json"},
+				"X-Definition": []string{"inherited"},
 				"X-Root":       []string{"inherited"},
 				"X-Step":       []string{"local"},
 			},
@@ -327,6 +365,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		{filepath.Join("scenarios", "invalid-actual-body"), -1},
 		{filepath.Join("scenarios", "invalid-type-selector"), -1},
 		{filepath.Join("scenarios", "invalid-capture-selector"), -1},
+		{filepath.Join("scenarios", "invalid-debug-request-body"), -1},
 		{filepath.Join("scenarios", "duplicate-capture"), 103},
 		{filepath.Join("scenarios", "concurrent-fatal"), -1},
 	}

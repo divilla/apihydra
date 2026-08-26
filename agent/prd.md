@@ -24,9 +24,9 @@ decoding and validating those definitions, resolving inherited request
 defaults, preparing request steps, executing requests, and validating
 responses.
 
-When no root, nested, or step value supplies them, request resolution uses a
-10-second timeout and 3 retries. Nonzero values at each narrower scope override
-the inherited value.
+When no directory, steps file, or individual step supplies them, request
+resolution uses a 10-second timeout and 3 retries. Nonzero values at each
+narrower scope override the inherited value.
 
 The current reference CLI composes the complete flow: definition loading,
 decoding, validation, and resolution; directory-tree validation; runtime-step
@@ -102,18 +102,32 @@ Directory paths are relative to `Suite.WorkDir`; the root path is `/`.
 
 `Defaults` has exactly `BaseURL`, `BasePath`, `Headers`, `Timeout`, and
 `Retries` with the YAML names defined in `skeleton/internal/domain/suite.go`.
+`DefaultsDefinition.Spec`, `Directory.ResolvedDefaults`,
+`StepsDefinition.Spec.Defaults`, and `Step.Request.Defaults` all use this same
+`domain.Defaults` type and structure. The steps-file and step forms do not
+duplicate the default-related fields directly in their surrounding structs.
+
+Resolution propagates defaults through this precedence chain:
+
+```text
+directory defaults -> steps-file defaults -> individual-step defaults
+```
+
+Each narrower level overlays the effective defaults inherited from the level
+before it. Defaults remain values throughout resolution; the shared domain and
+Resolver contracts do not use `*domain.Defaults` pointers.
 
 `Step` has exactly the reference fields under `Vars`, `Request`, `Response`,
-and `Debug`, plus source `Definition` and `Index`. Fields typed as
-`YAMLString` remain `YAMLString`; specs must not replace them with parallel
-presence or arbitrary-value wrappers.
+and `Debug`, plus `Index` and source `Definition`. Fields typed as `YAMLString`
+remain `YAMLString`; specs must not replace them with parallel presence or
+arbitrary-value wrappers.
 
 `Step.Response` carries expected and actual forms of both response values:
 
 - `ExpectedStatus` and `ActualStatus` are `int` values under the YAML and JSON
   names `expected_status` and `actual_status`;
-- `ExpectedBody` is a `YAMLString` under `expected_body`, while `ActualBody` is
-  a `string` under `actual_body`;
+- `ExpectedBody` and `ActualBody` are `YAMLString` values under `expected_body`
+  and `actual_body`, respectively;
 - `ExpectedTypes` is a `map[string][]string` under `expected_types` and declares
   the expected types selected from `ActualBody`.
 
@@ -128,7 +142,10 @@ non-empty failed string. Body inequality is likewise represented by a non-empty
 diff string rather than as the fatal error result of `ValidateBody`.
 
 The JSON names on declarative and runtime step fields match their YAML names.
-`Definition` is omitted from JSON and `Index` is encoded as `index`.
+Resolved request defaults are nested under `request.defaults` in both YAML and
+JSON, using the field names defined by `domain.Defaults`.
+`Definition` is omitted from JSON and `Index` is encoded as `index`. Reporter
+includes `index` when it serializes a step for debug output.
 `DirectoryStage`, `DirectoryPath`, and `FilePath` derive provenance through
 `Step.Definition.File.Directory` exactly as implemented by the skeleton.
 
@@ -253,6 +270,8 @@ updated to match.
    the directory tree, prepares runtime steps, plans stages, and executes that
    plan in the order fixed by the skeleton.
 3. Shared workflow state uses `internal/domain` rather than parallel carriers.
+   Directory, steps-file, and individual-step defaults use `domain.Defaults`
+   values and resolve in that precedence order without `*domain.Defaults`.
 4. Command execution, contextual error composition, execution output, and
    fatal diagnostic logging remain within their owner packages.
 5. Every package-local behavior is defined once in the skeleton and referenced

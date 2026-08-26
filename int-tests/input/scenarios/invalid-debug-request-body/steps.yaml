@@ -1,0 +1,10 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        path: /debug-invalid-request
+        body: not-json
+      response:
+        expected_body: '{"id":7,"ok":true}'
+      debug: true
