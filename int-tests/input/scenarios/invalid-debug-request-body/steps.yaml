@@ -4,7 +4,7 @@ spec:
   steps:
     - request:
         path: /debug-invalid-request
-        body: not-json
+        body: '@/etc/passwd'
       response:
         expected_body: '{"id":7,"ok":true}'
         expected_types:

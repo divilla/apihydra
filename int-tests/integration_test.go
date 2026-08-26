@@ -324,6 +324,9 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if output, err := copyPaste.CombinedOutput(); err != nil {
 		t.Fatalf("copy-pasted Debug Curl command error = %v; output = %q; command = %q", err, output, rawCurlCommand)
 	}
+	if outputPath := regexp.MustCompile(`(?:^| )--output ([^ ]+)`).FindStringSubmatch(rawCurlCommand); len(outputPath) == 2 {
+		t.Cleanup(func() { os.Remove(outputPath[1]) })
+	}
 
 	terminalDebugSuite := filepath.Join("scenarios", "invalid-debug-request-body")
 	terminalDebug := runCLI(t, ctx, binary, runRoot, coverageDir, terminalDebugSuite)
@@ -334,7 +337,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if got, want := terminalHeader, "stage: 0\ndir-path: /\nfile-path: steps.yaml"; got != want {
 		t.Fatalf("terminal Debug provenance = %q, want %q", got, want)
 	}
-	for _, want := range []string{"/debug-invalid-request", "not-json"} {
+	for _, want := range []string{"/debug-invalid-request", "@/etc/passwd"} {
 		if !strings.Contains(terminalCommand, want) {
 			t.Fatalf("terminal Debug Curl command = %q, want attempted value %q", terminalCommand, want)
 		}
@@ -379,6 +382,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 				"Cookie":        []string{"session=integration-cookie"},
 			},
 		},
+		{method: http.MethodPost, path: "/debug-invalid-request", body: "@/etc/passwd"},
 	}
 	for _, want := range wantRequests {
 		if !requests.contains(want) {

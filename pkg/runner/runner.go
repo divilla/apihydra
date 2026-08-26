@@ -75,7 +75,26 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 		args = append(args, "--retry", strconv.Itoa(retries))
 	}
 	if body != "" {
-		args = append(args, "--data-binary", body)
+		dataOption := "--data-binary"
+		if strings.HasPrefix(body, "@") {
+			dataOption = "--data-raw"
+		}
+		args = append(args, dataOption, body)
+	}
+
+	responsePath := ""
+	if retries > 0 {
+		responseFile, err := os.CreateTemp("", "apih-curl-response-")
+		if err != nil {
+			return "", 0, newCommandFailure(ErrCurl, err, "")
+		}
+		responsePath = responseFile.Name()
+		if err := responseFile.Close(); err != nil {
+			os.Remove(responsePath)
+			return "", 0, newCommandFailure(ErrCurl, err, "")
+		}
+		defer os.Remove(responsePath)
+		args = append(args, "--output", responsePath)
 	}
 	args = append(args, "--write-out", curlWriteOut)
 
@@ -94,6 +113,13 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 	}
 	if isHead {
 		return "", status, nil
+	}
+	if responsePath != "" {
+		response, err := os.ReadFile(responsePath)
+		if err != nil {
+			return "", 0, newCommandFailure(ErrCurl, err, "")
+		}
+		return string(response), status, nil
 	}
 	return output[:marker], status, nil
 }
@@ -218,7 +244,7 @@ func shellQuote(value string) string {
 	}) < 0 {
 		return value
 	}
-	return "'" + strings.ReplaceAll(value, "'", `'\"'\"'`) + "'"
+	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
 type commandFailure struct {
