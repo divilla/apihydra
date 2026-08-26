@@ -33,11 +33,23 @@ decoding, validation, and resolution; directory-tree validation; runtime-step
 preparation and stage planning; and staged execution with response validation
 and reporting.
 
-A step with `debug: true` is a terminal breakpoint. After the step finishes,
-its runtime state is normalized through jq, printed as jq-palette ANSI-colored
-JSON, and the application completes successfully. No later step or stage is
-executed, and no success, validation, diagnostic, or other output follows the
-debug JSON.
+A step with `debug: true` is a terminal breakpoint. Debug reports the latest
+available runtime state immediately before the step finishes or processing
+stops because of a terminal error. Its dump contains the step's directory
+stage, directory path, file path, the exact Curl command executed by `apih`,
+and the raw JSON encoding of the final `Step`. A normally completed debug step
+completes the application successfully: no later step or stage is executed,
+and no success, validation, diagnostic, or other execution output follows the
+dump. When processing stops because of a terminal error, Debug emits the latest
+dump before the existing error, exit-code, and fatal-diagnostic contracts take
+effect.
+
+Debug output is intentionally complete and unredacted. It never hides, masks,
+filters, or omits members or values, including security-sensitive values such
+as Bearer authorization headers and cookie-jar contents. The displayed Curl
+command is unaltered, can be copied and executed as-is, and is the same command
+that `apih` executes for the step. The Debug layout is owned by the Reporter
+guide.
 
 ## Package ownership
 
@@ -144,8 +156,9 @@ diff string rather than as the fatal error result of `ValidateBody`.
 The JSON names on declarative and runtime step fields match their YAML names.
 Resolved request defaults are nested under `request.defaults` in both YAML and
 JSON, using the field names defined by `domain.Defaults`.
-`Definition` is omitted from JSON and `Index` is encoded as `index`. Reporter
-includes `index` when it serializes a step for debug output.
+`Definition` is omitted from JSON and `Index` is encoded as `index`. Reporter's
+raw Debug serialization retains every member and value included by `Step`'s
+JSON contract, including `index`, without jq normalization or colorization.
 `DirectoryStage`, `DirectoryPath`, and `FilePath` derive provenance through
 `Step.Definition.File.Directory` exactly as implemented by the skeleton.
 
@@ -249,7 +262,9 @@ The following are not product requirements:
   construction, status rules beyond the documented `ExpectedStatus`
   comparison, or body-validation rules beyond the documented normalized
   expected-response comparison;
-- exact curl, jq, or Git argument vectors and command-result normalization;
+- the choice of exact curl, jq, or Git argument vectors and command-result
+  normalization, except that Debug must expose the exact Curl command chosen
+  and executed for its step without alteration;
 - success or validation-failure layouts not implemented or tested in
   `skeleton/`;
 - selection precedence when concurrent directories reach debug steps;
@@ -277,4 +292,8 @@ updated to match.
 5. Every package-local behavior is defined once in the skeleton and referenced
    by the PRD, architecture, and specification guides.
 6. No behavior listed as unspecified is asserted by a package guide.
-7. `go test ./...`, `go test -race ./...`, and `git diff --check` pass.
+7. Debug output follows the enhanced raw-dump contract: provenance values are
+   derived through the `Step` helpers, the executed Curl command is complete,
+   unredacted, unchanged, and copy-pastable, and the raw `Step` JSON contains
+   the latest available values before completion or a terminal error.
+8. `go test ./...`, `go test -race ./...`, and `git diff --check` pass.

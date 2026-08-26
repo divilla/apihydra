@@ -37,7 +37,8 @@ YAML remains static and unchanged.
   and `int-tests/input/scenarios/` contains auxiliary
   failure and edge-case suites, including a debug step that exposes the
   resolved `request.defaults` value with its 10-second timeout and 3 retries,
-  that must not affect either top-level fixture.
+  its exact executed Curl command, unredacted security-sensitive values, and
+  the raw latest `Step` JSON without affecting either top-level fixture.
 - Build output is temporary. The harness builds `./cmd/cli` with Go coverage
   instrumentation over `apih/...`, runs the scenarios with `GOCOVERDIR`, and
   removes artifacts through the test temporary directory lifecycle.
@@ -54,10 +55,11 @@ YAML remains static and unchanged.
 
 ## Deliberately unspecified
 
-The suite does not make Reporter layout, same-stage ordering, exact external
-command arguments, or other PRD-unspecified choices into assertions. It checks
-only stable output fragments needed to identify the selected work directory or
-a fatal diagnostic.
+Except for the byte-exact enhanced Debug contract, the suite does not make
+Reporter layout, same-stage ordering, exact external command arguments, or
+other PRD-unspecified choices into assertions. Outside Debug it checks only
+stable output fragments needed to identify the selected work directory or a
+fatal diagnostic.
 
 ## Acceptance criteria
 
@@ -81,11 +83,19 @@ a fatal diagnostic.
 8. Fixtures exercise directory-to-steps-file-to-individual-step defaults
    propagation using the same `domain.Defaults` structure at all three levels.
    A step with `debug: true` and no configured timeout or retries prints its
-   resolved `request.defaults` with timeout `10` and retries `3` as jq-palette
-   colored JSON, exits successfully, and leaves its later sibling step
-   unexecuted. The debug JSON is the final process output, and no legacy direct
-   request defaults fields appear. Its `index` field is present in recursively
-   sorted order, and runtime `actual_body` remains serialized from the shared
-   `domain.YAMLString` field.
-9. `make integration-test`, `go test ./...`, `go test -race ./...`, and
+   direct `DirectoryStage()`, `DirectoryPath()`, and `FilePath()` values, then
+   the exact Curl command executed by `apih`, then the raw latest `Step` JSON.
+   The command contains every configured value, including Bearer authorization
+   and any cookie data present, without hiding or redaction; copying and
+   executing it as-is sends the same request to the loopback server. The raw
+   JSON is not jq-normalized, sorted, or colorized, contains `index`, preserves
+   runtime `actual_body` as the shared `domain.YAMLString`, nests resolved
+   `request.defaults` with timeout `10` and retries `3`, and contains no legacy
+   direct request-default fields. The dump is the final process output, the run
+   exits successfully, and the later sibling step remains unexecuted.
+9. A terminal-error Debug scenario emits the same layout before returning the
+   terminal outcome. Its raw `Step` JSON contains the latest mutations made
+   before processing stopped, its Curl command is the exact command attempted,
+   and no member or value is suppressed.
+10. `make integration-test`, `go test ./...`, `go test -race ./...`, and
    `git diff --check` pass after guides `000` through `011` are implemented.

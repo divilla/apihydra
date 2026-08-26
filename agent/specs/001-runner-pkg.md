@@ -25,8 +25,11 @@ The reference functions use canonical TODO bodies beneath their signatures and
 comments. Those bodies must be replaced by working command implementations;
 their empty results are not production behavior. The reference does not fix:
 
-- executable names or argument vectors;
-- use of stdin, temporary files, or environment variables;
+- the selected executable names or argument vectors, provided that the exact
+  Curl command selected for a step is the command exposed by Debug;
+- use of stdin, temporary files, or environment variables for non-Curl
+  operations; Curl may use them only when the exact displayed command remains
+  self-contained and executable as-is after Debug prints it;
 - sorting beyond the `JQProject` and `JQPretty` result descriptions, including
   `JQFilter` output formatting;
 - treatment of empty inputs, jq streams, or semantic non-zero statuses;
@@ -54,8 +57,12 @@ contract:
   returned output retains those Git ANSI colors but contains only changed value
   lines from every hunk: file headers, hunk headers, and unchanged surrounding
   values are omitted.
-- Reporter debug serialization uses `JQPretty` for recursively key-sorted JSON
-  before rendering that JSON with jq's terminal token palette.
+- Curl retains one raw command representation for Debug. That representation
+  is the exact command executed by `apih`: no argument, header, cookie-jar
+  value, body, or other member is hidden, redacted, stringified,
+  destringified, or otherwise transformed. It remains directly copy-pastable
+  and executable as the same Curl command without depending on transient input
+  or artifacts unavailable after Debug prints it.
 
 ## Required implementation and tests
 
@@ -65,7 +72,10 @@ contract:
   startup/failure/cancellation, data passed to each operation, and result/error
   normalization chosen within the contract, including implicit curl methods
   and actual-to-expected changed-value-only diff output with fixed palette
-  colors 210 and 10.
+  colors 210 and 10. Curl tests also prove that the raw command retained for
+  Debug is byte-for-byte the command executed, remains copy-pastable, and does
+  not suppress Bearer authorization headers, cookie-jar contents, or any other
+  values.
 - Root `architecture_test.go` proves that no other production package executes
   external commands and that `bat`/`BatDiff` is absent.
 - Each acceptance criterion is traced to a meaningful unit or architecture
@@ -79,7 +89,9 @@ contract:
    `JQPretty` return comparable normalized JSON, and `GitDiff` preserves the
    color behavior required by the reference contract.
 4. No external command is invoked by another production package.
-5. No `BatDiff`, `bat` dependency, shell policy, or command-line contract is
-   invented here.
-6. No reference TODO body remains in production, and the package's tests and
+5. Runner does not choose a redacted or separately reconstructed Debug form of
+   a Curl command; Debug receives the complete command that Curl executes.
+6. No `BatDiff`, `bat` dependency, or command-line choice beyond the enhanced
+   Debug contract is invented here.
+7. No reference TODO body remains in production, and the package's tests and
    repository ownership test pass.

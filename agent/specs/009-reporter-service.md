@@ -85,21 +85,48 @@ step. Later steps and files continue executing and reporting after nonfatal
 validation failures, and valid sibling definitions are reported before the
 directory returns validation exit status.
 
-Debug output starts with `Debug <file> step <zero-based-index>:` and renders the
-final runtime step as recursively key-sorted JSON using jq's ANSI token
-palette: blue keys, green string values, gray nulls, and jq's scalar and
-punctuation styles. The serialized representation includes `index` in the
-recursively sorted output. Its `ActualBody` remains the `domain.YAMLString`
-value defined by the shared model. The debug JSON ends with one blank line.
-Once Reporter successfully writes it, all later reporting calls are no-ops so
-nothing can appear beneath the breakpoint, including output racing from
-another directory.
+Debug output uses exactly this layout, where each placeholder is replaced by
+the indicated raw value:
+
+```text
+stage: <Step.DirectoryStage()>
+dir-path: <Step.DirectoryPath()>
+file-path: <Step.FilePath()>
+
+curl-command:
+<raw-curl-command>
+
+<step-json>
+```
+
+`stage`, `dir-path`, and `file-path` are the direct results of the three
+provenance helpers. `<raw-curl-command>` is the complete command executed by
+`apih` for the step. Reporter does not alter, hide, redact, stringify,
+destringify, reconstruct, or otherwise transform it. It includes all members
+and values, including Bearer authorization headers and cookie-jar contents
+when present, and can be copied, pasted, and executed as-is as the same Curl
+command.
+
+`<step-json>` is the raw JSON encoding of `Step`, without `runner.JQPretty`,
+recursive key sorting, ANSI colorization, member filtering, or value
+redaction. It follows the shared model's JSON tags, includes `index`, retains
+`ActualBody` as the `domain.YAMLString` value defined by that model, and
+contains the latest possible runtime values immediately before the step
+finishes or processing stops because of a terminal error.
+
+Every Debug-specific security mechanism that would suppress or obscure a
+member or value is absent. Once Reporter successfully writes the dump, all
+later reporting calls are no-ops so nothing can appear beneath the breakpoint,
+including output racing from another directory.
 
 ## Deliberately unspecified
 
 The skeleton does not define precedence when concurrent directories reach
-different debug steps. Reporter does not perform validation itself. Canonical
-zero-value TODO bodies are not acceptable production implementations.
+different debug steps or the private mechanism used to make Curl's already
+executed raw command available to Reporter. That mechanism must not change the
+binding public API or create a separately reconstructed command. Reporter does
+not perform validation itself. Canonical zero-value TODO bodies are not
+acceptable production implementations.
 
 ## Required implementation and tests
 
@@ -109,8 +136,9 @@ zero-value TODO bodies are not acceptable production implementations.
 - Test output: `internal/reporting/reporter_test.go` covers every method,
   byte-exact working-directory and terminal output, grouped multi-validation
   output, colored expected-type declarations, indented colored diffs,
-  nil/failing writers, cancellation policy, and concurrent writes under the
-  race detector.
+  the byte-exact raw Debug layout, unredacted authorization and cookie-jar
+  values, normally completed and terminal-error step snapshots, nil/failing
+  writers, cancellation policy, and concurrent writes under the race detector.
 - Root `architecture_test.go` proves that production execution output remains
   in this package and fatal diagnostics remain in `cmd/cli`.
 - Each acceptance criterion is traced to a meaningful unit or architecture
@@ -136,10 +164,13 @@ zero-value TODO bodies are not acceptable production implementations.
 6. `ValidationBody` prefixes every diff line with eight spaces and preserves its
    calculated actual-to-expected colors. Its rendered body block contains only
    changed red and green values, with no diff metadata or unchanged context.
-7. `Debug` normalizes the marshaled final step through `runner.JQPretty`, emits
-   jq-palette colored JSON containing `index` in recursively sorted order, and
-   atomically suppresses every later reporting call after the debug block is
-   successfully written. Reporter does not perform validation, schedule debug
-   steps, or call `os.Exit`.
-8. No TODO or zero-value placeholder remains in a reporting method; package
+7. `Debug` emits the byte-exact enhanced layout with direct provenance helper
+   values, the complete unaltered and copy-pastable Curl command that `apih`
+   executed, and the raw JSON-encoded latest `Step`. It does not invoke
+   `runner.JQPretty`, sort or colorize the JSON, or hide, filter, mask, redact,
+   stringify, or destringify any command member or value.
+8. After a Debug dump is successfully written, Reporter atomically suppresses
+   every later reporting call. Reporter does not perform validation, schedule
+   debug steps, or call `os.Exit`.
+9. No TODO or zero-value placeholder remains in a reporting method; package
    tests, race tests, the ownership test, and `git diff --check` pass.
