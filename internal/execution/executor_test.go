@@ -609,8 +609,9 @@ esac
 	}
 	for _, want := range []string{
 		"stage: 0\ndir-path: /suite\nfile-path: steps.yaml\n\ncurl-command:\n",
+		`printf '%s' '{"token":"one"}' |`,
 		"curl --disable --globoff --silent --show-error --request POST",
-		`--data-binary '{"token":"one"}'`,
+		`--data-binary @-`,
 		`"index":1`,
 		`"actual_status":201`,
 		`"actual_body":"{\"token\":\"one\"}"`,
@@ -682,9 +683,10 @@ func TestProcessDirDebugReportsLatestStateBeforeTerminalError(t *testing.T) {
 		}
 		for _, want := range []string{
 			"stage: 0\ndir-path: /suite\nfile-path: terminal/steps.yaml",
+			`printf '%s' '{"secret":true}' |`,
 			"curl --disable --globoff --silent --show-error --request POST",
 			"Bearer terminal-secret",
-			`--data-binary '{"secret":true}'`,
+			`--data-binary @-`,
 			`"index":4`,
 			`"actual_status":0`,
 		} {

@@ -91,14 +91,9 @@ printf '\napih-status:201'
 		}
 	}
 	executedArgs := readLines(t, argsPath)
-	retainedArgs := append([]string(nil), executedArgs...)
-	for index := range retainedArgs {
-		if retainedArgs[index] == "@-" {
-			retainedArgs[index] = `{"name":"hydra"}`
-		}
-	}
-	if got, want := rawCommand, shellCommand("curl", retainedArgs...); got != want {
-		t.Fatalf("retained Curl command = %q, want self-contained command %q", got, want)
+	executedCurlCommand := shellCommand("curl", executedArgs...)
+	if !strings.Contains(rawCommand, executedCurlCommand) {
+		t.Fatalf("retained Curl command = %q, want executed Curl form %q", rawCommand, executedCurlCommand)
 	}
 	for index, argument := range executedArgs {
 		if argument == "--output" && index+1 < len(executedArgs) {
@@ -294,11 +289,12 @@ printf '{"ok":true}\napih-status:200'
 		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
 		"--url", "https://example.test", "--data-binary", "@-", "--write-out", curlWriteOut,
 	})
-	if got, want := rawCommand, shellCommand(
+	wantCurlCommand := shellCommand(
 		"curl", "--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
-		"--url", "https://example.test", "--data-raw", wantBody, "--write-out", curlWriteOut,
-	); got != want {
-		t.Fatalf("retained Curl command = %q, want literal-data command %q", got, want)
+		"--url", "https://example.test", "--data-binary", "@-", "--write-out", curlWriteOut,
+	)
+	if !strings.Contains(rawCommand, wantCurlCommand) {
+		t.Fatalf("retained Curl command = %q, want literal-data Curl form %q", rawCommand, wantCurlCommand)
 	}
 }
 
@@ -362,6 +358,15 @@ printf '{"ok":true}\napih-status:200'
 	})
 	if !strings.Contains(rawCommand, wantBody) {
 		t.Fatal("retained Curl command does not contain the complete large body")
+	}
+	if !strings.Contains(rawCommand, shellCommand(
+		"curl", "--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
+		"--url", "https://example.test/large", "--data-binary", "@-", "--write-out", curlWriteOut,
+	)) {
+		t.Fatalf("retained Curl command = %q, want the executed streaming Curl form", rawCommand)
+	}
+	if output, err := platformShellCommand(context.Background(), rawCommand).CombinedOutput(); err != nil {
+		t.Fatalf("copy-pasted large Curl command error = %v; output = %q", err, output)
 	}
 }
 
@@ -761,9 +766,13 @@ func assertCommandError(t *testing.T, err, operation error) {
 
 func platformShellCommand(ctx context.Context, command string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
-		return exec.CommandContext(ctx, "cmd.exe", "/d", "/s", "/c", command)
+		cmd := exec.CommandContext(ctx, "cmd.exe", "/d", "/q")
+		cmd.Stdin = strings.NewReader(command)
+		return cmd
 	}
-	return exec.CommandContext(ctx, "/bin/sh", "-c", command)
+	cmd := exec.CommandContext(ctx, "/bin/sh")
+	cmd.Stdin = strings.NewReader(command)
+	return cmd
 }
 
 func assertFileContents(t *testing.T, path, want string) {
