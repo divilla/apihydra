@@ -28,7 +28,10 @@ var ErrJQPretty = errors.New("jq pretty error")
 // ErrGitDiff classifies a Git diff failure.
 var ErrGitDiff = errors.New("git diff error")
 
-const curlStatusMarker = "\n\x1eapih-status:"
+const (
+	curlStatusMarker = "\napih-status:"
+	curlWriteOut     = `\napih-status:%{http_code}`
+)
 
 // Curl executes an HTTP request and returns its response body and status code.
 func Curl(ctx context.Context, method string, url string, headers map[string]string, timeout int, retries int, query string, body string) (string, int, error) {
@@ -72,17 +75,12 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 		args = append(args, "--retry", strconv.Itoa(retries))
 	}
 	if body != "" {
-		args = append(args, "--data-binary", "@-")
+		args = append(args, "--data-binary", body)
 	}
-	responseDir, err := os.MkdirTemp("", "apih-curl-response-")
-	if err != nil {
-		return "", 0, newCommandFailure(ErrCurl, err, "")
-	}
-	defer os.RemoveAll(responseDir)
-	responsePath := filepath.Join(responseDir, "response")
-	args = append(args, "--output", responsePath, "--write-out", curlStatusMarker+"%{http_code}")
+	args = append(args, "--write-out", curlWriteOut)
 
-	output, stderr, _, err := execute(ctx, "curl", body, args...)
+	retainCurlCommand(ctx, shellCommand("curl", args...))
+	output, stderr, _, err := execute(ctx, "curl", "", args...)
 	if err != nil {
 		return "", 0, newCommandFailure(ErrCurl, err, stderr)
 	}
@@ -97,11 +95,7 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 	if isHead {
 		return "", status, nil
 	}
-	response, err := os.ReadFile(responsePath)
-	if err != nil {
-		return "", 0, newCommandFailure(ErrCurl, err, "")
-	}
-	return string(response), status, nil
+	return output[:marker], status, nil
 }
 
 // JQProject selects members from input and returns them as one recursively
@@ -200,6 +194,31 @@ func runCommand(ctx context.Context, dir, name, input string, stdout io.Writer, 
 		err = ctx.Err()
 	}
 	return stderr.String(), exitCode, err
+}
+
+func retainCurlCommand(ctx context.Context, command string) {
+	retained, _ := ctx.Value(ErrCurl).(*string)
+	if retained != nil {
+		*retained = command
+	}
+}
+
+func shellCommand(name string, args ...string) string {
+	command := make([]string, 0, len(args)+1)
+	command = append(command, shellQuote(name))
+	for _, arg := range args {
+		command = append(command, shellQuote(arg))
+	}
+	return strings.Join(command, " ")
+}
+
+func shellQuote(value string) string {
+	if value != "" && strings.IndexFunc(value, func(char rune) bool {
+		return !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-", char)
+	}) < 0 {
+		return value
+	}
+	return "'" + strings.ReplaceAll(value, "'", `'\"'\"'`) + "'"
 }
 
 type commandFailure struct {

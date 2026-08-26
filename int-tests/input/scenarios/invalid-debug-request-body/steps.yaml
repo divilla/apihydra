@@ -7,4 +7,6 @@ spec:
         body: not-json
       response:
         expected_body: '{"id":7,"ok":true}'
+        expected_types:
+          ".[": [string]
       debug: true

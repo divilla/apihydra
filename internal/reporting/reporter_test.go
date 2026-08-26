@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -118,16 +117,6 @@ func TestReporterExportedContract(t *testing.T) {
 	}
 }
 
-func TestDebugRequestReusesDomainDefaults(t *testing.T) {
-	field, ok := reflect.TypeOf(debugRequest{}).FieldByName("Defaults")
-	if !ok {
-		t.Fatal("debugRequest.Defaults field is missing")
-	}
-	if got, want := field.Type, reflect.TypeOf(domain.Defaults{}); got != want {
-		t.Fatalf("debugRequest.Defaults type = %v, want %v", got, want)
-	}
-}
-
 func TestWorkingDirectoryUsesInjectedWriterByteExactly(t *testing.T) {
 	var output bytes.Buffer
 	report := NewReporter(&output)
@@ -175,14 +164,11 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 	step.Debug = true
 	directory := step.Definition.File.Directory
 
-	debugJSON, err := json.Marshal(debugStepValue(step))
+	debugJSON, err := json.Marshal(step)
 	if err != nil {
 		t.Fatalf("marshal debug step: %v", err)
 	}
-	prettyDebugJSON, _, err := runner.JQPretty(context.Background(), string(debugJSON))
-	if err != nil {
-		t.Fatalf("jq debug step: %v", err)
-	}
+	const rawCommand = "curl --url https://example.test/resource"
 	tests := map[string]struct {
 		call func(*Reporter) error
 		want string
@@ -210,8 +196,12 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 			want: "[\x1b[38;5;210m✗\x1b[0m] /suite/steps\n[\x1b[38;5;210m✗\x1b[0m] / GET \x1b[36mstep-4\x1b[0m\n    expected_body:\n        - actual\n        + expected\n\n",
 		},
 		"debug": {
-			call: func(report *Reporter) error { return report.Debug(context.Background(), step) },
-			want: fmt.Sprintf("Debug suite/steps.yaml step 3:\n%s\n\n", colorizeJQJSON(prettyDebugJSON)),
+			call: func(report *Reporter) error { return report.Debug(contextWithCurlCommand(rawCommand), step) },
+			want: fmt.Sprintf(
+				"stage: 0\ndir-path: /suite\nfile-path: suite/steps.yaml\n\ncurl-command:\n%s\n\n%s\n",
+				rawCommand,
+				debugJSON,
+			),
 		},
 	}
 
@@ -228,32 +218,46 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 	}
 }
 
-func TestDebugFormatsRequestBodyAsSortedJSON(t *testing.T) {
-	step := &domain.Step{Index: 2}
+func TestDebugWritesRawUnredactedStepJSONAndCurlCommand(t *testing.T) {
+	step := reporterStep("security/steps.yaml", 2)
 	step.Request.Body = `{"b":2,"a":1}`
-	step.Request.Defaults = domain.Defaults{BaseURL: "https://example.test", BasePath: "/api", Timeout: 10, Retries: 3}
+	step.Request.Defaults = domain.Defaults{
+		BaseURL:  "https://example.test",
+		BasePath: "/api",
+		Headers: map[string]string{
+			"Authorization": "Bearer secret-token",
+			"Cookie":        "session=secret-cookie",
+		},
+		Timeout: 10,
+		Retries: 3,
+	}
+	step.Response.ActualBody = `{"latest":true}`
+	const rawCommand = "curl --header 'Authorization: Bearer secret-token' --header 'Cookie: session=secret-cookie' --data-binary '{\"b\":2,\"a\":1}' https://example.test/api"
 	var output bytes.Buffer
 
-	if err := NewReporter(&output).Debug(context.Background(), step); err != nil {
+	if err := NewReporter(&output).Debug(contextWithCurlCommand(rawCommand), step); err != nil {
 		t.Fatalf("Debug() error = %v", err)
 	}
 
-	got := output.String()
-	if !strings.HasPrefix(got, "Debug step 2:\n") {
-		t.Fatalf("Debug() output = %q, want standalone step reference", got)
+	payload, err := json.Marshal(step)
+	if err != nil {
+		t.Fatalf("Marshal(step) error = %v", err)
 	}
-	body := strings.Index(got, colorizeJQJSON(`"body": {`))
-	a := strings.Index(got, colorizeJQJSON(`"a": 1`))
-	b := strings.Index(got, colorizeJQJSON(`"b": 2`))
-	if body < 0 || a < body || b < a {
-		t.Fatalf("Debug() output = %q, want request body as key-sorted JSON object", got)
+	want := fmt.Sprintf(
+		"stage: 0\ndir-path: /suite\nfile-path: security/steps.yaml\n\ncurl-command:\n%s\n\n%s\n",
+		rawCommand,
+		payload,
+	)
+	if got := output.String(); got != want {
+		t.Fatalf("Debug() output = %q, want byte-exact raw dump %q", got, want)
 	}
-	defaults := strings.Index(got, colorizeJQJSON(`"defaults": {`))
-	basePath := strings.Index(got, colorizeJQJSON(`"base_path": "/api"`))
-	baseURL := strings.Index(got, colorizeJQJSON(`"base_url": "https://example.test"`))
-	timeout := strings.Index(got, colorizeJQJSON(`"timeout": 10`))
-	if defaults < 0 || basePath < defaults || baseURL < defaults || timeout < defaults {
-		t.Fatalf("Debug() output = %q, want defaults nested under request", got)
+	for _, value := range []string{"Bearer secret-token", "session=secret-cookie", "\"actual_body\":\"{\\\"latest\\\":true}\""} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("Debug() output = %q, want complete value %q", output.String(), value)
+		}
+	}
+	if strings.Contains(output.String(), "\x1b[") {
+		t.Fatalf("Debug() output = %q, want no ANSI colorization", output.String())
 	}
 }
 
@@ -529,30 +533,8 @@ func TestReporterUsesSafeFallbackReferences(t *testing.T) {
 	if err := report.Debug(context.Background(), &domain.Step{Index: 99}); err != nil {
 		t.Fatalf("Debug() after debug error = %v", err)
 	}
-	if got, want := output.String(), "Debug <unknown step>:\n\x1b[0;90mnull\x1b[0m\n\n"; got != want {
+	if got, want := output.String(), "stage: 0\ndir-path: \nfile-path: \n\ncurl-command:\n\n\nnull\n"; got != want {
 		t.Fatalf("fallback output = %q, want %q", got, want)
-	}
-}
-
-func TestDebugClassifiesJQFailureAsReportingFailure(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
-	err := NewReporter(&bytes.Buffer{}).Debug(context.Background(), &domain.Step{})
-	if !errors.Is(err, ErrReporter) || !errors.Is(err, runner.ErrJQPretty) {
-		t.Fatalf("Debug() error = %v, want ErrReporter and ErrJQPretty", err)
-	}
-}
-
-func TestColorizeJQJSONUsesJQTerminalPalette(t *testing.T) {
-	input := "{\n  \"key\": [null, true, 10, \"value\"]\n}"
-	want := "\x1b[1;39m{\x1b[0m\n" +
-		"  \x1b[1;34m\"key\"\x1b[0m\x1b[1;39m:\x1b[0m \x1b[1;39m[\x1b[0m" +
-		"\x1b[0;90mnull\x1b[0m\x1b[1;39m,\x1b[0m " +
-		"\x1b[0;39mtrue\x1b[0m\x1b[1;39m,\x1b[0m " +
-		"\x1b[0;39m10\x1b[0m\x1b[1;39m,\x1b[0m " +
-		"\x1b[0;32m\"value\"\x1b[0m\x1b[1;39m]\x1b[0m\n" +
-		"\x1b[1;39m}\x1b[0m"
-	if got := colorizeJQJSON(input); got != want {
-		t.Fatalf("colorizeJQJSON() = %q, want %q", got, want)
 	}
 }
 
@@ -564,6 +546,10 @@ func reporterStep(path string, index int) *domain.Step {
 
 func finalValidationContext(report *Reporter) context.Context {
 	return context.WithValue(context.Background(), report, true)
+}
+
+func contextWithCurlCommand(command string) context.Context {
+	return context.WithValue(context.Background(), runner.ErrCurl, &command)
 }
 
 func reporterDirectory(path string) *domain.Directory {

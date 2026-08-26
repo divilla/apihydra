@@ -282,19 +282,21 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 	for groupIndex := range dir.RuntimeSteps {
 		for stepIndex := range dir.RuntimeSteps[groupIndex] {
 			step := &dir.RuntimeSteps[groupIndex][stepIndex]
+			rawCurlCommand := ""
+			stepCtx := context.WithValue(ctx, runner.ErrCurl, &rawCurlCommand)
 
-			if exitCode, err := e.binder.LoadVariables(ctx, step); err != nil {
-				return fatalResult(exitCode, err)
+			if exitCode, err := e.binder.LoadVariables(stepCtx, step); err != nil {
+				return e.terminalResult(stepCtx, step, exitCode, err)
 			}
-			if exitCode, err := e.binder.InterpolateRequestBody(ctx, step); err != nil {
-				return fatalResult(exitCode, err)
+			if exitCode, err := e.binder.InterpolateRequestBody(stepCtx, step); err != nil {
+				return e.terminalResult(stepCtx, step, exitCode, err)
 			}
-			if exitCode, err := e.binder.InterpolateResponseExpectedBody(ctx, step); err != nil {
-				return fatalResult(exitCode, err)
+			if exitCode, err := e.binder.InterpolateResponseExpectedBody(stepCtx, step); err != nil {
+				return e.terminalResult(stepCtx, step, exitCode, err)
 			}
 
 			body, status, err := runner.Curl(
-				ctx,
+				stepCtx,
 				step.Request.Method,
 				step.Request.Defaults.BaseURL+step.Request.Defaults.BasePath+step.Request.Path,
 				step.Request.Defaults.Headers,
@@ -304,27 +306,27 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 				string(step.Request.Body),
 			)
 			if err != nil {
-				return fatalResult(status, err)
+				return e.terminalResult(stepCtx, step, status, err)
 			}
 			step.Response.ActualStatus = status
 			step.Response.ActualBody = domain.YAMLString(body)
 
-			failedTypes, err := e.val.ValidateTypes(ctx, step)
+			failedTypes, err := e.val.ValidateTypes(stepCtx, step)
 			if err != nil {
-				return fatalResult(0, err)
+				return e.terminalResult(stepCtx, step, 0, err)
 			}
 
 			var statusFailure error
-			if err := e.val.ValidateStatus(ctx, step); err != nil {
+			if err := e.val.ValidateStatus(stepCtx, step); err != nil {
 				if !errors.Is(err, ErrValidation) {
-					return fatalResult(0, err)
+					return e.terminalResult(stepCtx, step, 0, err)
 				}
 				statusFailure = err
 			}
 
-			diff, err := e.val.ValidateBody(ctx, step)
+			diff, err := e.val.ValidateBody(stepCtx, step)
 			if err != nil {
-				return fatalResult(0, err)
+				return e.terminalResult(stepCtx, step, 0, err)
 			}
 			failureCount := 0
 			if failedTypes != "" {
@@ -342,31 +344,31 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 			nextReportContext := func() context.Context {
 				failureCount--
 				if failureCount == 0 {
-					return context.WithValue(ctx, e.report, true)
+					return context.WithValue(stepCtx, e.report, true)
 				}
-				return ctx
+				return stepCtx
 			}
 			if failedTypes != "" {
 				if err := e.report.ValidationTypes(nextReportContext(), step, failedTypes); err != nil {
-					return fatalResult(0, err)
+					return e.terminalResult(stepCtx, step, 0, err)
 				}
 			}
 			if statusFailure != nil {
 				if err := e.report.ValidationStatus(nextReportContext(), step, statusFailure); err != nil {
-					return fatalResult(0, err)
+					return e.terminalResult(stepCtx, step, 0, err)
 				}
 			}
 			if diff != "" {
 				if err := e.report.ValidationBody(nextReportContext(), step, diff); err != nil {
-					return fatalResult(0, err)
+					return e.terminalResult(stepCtx, step, 0, err)
 				}
 			}
 
-			if exitCode, err := e.binder.CaptureResponseVariables(ctx, step); err != nil {
-				return fatalResult(exitCode, err)
+			if exitCode, err := e.binder.CaptureResponseVariables(stepCtx, step); err != nil {
+				return e.terminalResult(stepCtx, step, exitCode, err)
 			}
 			if step.Debug {
-				if err := e.report.Debug(ctx, step); err != nil {
+				if err := e.report.Debug(stepCtx, step); err != nil {
 					return fatalResult(0, err)
 				}
 				return 0, errDebugStop
@@ -381,6 +383,14 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 		return errs.ExitValidation, nil
 	}
 	return 0, nil
+}
+
+func (e *Executor) terminalResult(ctx context.Context, step *domain.Step, exitCode int, err error) (int, error) {
+	exitCode, err = fatalResult(exitCode, err)
+	if step.Debug {
+		_ = e.report.Debug(context.WithoutCancel(ctx), step)
+	}
+	return exitCode, err
 }
 
 func prepareDirectory(dir *domain.Directory) {

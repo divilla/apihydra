@@ -44,31 +44,6 @@ type failedStepKey struct {
     index      int
 }
 
-type debugStep struct {
-    Vars     map[string]domain.YAMLString `json:"vars"`
-    Request  debugRequest                 `json:"request"`
-    Response debugResponse                `json:"response"`
-    Debug    bool                         `json:"debug"`
-    Index    int                          `json:"index"`
-}
-
-type debugRequest struct {
-    Path     string          `json:"path"`
-    Method   string          `json:"method"`
-    Query    string          `json:"query"`
-    Body     json.RawMessage `json:"body"`
-    Defaults domain.Defaults `json:"defaults"`
-}
-
-type debugResponse struct {
-    ExpectedStatus int                          `json:"expected_status"`
-    ActualStatus   int                          `json:"actual_status"`
-    ExpectedBody   json.RawMessage              `json:"expected_body"`
-    ActualBody     json.RawMessage              `json:"actual_body"`
-    ExpectedTypes  map[string][]string          `json:"expected_types"`
-    Capture        map[string]domain.YAMLString `json:"capture"`
-}
-
 // NewReporter returns a Reporter that serializes writes to output.
 func NewReporter(output io.Writer) *Reporter {
     return &Reporter{
@@ -232,15 +207,23 @@ func (r *Reporter) Debug(ctx context.Context, step *domain.Step) error {
         return errs.Build(errs.ExitInternal, ErrReporter, err)
     }
 
-    payload, err := json.Marshal(debugStepValue(step))
+    payload, err := json.Marshal(step)
     if err != nil {
         return errs.Build(errs.ExitInternal, ErrReporter, err)
     }
-    pretty, _, err := runner.JQPretty(ctx, string(payload))
-    if err != nil {
-        return errs.Build(errs.ExitInternal, ErrReporter, err)
+    rawCommand := ""
+    if retained, _ := ctx.Value(runner.ErrCurl).(*string); retained != nil {
+        rawCommand = *retained
     }
-    block := fmt.Sprintf("Debug %s:\n%s\n\n", stepReference(step), colorizeJQJSON(pretty))
+    stage, dirPath, filePath := debugProvenance(step)
+    block := fmt.Sprintf(
+        "stage: %d\ndir-path: %s\nfile-path: %s\n\ncurl-command:\n%s\n\n%s\n",
+        stage,
+        dirPath,
+        filePath,
+        rawCommand,
+        payload,
+    )
     written, err := io.WriteString(r.output, block)
     if err == nil && written != len(block) {
         err = io.ErrShortWrite
@@ -252,42 +235,11 @@ func (r *Reporter) Debug(ctx context.Context, step *domain.Step) error {
     return nil
 }
 
-func debugStepValue(step *domain.Step) any {
-    if step == nil {
-        return nil
+func debugProvenance(step *domain.Step) (int, string, string) {
+    if step == nil || step.Definition == nil || step.Definition.File == nil || step.Definition.File.Directory == nil {
+        return 0, "", ""
     }
-    var requestBody json.RawMessage
-    if step.Request.Body != "" {
-        requestBody = json.RawMessage(step.Request.Body)
-    }
-    var expectedBody json.RawMessage
-    if step.Response.ExpectedBody != "" {
-        expectedBody = json.RawMessage(step.Response.ExpectedBody)
-    }
-    var actualBody json.RawMessage
-    if step.Response.ActualBody != "" {
-        actualBody = json.RawMessage(step.Response.ActualBody)
-    }
-    return debugStep{
-        Vars: step.Vars,
-        Request: debugRequest{
-            Path:   step.Request.Path,
-            Method: step.Request.Method,
-            Query:  step.Request.Query,
-            Body:   requestBody,
-            Defaults: step.Request.Defaults,
-        },
-        Response: debugResponse{
-            ExpectedStatus: step.Response.ExpectedStatus,
-            ActualStatus:   step.Response.ActualStatus,
-            ExpectedBody:   expectedBody,
-            ActualBody:     actualBody,
-            ExpectedTypes:  step.Response.ExpectedTypes,
-            Capture:        step.Response.Capture,
-        },
-        Debug: step.Debug,
-        Index: step.Index,
-    }
+    return step.DirectoryStage(), step.DirectoryPath(), step.FilePath()
 }
 
 func (r *Reporter) writeGenerated(ctx context.Context, generate func() string) error {
@@ -316,69 +268,6 @@ func (r *Reporter) writeGenerated(ctx context.Context, generate func() string) e
         return errs.Build(errs.ExitInternal, ErrReporter, err)
     }
     return nil
-}
-
-func colorizeJQJSON(input string) string {
-    const (
-        reset       = "\x1b[0m"
-        punctuation = "\x1b[1;39m"
-        key         = "\x1b[1;34m"
-        stringValue = "\x1b[0;32m"
-        scalar      = "\x1b[0;39m"
-        nullValue   = "\x1b[0;90m"
-    )
-
-    var colored strings.Builder
-    for index := 0; index < len(input); {
-        switch input[index] {
-        case ' ', '\t', '\r', '\n':
-            colored.WriteByte(input[index])
-            index++
-        case '"':
-            end := index + 1
-            for end < len(input) {
-                if input[end] == '\\' {
-                    end += 2
-                    continue
-                }
-                end++
-                if input[end-1] == '"' {
-                    break
-                }
-            }
-            next := end
-            for next < len(input) && (input[next] == ' ' || input[next] == '\t') {
-                next++
-            }
-            color := stringValue
-            if next < len(input) && input[next] == ':' {
-                color = key
-            }
-            colored.WriteString(color)
-            colored.WriteString(input[index:end])
-            colored.WriteString(reset)
-            index = end
-        case '{', '}', '[', ']', ',', ':':
-            colored.WriteString(punctuation)
-            colored.WriteByte(input[index])
-            colored.WriteString(reset)
-            index++
-        default:
-            end := index
-            for end < len(input) && !strings.ContainsRune(" \t\r\n,]}:", rune(input[end])) {
-                end++
-            }
-            color := scalar
-            if input[index:end] == "null" {
-                color = nullValue
-            }
-            colored.WriteString(color)
-            colored.WriteString(input[index:end])
-            colored.WriteString(reset)
-            index = end
-        }
-    }
-    return colored.String()
 }
 
 func (r *Reporter) writeValidation(ctx context.Context, step *domain.Step, validation string) error {
@@ -472,14 +361,4 @@ func effectiveMethod(step *domain.Step) string {
         }
     }
     return method
-}
-
-func stepReference(step *domain.Step) string {
-    if step == nil {
-        return "<unknown step>"
-    }
-    if step.Definition == nil || step.Definition.File == nil {
-        return fmt.Sprintf("step %d", step.Index)
-    }
-    return fmt.Sprintf("%s step %d", step.Definition.File.Path, step.Index)
 }

@@ -272,28 +272,25 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if debugDefaults.exitCode != 0 || debugDefaults.stderr != "" {
 		t.Fatalf("debug defaults = code %d, stdout %q, stderr %q, want success", debugDefaults.exitCode, debugDefaults.stdout, debugDefaults.stderr)
 	}
+	header, rawCurlCommand, rawDebugJSON := parseDebugDump(t, debugDefaults.stdout)
+	if got, want := header, "stage: 0\ndir-path: /\nfile-path: steps.yaml"; got != want {
+		t.Fatalf("debug provenance = %q, want %q", got, want)
+	}
 	for _, want := range []string{
-		"Debug steps.yaml step 0:\n",
-		"\x1b[1;34m\"defaults\"\x1b[0m",
-		"\x1b[1;34m\"index\"\x1b[0m\x1b[1;39m:\x1b[0m \x1b[0;39m0\x1b[0m",
-		"\x1b[1;34m\"actual_body\"\x1b[0m",
-		"\x1b[1;34m\"timeout\"\x1b[0m\x1b[1;39m:\x1b[0m \x1b[0;39m10\x1b[0m",
-		"\x1b[1;34m\"retries\"\x1b[0m\x1b[1;39m:\x1b[0m \x1b[0;39m3\x1b[0m",
+		"curl --disable --globoff --silent --show-error",
+		"Bearer integration-secret",
+		"session=integration-cookie",
+		server.URL + "/zero-types",
 	} {
-		if !strings.Contains(debugDefaults.stdout, want) {
-			t.Fatalf("debug defaults stdout = %q, want %q", debugDefaults.stdout, want)
+		if !strings.Contains(rawCurlCommand, want) {
+			t.Fatalf("raw Curl command = %q, want complete value %q", rawCurlCommand, want)
 		}
 	}
-	if strings.Contains(debugDefaults.stdout, "[\x1b[38;5;10m✓\x1b[0m]") || !strings.HasSuffix(debugDefaults.stdout, "\x1b[0m\n\n") {
-		t.Fatalf("debug defaults stdout = %q, want debug JSON as final output", debugDefaults.stdout)
-	}
-	plainDebug := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(debugDefaults.stdout, "")
-	jsonStart := strings.IndexByte(plainDebug, '{')
-	if jsonStart < 0 {
-		t.Fatalf("debug defaults stdout = %q, want JSON object", debugDefaults.stdout)
+	if strings.Contains(rawDebugJSON, "\x1b[") || !strings.HasPrefix(rawDebugJSON, `{"index":0,"vars":`) {
+		t.Fatalf("raw Debug JSON = %q, want unsorted, uncolored Step encoding", rawDebugJSON)
 	}
 	var debugStep map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(plainDebug[jsonStart:])), &debugStep); err != nil {
+	if err := json.Unmarshal([]byte(rawDebugJSON), &debugStep); err != nil {
 		t.Fatalf("decode debug defaults JSON: %v; stdout = %q", err, debugDefaults.stdout)
 	}
 	request, ok := debugStep["request"].(map[string]any)
@@ -317,8 +314,41 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if !ok {
 		t.Fatalf("debug response = %#v, want object", debugStep["response"])
 	}
-	if _, ok := response["actual_body"].(map[string]any); !ok {
-		t.Fatalf("debug actual_body = %#v, want JSON object serialized from YAMLString", response["actual_body"])
+	if got, ok := response["actual_body"].(string); !ok || got != `{"version":0}` {
+		t.Fatalf("debug actual_body = %#v, want raw YAMLString JSON string", response["actual_body"])
+	}
+	if strings.Contains(debugDefaults.stdout, "[\x1b[38;5;10m✓\x1b[0m]") || !strings.HasSuffix(debugDefaults.stdout, rawDebugJSON+"\n") {
+		t.Fatalf("debug defaults stdout = %q, want raw Debug dump as final output", debugDefaults.stdout)
+	}
+	copyPaste := exec.CommandContext(ctx, "/bin/sh", "-c", rawCurlCommand)
+	if output, err := copyPaste.CombinedOutput(); err != nil {
+		t.Fatalf("copy-pasted Debug Curl command error = %v; output = %q; command = %q", err, output, rawCurlCommand)
+	}
+
+	terminalDebugSuite := filepath.Join("scenarios", "invalid-debug-request-body")
+	terminalDebug := runCLI(t, ctx, binary, runRoot, coverageDir, terminalDebugSuite)
+	if terminalDebug.exitCode == 0 || terminalDebug.exitCode == 101 || terminalDebug.stderr == "" {
+		t.Fatalf("terminal Debug = code %d, stdout %q, stderr %q, want fatal outcome", terminalDebug.exitCode, terminalDebug.stdout, terminalDebug.stderr)
+	}
+	terminalHeader, terminalCommand, terminalJSON := parseDebugDump(t, terminalDebug.stdout)
+	if got, want := terminalHeader, "stage: 0\ndir-path: /\nfile-path: steps.yaml"; got != want {
+		t.Fatalf("terminal Debug provenance = %q, want %q", got, want)
+	}
+	for _, want := range []string{"/debug-invalid-request", "not-json"} {
+		if !strings.Contains(terminalCommand, want) {
+			t.Fatalf("terminal Debug Curl command = %q, want attempted value %q", terminalCommand, want)
+		}
+	}
+	var terminalStep map[string]any
+	if err := json.Unmarshal([]byte(terminalJSON), &terminalStep); err != nil {
+		t.Fatalf("decode terminal Debug JSON: %v; JSON = %q", err, terminalJSON)
+	}
+	terminalResponse, _ := terminalStep["response"].(map[string]any)
+	if terminalResponse["actual_status"] != float64(http.StatusOK) || terminalResponse["actual_body"] != `{"id":7,"ok":true}` {
+		t.Fatalf("terminal Debug response = %#v, want latest Curl runtime values", terminalResponse)
+	}
+	if !strings.HasSuffix(terminalDebug.stdout, terminalJSON+"\n") {
+		t.Fatalf("terminal Debug stdout = %q, want dump as final execution output", terminalDebug.stdout)
 	}
 	nilExpectedTypes := runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "nil-expected-types"))
 	if nilExpectedTypes.exitCode != 101 || nilExpectedTypes.stderr != "" {
@@ -341,6 +371,14 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		{method: http.MethodPost, path: "/api/items/captured", body: `{"id":7}`},
 		{method: http.MethodHead, path: "/api/head"},
 		{method: http.MethodGet, path: "/child-api/inherited"},
+		{
+			method: http.MethodGet,
+			path:   "/zero-types",
+			headers: http.Header{
+				"Authorization": []string{"Bearer integration-secret"},
+				"Cookie":        []string{"session=integration-cookie"},
+			},
+		},
 	}
 	for _, want := range wantRequests {
 		if !requests.contains(want) {
@@ -365,7 +403,6 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		{filepath.Join("scenarios", "invalid-actual-body"), -1},
 		{filepath.Join("scenarios", "invalid-type-selector"), -1},
 		{filepath.Join("scenarios", "invalid-capture-selector"), -1},
-		{filepath.Join("scenarios", "invalid-debug-request-body"), -1},
 		{filepath.Join("scenarios", "duplicate-capture"), 103},
 		{filepath.Join("scenarios", "concurrent-fatal"), -1},
 	}
@@ -490,6 +527,33 @@ func readRequestBody(r *http.Request) (string, error) {
 		return "", err
 	}
 	return string(contents), nil
+}
+
+func parseDebugDump(t *testing.T, output string) (string, string, string) {
+	t.Helper()
+
+	start := strings.Index(output, "stage: ")
+	if start < 0 {
+		t.Fatalf("Debug output = %q, want stage header", output)
+	}
+	dump := output[start:]
+	const commandMarker = "\n\ncurl-command:\n"
+	commandStart := strings.Index(dump, commandMarker)
+	if commandStart < 0 {
+		t.Fatalf("Debug output = %q, want curl-command block", output)
+	}
+	header := dump[:commandStart]
+	remainder := dump[commandStart+len(commandMarker):]
+	commandEnd := strings.Index(remainder, "\n\n")
+	if commandEnd < 0 {
+		t.Fatalf("Debug output = %q, want raw command separator", output)
+	}
+	command := remainder[:commandEnd]
+	payload := strings.TrimSuffix(remainder[commandEnd+2:], "\n")
+	if command == "" || payload == "" {
+		t.Fatalf("Debug output = %q, want command and JSON payload", output)
+	}
+	return header, command, payload
 }
 
 func repositoryRoot(t *testing.T) string {

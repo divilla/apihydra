@@ -500,23 +500,21 @@ func TestProcessDirRunsEightPhasesMutatesRuntimeAndReportsDebugSuccess(t *testin
 	logPath := filepath.Join(commandDir, "phases")
 	t.Setenv("APIH_EXECUTOR_LOG", logPath)
 	installExecutorCommand(t, commandDir, "curl", `
-output=
 url=
+body=
 previous=
 for argument do
   case "$previous" in
-    output) output=$argument; previous=; continue ;;
     url) url=$argument; previous=; continue ;;
+    body) body=$argument; previous=; continue ;;
   esac
   case "$argument" in
-    --output) previous=output ;;
     --url) previous=url ;;
+    --data-binary) previous=body ;;
   esac
 done
-body=$(/bin/cat)
 printf 'curl|%s|%s\n' "$url" "$body" >> "$APIH_EXECUTOR_LOG"
-printf '%s' "$body" > "$output"
-printf '\n\036apih-status:201'
+printf '%s\napih-status:201' "$body"
 `)
 	installExecutorCommand(t, commandDir, "jq", `
 input=$(/bin/cat)
@@ -594,12 +592,23 @@ esac
 		"types", "body-expected", "body-actual", "capture",
 		`curl|https://example.test/api/second|{"token":"one"}`,
 		"types", "body-expected", "body-actual",
-		"body-expected",
 	}
 	if got := strings.Fields(phaseLog); !reflect.DeepEqual(got, wantOrder) {
 		t.Fatalf("phase order = %v, want %v", got, wantOrder)
 	}
-	if !strings.Contains(output.String(), "Debug steps.yaml step 1:") || strings.Contains(output.String(), "[\x1b[38;5;10m✓\x1b[0m]") {
+	for _, want := range []string{
+		"stage: 0\ndir-path: /suite\nfile-path: steps.yaml\n\ncurl-command:\n",
+		"curl --disable --globoff --silent --show-error --request POST",
+		`--data-binary '{"token":"one"}'`,
+		`"index":1`,
+		`"actual_status":201`,
+		`"actual_body":"{\"token\":\"one\"}"`,
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("processDir() output = %q, want %q", output.String(), want)
+		}
+	}
+	if strings.Contains(output.String(), "[\x1b[38;5;10m✓\x1b[0m]") {
 		t.Fatalf("processDir() output = %q, want terminal debug without success", output.String())
 	}
 }
@@ -621,31 +630,82 @@ func TestExecuteTreatsDebugStopAsCleanCompletionAndSkipsLaterStages(t *testing.T
 	}
 }
 
+func TestProcessDirDebugReportsLatestStateBeforeTerminalError(t *testing.T) {
+	t.Run("attempted Curl command", func(t *testing.T) {
+		commandDir := newExecutorCommandDir(t)
+		installExecutorCommand(t, commandDir, "curl", `printf 'connection failed' >&2; exit 6`)
+		step := executorStep("terminal/steps.yaml", 4)
+		step.Debug = true
+		step.Request.Method = "POST"
+		step.Request.Defaults.BaseURL = "https://example.test"
+		step.Request.Defaults.Headers = map[string]string{"Authorization": "Bearer terminal-secret"}
+		step.Request.Path = "/fail"
+		step.Request.Body = `{"secret":true}`
+		var output bytes.Buffer
+
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &output).processDir(context.Background(), step.Definition.File.Directory)
+		if exitCode != 6 || !errors.Is(err, runner.ErrCurl) {
+			t.Fatalf("processDir() = (%d, %v), want retained Curl terminal error", exitCode, err)
+		}
+		for _, want := range []string{
+			"stage: 0\ndir-path: /suite\nfile-path: terminal/steps.yaml",
+			"curl --disable --globoff --silent --show-error --request POST",
+			"Bearer terminal-secret",
+			`--data-binary '{"secret":true}'`,
+			`"index":4`,
+			`"actual_status":0`,
+		} {
+			if !strings.Contains(output.String(), want) {
+				t.Fatalf("terminal Debug output = %q, want %q", output.String(), want)
+			}
+		}
+	})
+
+	t.Run("post-Curl runtime response", func(t *testing.T) {
+		commandDir := newExecutorCommandDir(t)
+		installSuccessfulExecutorCurl(t, commandDir, `{"latest":true}`, 202)
+		installExecutorCommand(t, commandDir, "jq", `printf 'invalid filter' >&2; exit 4`)
+		step := executorStep("terminal/steps.yaml", 1)
+		step.Debug = true
+		step.Request.Method = "GET"
+		step.Request.Defaults.BaseURL = "https://example.test"
+		step.Request.Path = "/latest"
+		var output bytes.Buffer
+
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &output).processDir(context.Background(), step.Definition.File.Directory)
+		if exitCode != 4 || !errors.Is(err, runner.ErrJQSelector) {
+			t.Fatalf("processDir() = (%d, %v), want retained validator terminal error", exitCode, err)
+		}
+		for _, want := range []string{`"actual_status":202`, `"actual_body":"{\"latest\":true}"`} {
+			if !strings.Contains(output.String(), want) {
+				t.Fatalf("terminal Debug output = %q, want latest runtime value %q", output.String(), want)
+			}
+		}
+	})
+}
+
 func TestProcessDirReportsEveryValidationAndContinuesThroughCaptureAndLaterSteps(t *testing.T) {
 	commandDir := newExecutorCommandDir(t)
 	logPath := filepath.Join(commandDir, "phases")
 	t.Setenv("APIH_EXECUTOR_LOG", logPath)
 	installExecutorCommand(t, commandDir, "curl", `
-output=
 url=
 previous=
 for argument do
   case "$previous" in
-    output) output=$argument; previous=; continue ;;
     url) url=$argument; previous=; continue ;;
   esac
   case "$argument" in
-    --output) previous=output ;;
     --url) previous=url ;;
   esac
 done
 /bin/cat >/dev/null
 case "$url" in
-  */bad) printf 'actual' > "$output"; status=500 ;;
-  *) printf 'same' > "$output"; status=200 ;;
+  */bad) response=actual; status=500 ;;
+  *) response=same; status=200 ;;
 esac
 printf 'curl|%s\n' "$url" >> "$APIH_EXECUTOR_LOG"
-printf '\n\036apih-status:%s' "$status"
+printf '%s\napih-status:%s' "$response" "$status"
 `)
 	installExecutorCommand(t, commandDir, "jq", `
 input=$(/bin/cat)
@@ -956,14 +1016,8 @@ func installExecutorCommand(t *testing.T, dir, name, body string) {
 func installSuccessfulExecutorCurl(t *testing.T, dir, body string, status int) {
 	t.Helper()
 	installExecutorCommand(t, dir, "curl", `
-output=
-for argument do
-  if [ "${previous-}" = output ]; then output=$argument; previous=; continue; fi
-  if [ "$argument" = --output ]; then previous=output; fi
-done
 /bin/cat >/dev/null
-printf '%s' '`+body+`' > "$output"
-printf '\n\036apih-status:`+strconv.Itoa(status)+`'
+printf '%s\napih-status:`+strconv.Itoa(status)+`' '`+body+`'
 `)
 }
 
