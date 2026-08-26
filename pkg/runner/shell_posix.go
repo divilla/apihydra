@@ -19,11 +19,11 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
 }
 
-func curlShellCommand(command, body string) (string, error) {
+func curlShellCommand(command, body string) (string, []string, error) {
 	if body == "" {
-		return command, nil
+		return command, nil, nil
 	}
-	return "printf '%s' " + shellQuote(body) + " | " + command, nil
+	return "printf '%s' " + shellQuote(body) + " | " + command, nil, nil
 }
 
 func executeCurlShellCommand(ctx context.Context, command string) (string, string, int, error) {

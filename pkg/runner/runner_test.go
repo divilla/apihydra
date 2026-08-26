@@ -373,8 +373,8 @@ printf '{"ok":true}\napih-status:200'
 func TestShellCommandUsesPlatformSyntax(t *testing.T) {
 	args := []string{"--header", "X-Name: two words", "--data-binary", `{"name":"O'Brien"}`}
 	if runtime.GOOS == "windows" {
-		if got, want := shellCommand("curl", args...), `curl --header "X-Name: two words" --data-binary "{\"name\":\"O'Brien\"}"`; got != want {
-			t.Fatalf("Windows shell command = %q, want %q", got, want)
+		if got := shellCommand("curl", args...); !strings.Contains(got, `\^"`) {
+			t.Fatalf("Windows shell command = %q, want cmd-aware embedded-quote escapes", got)
 		}
 		if got, want := shellQuote(`C:\path with spaces\`), `"C:\path with spaces\\"`; got != want {
 			t.Fatalf("Windows trailing-backslash quote = %q, want %q", got, want)

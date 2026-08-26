@@ -94,10 +94,11 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 	}
 	args = append(args, "--write-out", curlWriteOut)
 
-	command, err := curlShellCommand(shellCommand("curl", args...), body)
+	command, temporaryPaths, err := curlShellCommand(shellCommand("curl", args...), body)
 	if err != nil {
 		return "", 0, newCommandFailure(ErrCurl, err, "")
 	}
+	defer removeFiles(temporaryPaths)
 	retainCurlCommand(ctx, command)
 	output, stderr, _, err := executeCurlShellCommand(ctx, command)
 	if err != nil {
@@ -122,6 +123,12 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 		return string(response), status, nil
 	}
 	return output[:marker], status, nil
+}
+
+func removeFiles(paths []string) {
+	for _, path := range paths {
+		_ = os.Remove(path)
+	}
 }
 
 // JQProject selects members from input and returns them as one recursively
