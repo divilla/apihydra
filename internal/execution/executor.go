@@ -200,8 +200,10 @@ func (r *processResult) setResult(code int, err error) {
 	defer r.mu.Unlock()
 
 	if errors.Is(err, errDebugStop) {
-		r.code = 0
-		r.err = err
+		if r.err == nil {
+			r.code = 0
+			r.err = err
+		}
 		return
 	}
 	if errors.Is(r.err, errDebugStop) {
@@ -368,10 +370,7 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 				return e.terminalResult(stepCtx, step, exitCode, err)
 			}
 			if step.Debug {
-				if err := e.report.Debug(stepCtx, step); err != nil {
-					return fatalResult(0, err)
-				}
-				return 0, errDebugStop
+				return e.debugResult(stepCtx, step)
 			}
 		}
 	}
@@ -383,6 +382,13 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 		return errs.ExitValidation, nil
 	}
 	return 0, nil
+}
+
+func (e *Executor) debugResult(ctx context.Context, step *domain.Step) (int, error) {
+	if err := e.report.Debug(context.WithoutCancel(ctx), step); err != nil {
+		return fatalResult(0, err)
+	}
+	return 0, errDebugStop
 }
 
 func (e *Executor) terminalResult(ctx context.Context, step *domain.Step, exitCode int, err error) (int, error) {

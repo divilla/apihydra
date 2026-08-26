@@ -409,6 +409,19 @@ func TestProcessResultPreservesFatalValidationExitCode(t *testing.T) {
 	}
 }
 
+func TestProcessResultPreservesFatalResultOverDebugStop(t *testing.T) {
+	wantCode := 19
+	wantErr := errors.New("terminal sibling error")
+
+	var result processResult
+	result.setResult(wantCode, wantErr)
+	result.setResult(0, errDebugStop)
+
+	if result.code != wantCode || !errors.Is(result.err, wantErr) {
+		t.Fatalf("result = (%d, %v), want terminal sibling result (%d, %v)", result.code, result.err, wantCode, wantErr)
+	}
+}
+
 func TestExecutionErrorsUseProductExitCodes(t *testing.T) {
 	tests := map[string]struct {
 		err      error
@@ -501,16 +514,14 @@ func TestProcessDirRunsEightPhasesMutatesRuntimeAndReportsDebugSuccess(t *testin
 	t.Setenv("APIH_EXECUTOR_LOG", logPath)
 	installExecutorCommand(t, commandDir, "curl", `
 url=
-body=
+body=$(/bin/cat)
 previous=
 for argument do
   case "$previous" in
     url) url=$argument; previous=; continue ;;
-    body) body=$argument; previous=; continue ;;
   esac
   case "$argument" in
     --url) previous=url ;;
-    --data-binary) previous=body ;;
   esac
 done
 printf 'curl|%s|%s\n' "$url" "$body" >> "$APIH_EXECUTOR_LOG"
@@ -627,6 +638,28 @@ func TestExecuteTreatsDebugStopAsCleanCompletionAndSkipsLaterStages(t *testing.T
 	}
 	if !reflect.DeepEqual(visited, []string{"/debug"}) {
 		t.Fatalf("visited directories = %v, want debug stage only", visited)
+	}
+}
+
+func TestDebugResultWritesDumpAfterStageContextCancellation(t *testing.T) {
+	step := executorStep("canceled/steps.yaml", 2)
+	step.Debug = true
+	step.Response.ActualStatus = 204
+	rawCommand := "curl --url https://example.test/canceled"
+	ctx := context.WithValue(context.Background(), runner.ErrCurl, &rawCommand)
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+	var output bytes.Buffer
+	executor := NewExecutor(nil, nil, reporting.NewReporter(&output))
+
+	exitCode, err := executor.debugResult(ctx, &step)
+	if exitCode != 0 || !errors.Is(err, errDebugStop) {
+		t.Fatalf("debugResult(canceled) = (%d, %v), want debug stop", exitCode, err)
+	}
+	for _, want := range []string{rawCommand, `"index":2`, `"actual_status":204`} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("debugResult(canceled) output = %q, want %q", output.String(), want)
+		}
 	}
 }
 

@@ -5,8 +5,9 @@ package runner
 import "strings"
 
 func shellQuote(value string) string {
+	value = escapePercentExpansion(value)
 	if value != "" && strings.IndexFunc(value, func(char rune) bool {
-		return !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%+=:,./-\\", char)
+		return !strings.ContainsRune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_@%^+=:,./-\\", char)
 	}) < 0 {
 		return value
 	}
@@ -32,4 +33,27 @@ func shellQuote(value string) string {
 	quoted.WriteString(strings.Repeat("\\", backslashes*2))
 	quoted.WriteByte('"')
 	return quoted.String()
+}
+
+func escapePercentExpansion(value string) string {
+	var escaped strings.Builder
+	start := 0
+	for {
+		opening := strings.IndexByte(value[start:], '%')
+		if opening < 0 {
+			escaped.WriteString(value[start:])
+			return escaped.String()
+		}
+		opening += start
+		closing := strings.IndexByte(value[opening+1:], '%')
+		if closing < 0 {
+			escaped.WriteString(value[start:])
+			return escaped.String()
+		}
+		closing += opening + 1
+		escaped.WriteString(value[start:closing])
+		escaped.WriteByte('^')
+		escaped.WriteByte('%')
+		start = closing + 1
+	}
 }

@@ -74,7 +74,7 @@ printf '\napih-status:201'
 	if status != 201 {
 		t.Fatalf("Curl() status = %d, want 201", status)
 	}
-	assertFileContents(t, stdinPath, "")
+	assertFileContents(t, stdinPath, `{"name":"hydra"}`)
 	assertCurlLines(t, argsPath, []string{
 		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
 		"--url", "https://example.test/resource?fixed=yes&page=2#section",
@@ -83,7 +83,7 @@ printf '\napih-status:201'
 		"--header", "Cookie: session=secret-cookie",
 		"--header", "Z-Last: z",
 		"--max-time", "12", "--retry", "3",
-		"--data-binary", `{"name":"hydra"}`, "--output", "<response-file>", "--write-out", curlWriteOut,
+		"--data-binary", "@-", "--output", "<response-file>", "--write-out", curlWriteOut,
 	})
 	for _, value := range []string{"Bearer secret-token", "session=secret-cookie", `{"name":"hydra"}`} {
 		if !strings.Contains(rawCommand, value) {
@@ -91,8 +91,14 @@ printf '\napih-status:201'
 		}
 	}
 	executedArgs := readLines(t, argsPath)
-	if got, want := rawCommand, shellCommand("curl", executedArgs...); got != want {
-		t.Fatalf("retained Curl command = %q, want exact executed command %q", got, want)
+	retainedArgs := append([]string(nil), executedArgs...)
+	for index := range retainedArgs {
+		if retainedArgs[index] == "@-" {
+			retainedArgs[index] = `{"name":"hydra"}`
+		}
+	}
+	if got, want := rawCommand, shellCommand("curl", retainedArgs...); got != want {
+		t.Fatalf("retained Curl command = %q, want self-contained command %q", got, want)
 	}
 	for index, argument := range executedArgs {
 		if argument == "--output" && index+1 < len(executedArgs) {
@@ -142,7 +148,7 @@ func TestCurlLetsCurlSelectMethodWhenMethodIsEmpty(t *testing.T) {
 			body: `{"name":"hydra"}`,
 			wantArgs: []string{
 				"--disable", "--globoff", "--silent", "--show-error",
-				"--url", "https://example.test/resource", "--data-binary", `{"name":"hydra"}`, "--write-out", curlWriteOut,
+				"--url", "https://example.test/resource", "--data-binary", "@-", "--write-out", curlWriteOut,
 			},
 		},
 	}
@@ -162,7 +168,7 @@ printf '{"ok":true}\napih-status:200'
 			if body != `{"ok":true}` || status != 200 {
 				t.Fatalf("Curl() = (%q, %d), want response body and status 200", body, status)
 			}
-			assertFileContents(t, stdinPath, "")
+			assertFileContents(t, stdinPath, test.body)
 			assertCurlLines(t, argsPath, test.wantArgs)
 		})
 	}
@@ -283,10 +289,10 @@ printf '{"ok":true}\napih-status:200'
 	if body != `{"ok":true}` || status != 200 {
 		t.Fatalf("Curl() = (%q, %d), want literal-data response", body, status)
 	}
-	assertFileContents(t, stdinPath, "")
+	assertFileContents(t, stdinPath, wantBody)
 	assertCurlLines(t, argsPath, []string{
 		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
-		"--url", "https://example.test", "--data-raw", wantBody, "--write-out", curlWriteOut,
+		"--url", "https://example.test", "--data-binary", "@-", "--write-out", curlWriteOut,
 	})
 	if got, want := rawCommand, shellCommand(
 		"curl", "--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
@@ -325,10 +331,37 @@ printf '{"ok":true}\napih-status:200'
 	assertCurlLines(t, argsPath, []string{
 		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
 		"--url", "https://example.test/O'Brien", "--header", "X-Name: D'Angelo",
-		"--data-binary", `{"name":"O'Brien"}`, "--write-out", curlWriteOut,
+		"--data-binary", "@-", "--write-out", curlWriteOut,
 	})
 	if output, err := platformShellCommand(context.Background(), rawCommand).CombinedOutput(); err != nil {
 		t.Fatalf("copy-pasted Curl command error = %v; output = %q; command = %q", err, output, rawCommand)
+	}
+}
+
+func TestCurlStreamsLargeRequestBodyOutsideArgv(t *testing.T) {
+	argsPath, stdinPath := installCommand(t, "curl", `
+printf '%s\n' "$@" > "$APIH_TEST_ARGS"
+/bin/cat > "$APIH_TEST_STDIN"
+printf '{"ok":true}\napih-status:200'
+`)
+	wantBody := strings.Repeat("large request payload ", 16*1024)
+	rawCommand := ""
+	ctx := context.WithValue(context.Background(), ErrCurl, &rawCommand)
+
+	body, status, err := Curl(ctx, "POST", "https://example.test/large", nil, 0, 0, "", wantBody)
+	if err != nil {
+		t.Fatalf("Curl() large body error = %v", err)
+	}
+	if body != `{"ok":true}` || status != 200 {
+		t.Fatalf("Curl() = (%q, %d), want successful response", body, status)
+	}
+	assertFileContents(t, stdinPath, wantBody)
+	assertCurlLines(t, argsPath, []string{
+		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
+		"--url", "https://example.test/large", "--data-binary", "@-", "--write-out", curlWriteOut,
+	})
+	if !strings.Contains(rawCommand, wantBody) {
+		t.Fatal("retained Curl command does not contain the complete large body")
 	}
 }
 
