@@ -71,10 +71,10 @@ type Defaults struct {
     BaseURL    string            `yaml:"baseUrl"`
     BasePath   string            `yaml:"basePath"`
     Headers    map[string]string `yaml:"headers"`
-    Timeout    int               `yaml:"timeout"`
-    Retries    int               `yaml:"retries"`
     CookieMode string            `yaml:"cookie_mode"` // `included` or `excluded` - default `included`
     CookieKeys []string          `yaml:"cookie_keys"` // included keys or excluded keys
+    Timeout    int               `yaml:"timeout"`
+    Retries    int               `yaml:"retries"`
 }
 
 type Step struct {
@@ -85,9 +85,9 @@ type Step struct {
         BasePath   string            `yaml:"basePath" json:"basePath"`
         Path       string            `yaml:"path" json:"path"`
         Headers    map[string]string `yaml:"headers" json:"headers"`
-        CookieMode string            `yaml:"cookie_mode"`            // `included` or `excluded` - default `included`
-        CookieKeys []string          `yaml:"cookie_keys"`            // included keys or excluded keys - all cookies if empty on excluded
-        Cookie     string            `yaml:"cookies" json:"cookies"` // full cookie lines
+        CookieMode string            `yaml:"cookie_mode" json:"cookie_mode"` // `included` or `excluded` - default `included`
+        CookieKeys []string          `yaml:"cookie_keys" json:"cookie_keys"` // included keys or excluded keys - all cookies if empty in excluded
+        Cookie     string            `yaml:"cookies" json:"cookies"`         // full cookie lines
         Timeout    int               `yaml:"timeout" json:"timeout"`
         Retries    int               `yaml:"retries" json:"retries"`
         Query      string            `yaml:"query" json:"query"`

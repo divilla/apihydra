@@ -56,7 +56,8 @@ type StepsDefinition struct {
     Kind     DocumentKind `yaml:"kind"`
     Metadata Metadata     `yaml:"metadata"`
     Spec     struct {
-        Steps []Step `yaml:"steps"`
+        Defaults Defaults `yaml:"defaults"`
+        Steps    []Step   `yaml:"steps"`
     } `yaml:"spec"`
     File *File `yaml:"-"`
 }
@@ -67,11 +68,13 @@ type Metadata struct {
 }
 
 type Defaults struct {
-    BaseURL  string            `yaml:"baseUrl"`
-    BasePath string            `yaml:"basePath"`
-    Headers  map[string]string `yaml:"headers"`
-    Timeout  int               `yaml:"timeout"`
-    Retries  int               `yaml:"retries"`
+    BaseURL    string            `yaml:"baseUrl"`
+    BasePath   string            `yaml:"basePath"`
+    Headers    map[string]string `yaml:"headers"`
+    CookieMode string            `yaml:"cookie_mode"` // `included` or `excluded` - default `included`
+    CookieKeys []string          `yaml:"cookie_keys"` // included keys or excluded keys
+    Timeout    int               `yaml:"timeout"`
+    Retries    int               `yaml:"retries"`
 }
 
 type Step struct {
