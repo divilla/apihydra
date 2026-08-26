@@ -80,15 +80,18 @@ type Defaults struct {
 type Step struct {
     Vars    map[string]YAMLString `yaml:"vars" json:"vars"`
     Request struct {
-        Method   string            `yaml:"method" json:"method"`
-        BaseURL  string            `yaml:"baseUrl" json:"baseUrl"`
-        BasePath string            `yaml:"basePath" json:"basePath"`
-        Path     string            `yaml:"path" json:"path"`
-        Headers  map[string]string `yaml:"headers" json:"headers"`
-        Timeout  int               `yaml:"timeout" json:"timeout"`
-        Retries  int               `yaml:"retries" json:"retries"`
-        Query    string            `yaml:"query" json:"query"`
-        Body     YAMLString        `yaml:"body" json:"body"`
+        Method     string            `yaml:"method" json:"method"`
+        BaseURL    string            `yaml:"baseUrl" json:"baseUrl"`
+        BasePath   string            `yaml:"basePath" json:"basePath"`
+        Path       string            `yaml:"path" json:"path"`
+        Headers    map[string]string `yaml:"headers" json:"headers"`
+        CookieMode string            `yaml:"cookie_mode" json:"cookie_mode"` // `included` or `excluded` - default `included`
+        CookieKeys []string          `yaml:"cookie_keys" json:"cookie_keys"` // included keys or excluded keys - all cookies if empty in excluded
+        Cookie     string            `yaml:"cookies" json:"cookies"`         // full cookie lines
+        Timeout    int               `yaml:"timeout" json:"timeout"`
+        Retries    int               `yaml:"retries" json:"retries"`
+        Query      string            `yaml:"query" json:"query"`
+        Body       YAMLString        `yaml:"body" json:"body"`
     } `yaml:"request" json:"request"`
     Response struct {
         ExpectedStatus int                   `yaml:"expected_status" json:"expected_status"`
@@ -97,6 +100,7 @@ type Step struct {
         ActualBody     YAMLString            `yaml:"actual_body" json:"actual_body"`
         ExpectedTypes  map[string][]string   `yaml:"expected_types" json:"expected_types"`
         Capture        map[string]YAMLString `yaml:"capture" json:"capture"`
+        Cookie         string                `yaml:"cookie"`
     } `yaml:"response" json:"response"`
     Debug      bool             `yaml:"debug" json:"debug"`
     Definition *StepsDefinition `yaml:"-" json:"-"`
