@@ -74,12 +74,10 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 	if retries > 0 {
 		args = append(args, "--retry", strconv.Itoa(retries))
 	}
+	bodyArgument := -1
 	if body != "" {
-		dataOption := "--data-binary"
-		if strings.HasPrefix(body, "@") {
-			dataOption = "--data-raw"
-		}
-		args = append(args, dataOption, body)
+		bodyArgument = len(args)
+		args = append(args, "--data-binary", "@-")
 	}
 
 	responsePath := ""
@@ -98,8 +96,16 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 	}
 	args = append(args, "--write-out", curlWriteOut)
 
-	retainCurlCommand(ctx, shellCommand("curl", args...))
-	output, stderr, _, err := execute(ctx, "curl", "", args...)
+	debugArgs := args
+	if bodyArgument >= 0 {
+		debugArgs = slices.Clone(args)
+		if strings.HasPrefix(body, "@") {
+			debugArgs[bodyArgument] = "--data-raw"
+		}
+		debugArgs[bodyArgument+1] = body
+	}
+	retainCurlCommand(ctx, shellCommand("curl", debugArgs...))
+	output, stderr, _, err := execute(ctx, "curl", body, args...)
 	if err != nil {
 		return "", 0, newCommandFailure(ErrCurl, err, stderr)
 	}

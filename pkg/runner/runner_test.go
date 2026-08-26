@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -74,7 +75,7 @@ printf '\napih-status:201'
 	if status != 201 {
 		t.Fatalf("Curl() status = %d, want 201", status)
 	}
-	assertFileContents(t, stdinPath, "")
+	assertFileContents(t, stdinPath, `{"name":"hydra"}`)
 	assertCurlLines(t, argsPath, []string{
 		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
 		"--url", "https://example.test/resource?fixed=yes&page=2#section",
@@ -83,7 +84,7 @@ printf '\napih-status:201'
 		"--header", "Cookie: session=secret-cookie",
 		"--header", "Z-Last: z",
 		"--max-time", "12", "--retry", "3",
-		"--data-binary", `{"name":"hydra"}`, "--output", "<response-file>", "--write-out", curlWriteOut,
+		"--data-binary", "@-", "--output", "<response-file>", "--write-out", curlWriteOut,
 	})
 	for _, value := range []string{"Bearer secret-token", "session=secret-cookie", `{"name":"hydra"}`} {
 		if !strings.Contains(rawCommand, value) {
@@ -91,8 +92,15 @@ printf '\napih-status:201'
 		}
 	}
 	executedArgs := readLines(t, argsPath)
-	if got, want := rawCommand, shellCommand("curl", executedArgs...); got != want {
-		t.Fatalf("retained Curl command = %q, want exact executed command %q", got, want)
+	debugArgs := slices.Clone(executedArgs)
+	for index, argument := range debugArgs {
+		if argument == "--data-binary" && index+1 < len(debugArgs) {
+			debugArgs[index+1] = `{"name":"hydra"}`
+			break
+		}
+	}
+	if got, want := rawCommand, shellCommand("curl", debugArgs...); got != want {
+		t.Fatalf("retained Curl command = %q, want self-contained command %q", got, want)
 	}
 	for index, argument := range executedArgs {
 		if argument == "--output" && index+1 < len(executedArgs) {
@@ -142,7 +150,7 @@ func TestCurlLetsCurlSelectMethodWhenMethodIsEmpty(t *testing.T) {
 			body: `{"name":"hydra"}`,
 			wantArgs: []string{
 				"--disable", "--globoff", "--silent", "--show-error",
-				"--url", "https://example.test/resource", "--data-binary", `{"name":"hydra"}`, "--write-out", curlWriteOut,
+				"--url", "https://example.test/resource", "--data-binary", "@-", "--write-out", curlWriteOut,
 			},
 		},
 	}
@@ -162,7 +170,7 @@ printf '{"ok":true}\napih-status:200'
 			if body != `{"ok":true}` || status != 200 {
 				t.Fatalf("Curl() = (%q, %d), want response body and status 200", body, status)
 			}
-			assertFileContents(t, stdinPath, "")
+			assertFileContents(t, stdinPath, test.body)
 			assertCurlLines(t, argsPath, test.wantArgs)
 		})
 	}
@@ -271,20 +279,50 @@ func TestCurlTreatsLeadingAtBodyAsLiteralData(t *testing.T) {
 printf '%s\n' "$@" > "$APIH_TEST_ARGS"
 /bin/cat > "$APIH_TEST_STDIN"
 printf '{"ok":true}\napih-status:200'
-`)
+	`)
 	wantBody := "@/etc/passwd"
+	rawCommand := ""
+	ctx := context.WithValue(context.Background(), ErrCurl, &rawCommand)
 
-	body, status, err := Curl(context.Background(), "POST", "https://example.test", nil, 0, 0, "", wantBody)
+	body, status, err := Curl(ctx, "POST", "https://example.test", nil, 0, 0, "", wantBody)
 	if err != nil {
 		t.Fatalf("Curl() error = %v", err)
 	}
 	if body != `{"ok":true}` || status != 200 {
 		t.Fatalf("Curl() = (%q, %d), want literal-data response", body, status)
 	}
-	assertFileContents(t, stdinPath, "")
+	assertFileContents(t, stdinPath, wantBody)
 	assertCurlLines(t, argsPath, []string{
 		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
+		"--url", "https://example.test", "--data-binary", "@-", "--write-out", curlWriteOut,
+	})
+	if got, want := rawCommand, shellCommand(
+		"curl", "--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
 		"--url", "https://example.test", "--data-raw", wantBody, "--write-out", curlWriteOut,
+	); got != want {
+		t.Fatalf("retained Curl command = %q, want literal-data command %q", got, want)
+	}
+}
+
+func TestCurlStreamsLargeAndNULContainingBody(t *testing.T) {
+	argsPath, stdinPath := installCommand(t, "curl", `
+printf '%s\n' "$@" > "$APIH_TEST_ARGS"
+/bin/cat > "$APIH_TEST_STDIN"
+printf '{"ok":true}\napih-status:200'
+`)
+	wantBody := strings.Repeat("large-body", 32*1024) + "\x00after-nul"
+
+	body, status, err := Curl(context.Background(), "POST", "https://example.test", nil, 0, 0, "", wantBody)
+	if err != nil {
+		t.Fatalf("Curl() error = %v", err)
+	}
+	if body != `{"ok":true}` || status != 200 {
+		t.Fatalf("Curl() = (%q, %d), want successful response", body, status)
+	}
+	assertFileContents(t, stdinPath, wantBody)
+	assertCurlLines(t, argsPath, []string{
+		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
+		"--url", "https://example.test", "--data-binary", "@-", "--write-out", curlWriteOut,
 	})
 }
 
@@ -312,14 +350,14 @@ printf '{"ok":true}\napih-status:200'
 	if got, want := shellQuote("O'Brien"), `'O'"'"'Brien'`; got != want {
 		t.Fatalf("shellQuote() = %q, want POSIX single-quote escape %q", got, want)
 	}
-	if output, err := exec.Command("/bin/sh", "-c", rawCommand).CombinedOutput(); err != nil {
-		t.Fatalf("copy-pasted Curl command error = %v; output = %q; command = %q", err, output, rawCommand)
-	}
 	assertCurlLines(t, argsPath, []string{
 		"--disable", "--globoff", "--silent", "--show-error", "--request", "POST",
 		"--url", "https://example.test/O'Brien", "--header", "X-Name: D'Angelo",
-		"--data-binary", `{"name":"O'Brien"}`, "--write-out", curlWriteOut,
+		"--data-binary", "@-", "--write-out", curlWriteOut,
 	})
+	if output, err := exec.Command("/bin/sh", "-c", rawCommand).CombinedOutput(); err != nil {
+		t.Fatalf("copy-pasted Curl command error = %v; output = %q; command = %q", err, output, rawCommand)
+	}
 }
 
 func TestCurlOmitsOptionalArguments(t *testing.T) {
