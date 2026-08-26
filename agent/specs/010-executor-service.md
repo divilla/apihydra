@@ -7,14 +7,16 @@
 - Shared domain and exit codes: [`prd.md`](../prd.md)
 - Shared domain types: [`000-domain-types.md`](000-domain-types.md)
 - Binder phases: [`007-binder-service.md`](007-binder-service.md)
+- Cookie propagation: [`013-cookies-service.md`](013-cookies-service.md)
 - Reporter methods: [`009-reporter-service.md`](009-reporter-service.md)
 - Status: skeleton-aligned implementation guide
 
 ## Reference contract
 
 The binding skeleton implementation, comments, and tests define Executor's
-API, preparation scope, tree validation, stage scheduling, execution order, and
-result precedence. This guide does not reproduce them. Keeping validation,
+API, collaborators, preparation scope, tree validation, stage scheduling,
+execution order, cookie propagation, and result precedence. This guide does
+not reproduce them. Keeping validation,
 planning, and preparation separate rejects malformed trees before scheduling
 and preserves resolved definitions while runtime steps are mutated.
 
@@ -36,19 +38,21 @@ nonfatal validation failures.
 
 - Production output: `internal/execution/executor.go` retains the implemented
   tree validation and scheduler and replaces the `Prepare` and `processDir`
-  TODO bodies with the binding deep-copy and eight-phase execution behavior.
+  TODO bodies with the binding deep-copy, cookie, and eight-phase execution
+  behavior.
 - Test output: `internal/execution/executor_test.go` retains the reference tests
   and adds coverage for deep-copy isolation, every phase and mutation, all
   validation-reporting paths, collaborator failures, success/debug reporting
-  chosen within the contract, and context cancellation.
+  chosen within the contract, cookie selection and collection, and context
+  cancellation.
 - Each acceptance criterion is traced to at least one meaningful unit test, and
   Executor unit-test statement coverage remains greater than 95% under the
   race detector.
 
 ## Acceptance criteria
 
-1. Public names, signatures, constructor state, and static error text match the
-   reference.
+1. Public names, signatures, constructor state—including the shared cookie
+   store—and static error text match the reference.
 2. `Prepare` deep-copies `ResolvedSteps` into `RuntimeSteps`, including all
    mutable slices and maps, preserves the original `Step.Definition` pointers,
    does not mutate `ResolvedSteps`, and does not load or interpolate variables.
@@ -66,12 +70,16 @@ nonfatal validation failures.
    `Step.Response.ActualBody`, interpolates expected values before Curl runs,
    and sends a non-empty `ValidateTypes` failed string to
    `Reporter.ValidationTypes`.
-7. Completed validation mismatch traversal continues through remaining work
+7. Immediately before Curl, execution selects `Step.Request.CookieJar` from
+   the shared cookie store according to the request mode and keys. After every
+   completed response, it assigns `Step.Response.CookieJar` and calls
+   `CookieKeyValueStore.SetAll`, independent of mode.
+8. Completed validation mismatch traversal continues through remaining work
    and returns code `101` with a nil error.
-8. After Reporter successfully prints a debug step, Executor cancels concurrent
+9. After Reporter successfully prints a debug step, Executor cancels concurrent
    work, skips all later steps and stages, suppresses directory success output,
    and converts its private stop signal into clean exit code `0` with no error.
-9. Presentation, sorting, and per-validator payload rules remain with their
+10. Presentation, sorting, and per-validator payload rules remain with their
    owning packages.
-10. No TODO or zero-value placeholder remains in `Prepare` or `processDir`;
+11. No TODO or zero-value placeholder remains in `Prepare` or `processDir`;
    package tests, race tests, and `git diff --check` pass.

@@ -14,7 +14,7 @@ contracts. This document describes package relationships only.
 cmd/cli/                    process composition and exit
 internal/domain/            shared Suite/Directory/File/definition/step models
 internal/definition/        Loader, Decoder, Resolver
-internal/execution/         KeyValueStore, Binder, Validator, Executor
+internal/execution/         KeyValueStore, CookieKeyValueStore, Binder, Validator, Executor
 internal/reporting/         human-readable terminal output
 pkg/errs/                   contextual errors and exit-code metadata
 pkg/runner/                 external-command operations
@@ -71,13 +71,14 @@ The current CLI composition order is owned by the PRD.
 `internal/execution` contains:
 
 - [`KeyValueStore`](specs/006-key-value-store-service.md)
+- [`CookieKeyValueStore`](specs/013-cookies-service.md)
 - [`Binder`](specs/007-binder-service.md)
 - [`Validator`](specs/008-validator-service.md)
 - [`Executor`](specs/010-executor-service.md)
 
-The Executor skeleton contract defines preparation scope, execution phase
-order, tree validation, and stage scheduling. The execution guides do not
-duplicate those orchestration rules.
+The Executor skeleton contract defines preparation scope, cookie propagation,
+execution phase order, tree validation, and stage scheduling. The execution
+guides do not duplicate those orchestration rules.
 
 ## Reporter and commands
 
@@ -86,9 +87,9 @@ execution-output API and exact working-directory behavior. Reporter never owns
 fatal standard-error diagnostics; `cmd/cli` logs those before process exit.
 
 The [`pkg/runner`](specs/001-runner-pkg.md) skeleton contract defines Curl,
-JQProject, JQExtract, JQFilter, JQPretty, and GitDiff. Command-line construction
-and result-normalization details absent from that contract are not
-architectural requirements.
+including its cookie-jar file boundary, JQProject, JQExtract, JQFilter,
+JQPretty, and GitDiff. Command-line construction and result-normalization
+details absent from that contract are not architectural requirements.
 
 The [`cmd/cli` guide](specs/011-main-app.md) completes the production
 composition root. The separate [`integration-test guide`](specs/012-integration-tests.md)

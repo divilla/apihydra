@@ -10,6 +10,14 @@ import (
 	"testing"
 )
 
+func TestNewExecutorRetainsCookieStore(t *testing.T) {
+	store := NewCookieKeyValueStore()
+	executor := NewExecutor(store, nil, nil, nil)
+	if executor.ckvs != store {
+		t.Fatalf("executor.ckvs = %p, want %p", executor.ckvs, store)
+	}
+}
+
 func TestValidateDirectoriesAndPlanStagesSupportArbitraryValidDepth(t *testing.T) {
 	root := &domain.Directory{Stage: 0, Path: "/"}
 	parent := root
@@ -24,7 +32,7 @@ func TestValidateDirectoriesAndPlanStagesSupportArbitraryValidDepth(t *testing.T
 	}
 
 	suite := &domain.Suite{Root: root}
-	executor := NewExecutor(nil, nil, nil)
+	executor := NewExecutor(nil, nil, nil, nil)
 	exitCode, err := executor.ValidateDirectories(suite)
 	if err != nil {
 		t.Fatalf("ValidateDirectories() error = %v", err)
@@ -97,7 +105,7 @@ func TestValidateDirectoriesRejectsInvalidTrees(t *testing.T) {
 
 	for name, suite := range tests {
 		t.Run(name, func(t *testing.T) {
-			executor := NewExecutor(nil, nil, nil)
+			executor := NewExecutor(nil, nil, nil, nil)
 			exitCode, err := executor.ValidateDirectories(suite())
 			if exitCode != errs.ExitConfiguration {
 				t.Fatalf("ValidateDirectories() exit code = %d, want %d", exitCode, errs.ExitConfiguration)

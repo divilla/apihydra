@@ -75,7 +75,11 @@ func (e *Executor) Prepare(
 }
 
 // Execute processes the directory tree in stages, running directories in the
-// same stage concurrently. For every runtime step, it calls
+// same stage concurrently. Before every request, it populates
+// step.Request.CookieJar from the shared cookie store. Included mode selects
+// only CookieKeys and therefore selects no cookies when CookieKeys is empty.
+// Excluded mode selects every key except CookieKeys and therefore selects all
+// cookies when CookieKeys is empty. For every runtime step, Execute calls
 // Binder.LoadVariables, Binder.InterpolateRequestBody,
 // Binder.InterpolateResponseExpectedBody, runner.Curl,
 // Validator.ValidateTypes, Validator.ValidateStatus, Validator.ValidateBody,
@@ -84,9 +88,11 @@ func (e *Executor) Prepare(
 // non-empty diff from ValidateBody are reported through e.report. The response
 // status and body returned by runner.Curl are assigned to
 // step.Response.ActualStatus and step.Response.ActualBody for validation and
-// capture. After all work finishes, Execute returns exit code 101 and a nil
-// error when one or more validations failed. Validation status does not cancel
-// remaining work.
+// capture. The cookie jar returned by runner.Curl is assigned to
+// step.Response.CookieJar and passed to CookieKeyValueStore.SetAll after every
+// completed response, independent of cookie mode. After all work finishes,
+// Execute returns exit code 101 and a nil error when one or more validations
+// failed. Validation status does not cancel remaining work.
 func (e *Executor) Execute(
     ctx context.Context,
     stages [][]*domain.Directory,

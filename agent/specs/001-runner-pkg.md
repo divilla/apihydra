@@ -18,6 +18,9 @@ execution remains in this package.
 selected object shape for document comparison, while extraction returns the
 selected value for capture. `JQFilter` is the generic filtering boundary used
 by type validation. `GitDiff` replaces any legacy `BatDiff`/`bat` boundary.
+`Curl` owns the temporary-file boundary that converts request cookie-jar
+content into a `--cookie` filename and collects response jar content through
+`--cookie-jar`.
 
 ## Deliberately unspecified
 
@@ -25,14 +28,16 @@ The reference functions use canonical TODO bodies beneath their signatures and
 comments. Those bodies must be replaced by working command implementations;
 their empty results are not production behavior. The reference does not fix:
 
-- executable names or argument vectors;
+- executable names or argument vectors other than Curl's binding cookie-jar
+  flags;
 - use of stdin, temporary files, or environment variables;
 - sorting beyond the `JQProject` and `JQPretty` result descriptions, including
   `JQFilter` output formatting;
 - treatment of empty inputs, jq streams, or semantic non-zero statuses;
 - stdout/stderr inclusion in errors;
 - startup, cancellation, and operational exit-code normalization;
-- header/query/body encoding or curl behavior.
+- header/query/body encoding or curl behavior outside the binding cookie-jar
+  contract.
 
 Those details may be chosen during implementation but cannot be asserted as
 product requirements until represented by the skeleton.
@@ -45,6 +50,10 @@ contract:
 - `Curl` omits `--request` when the resolved method is empty. Curl therefore
   selects `GET` when no request body is supplied and `POST` when body data is
   supplied.
+- `Curl` writes non-empty Netscape request jar content to a temporary file,
+  passes its filename with `--cookie`, always declares a response jar with
+  `--cookie-jar`, and returns the response jar contents with the body and
+  status.
 - `GitDiff(expected, actual)` keeps the named documents separate but compares
   `actual` as the source with `expected` as the target. Red `-` values are
   actual values to remove or replace; green `+` values are expected values to
@@ -64,8 +73,8 @@ contract:
 - Test output: `pkg/runner/runner_test.go` covers successful results, command
   startup/failure/cancellation, data passed to each operation, and result/error
   normalization chosen within the contract, including implicit curl methods
-  and actual-to-expected changed-value-only diff output with fixed palette
-  colors 210 and 10.
+  request and response cookie jars, and actual-to-expected changed-value-only
+  diff output with fixed palette colors 210 and 10.
 - Root `architecture_test.go` proves that no other production package executes
   external commands and that `bat`/`BatDiff` is absent.
 - Each acceptance criterion is traced to a meaningful unit or architecture
@@ -75,11 +84,13 @@ contract:
 
 1. Exported names, signatures, and static error text match the reference.
 2. Each function stays within the operation boundary defined by the reference.
-3. `JQFilter` evaluates its filter against its input, `JQProject` and
+3. `Curl` passes non-empty request jar contents through a temporary
+   `--cookie` file, always collects `--cookie-jar`, and returns its contents.
+4. `JQFilter` evaluates its filter against its input, `JQProject` and
    `JQPretty` return comparable normalized JSON, and `GitDiff` preserves the
    color behavior required by the reference contract.
-4. No external command is invoked by another production package.
-5. No `BatDiff`, `bat` dependency, shell policy, or command-line contract is
+5. No external command is invoked by another production package.
+6. No `BatDiff`, `bat` dependency, shell policy, or command-line contract is
    invented here.
-6. No reference TODO body remains in production, and the package's tests and
+7. No reference TODO body remains in production, and the package's tests and
    repository ownership test pass.

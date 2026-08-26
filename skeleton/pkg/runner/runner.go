@@ -20,10 +20,14 @@ var ErrJQPretty = errors.New("jq pretty error")
 // ErrGitDiff classifies a Git diff failure.
 var ErrGitDiff = errors.New("git diff error")
 
-// Curl executes an HTTP request and returns its response body and status code.
-func Curl(ctx context.Context, method string, url string, headers map[string]string, timeout int, retries int, query string, body string) (string, int, error) {
+// Curl executes an HTTP request and returns its response body, status code, and
+// response cookie jar. When cookieJar is non-empty, Curl writes its Netscape
+// cookie-jar contents to a temporary file and supplies that filename to curl
+// with --cookie. Curl always declares a temporary response jar with
+// --cookie-jar and returns the resulting file contents.
+func Curl(ctx context.Context, method string, url string, headers map[string]string, timeout int, retries int, query string, body string, cookieJar string) (string, int, string, error) {
 	// TODO: implement
-	return "", 0, nil
+	return "", 0, "", nil
 }
 
 // JQProject selects members from input and returns them as one recursively

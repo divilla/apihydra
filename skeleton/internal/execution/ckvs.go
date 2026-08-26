@@ -6,7 +6,7 @@ import (
     "sync"
 )
 
-// CookieKeyValueStore is a concurrent, write-once string store.
+// CookieKeyValueStore is a concurrent string store.
 type CookieKeyValueStore struct {
     m  map[string]string
     mu sync.RWMutex
@@ -80,9 +80,6 @@ func (s *CookieKeyValueStore) Set(key, val string) {
 
 // SetAll stores a new key and value pair.
 func (s *CookieKeyValueStore) SetAll(values string) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-
     for line := range strings.Lines(values) {
         vals := strings.Fields(line)
         s.Set(join(vals[5], vals[0], vals[1]), line)

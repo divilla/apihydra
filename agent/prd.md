@@ -100,27 +100,33 @@ Directory paths are relative to `Suite.WorkDir`; the root path is `/`.
 
 ### Defaults and steps
 
-`Defaults` has exactly `BaseURL`, `BasePath`, `Headers`, `Timeout`, and
-`Retries` with the YAML names defined in `skeleton/internal/domain/suite.go`.
+`Defaults` has exactly `BaseURL`, `BasePath`, `Headers`, `CookieMode`,
+`CookieKeys`, `Timeout`, and `Retries` with the YAML names defined in
+`skeleton/internal/domain/suite.go`. Cookie mode defaults to `included`.
 
 `Step` has exactly the reference fields under `Vars`, `Request`, `Response`,
 and `Debug`, plus source `Definition` and `Index`. Fields typed as
 `YAMLString` remain `YAMLString`; specs must not replace them with parallel
 presence or arbitrary-value wrappers.
 
-`Step.Response` carries expected and actual forms of both response values:
+`Step.Request` carries the resolved cookie mode and keys plus `CookieJar`, whose
+value is complete Netscape cookie-jar content selected for that request.
+
+`Step.Response` carries expected and actual response values:
 
 - `ExpectedStatus` and `ActualStatus` are `int` values under the YAML and JSON
   names `expected_status` and `actual_status`;
-- `ExpectedBody` is a `YAMLString` under `expected_body`, while `ActualBody` is
-  a `string` under `actual_body`;
+- `ExpectedBody` and `ActualBody` are `YAMLString` values under `expected_body`
+  and `actual_body`;
 - `ExpectedTypes` is a `map[string][]string` under `expected_types` and declares
   the expected types selected from `ActualBody`.
+- `CookieJar` carries the complete Netscape cookie jar collected from the
+  response.
 
 `ExpectedStatus` is one deterministic HTTP status. Its zero value is the
 `<any>` substitute: when `ExpectedStatus == 0`, every `ActualStatus` is valid.
 For every non-zero `ExpectedStatus`, `ActualStatus` must equal it.
-`runner.Curl` supplies the two actual response values at runtime.
+`runner.Curl` supplies the response body, status, and cookie jar at runtime.
 Validator treats response types, status, and body as separate validation
 phases. Type validation builds a jq filter from `ExpectedTypes`, evaluates it
 against `ActualBody` through `runner.JQFilter`, and represents mismatches with a
@@ -131,6 +137,23 @@ The JSON names on declarative and runtime step fields match their YAML names.
 `Definition` is omitted from JSON and `Index` is encoded as `index`.
 `DirectoryStage`, `DirectoryPath`, and `FilePath` derive provenance through
 `Step.Definition.File.Directory` exactly as implemented by the skeleton.
+
+### Cookie propagation
+
+Cookie mode and keys inherit from root defaults through nested directory and
+steps-file defaults to each step request; narrower values override inherited
+values. Included mode selects only exact cookie keys, so an empty key list
+selects no cookies. Excluded mode selects every cookie except exact listed
+keys, so an empty key list selects all cookies.
+
+Before each request, Executor selects complete jar lines from its shared
+`CookieKeyValueStore` and assigns them to `Step.Request.CookieJar`. Runner
+writes non-empty request jar content to a temporary file for `curl --cookie`,
+always declares a response file with `curl --cookie-jar`, and returns that
+file's contents. Executor assigns the returned jar to
+`Step.Response.CookieJar` and passes it to `CookieKeyValueStore.SetAll` after
+every completed response, independent of cookie mode. Bulk-loaded cookies use
+the exact key `name:domain:path`.
 
 ## Current reference CLI contract
 
@@ -152,8 +175,8 @@ selected working directory, creates
 7. `Resolver.ResolveDefaults`
 8. `Resolver.ResolveSteps`
 
-After definition resolution, `run` creates one `KeyValueStore`, `Binder`, and
-`Validator`, then creates an `Executor` with those
+After definition resolution, `run` creates one `CookieKeyValueStore`, one
+`KeyValueStore`, `Binder`, and `Validator`, then creates an `Executor` with those
 collaborators and the same Reporter used for working-directory output. It then:
 
 1. calls `Executor.ValidateDirectories(suite)` and returns its exit code and
@@ -200,6 +223,7 @@ Each package guide points to its binding skeleton contract:
 | Preparation, execution phase order, tree validation, and stage scheduling | [`010-executor-service.md`](specs/010-executor-service.md) |
 | CLI composition and process behavior | [`011-main-app.md`](specs/011-main-app.md) |
 | Black-box application verification | [`012-integration-tests.md`](specs/012-integration-tests.md) |
+| Cookie collection, selection, and propagation | [`013-cookies-service.md`](specs/013-cookies-service.md) |
 
 The guides do not reproduce public declarations, method contracts, or reference
 implementations. A consumer guide references the applicable skeleton contract
@@ -215,6 +239,9 @@ implementing the behavior fixed by the surrounding declarations, comments,
 implemented code, and tests. Guide `012` then verifies that application as a
 separate black-box integration suite.
 
+Guide `013` adds the skeleton-defined cookie flow across the existing domain,
+resolver, runner, execution, and CLI ownership boundaries.
+
 ## Not specified by the skeleton
 
 The following are not product requirements:
@@ -222,9 +249,9 @@ The following are not product requirements:
 - definition placement/cardinality rules beyond the reference fields and
   service comments;
 - deterministic file ordering or symlink/hidden-directory policy;
-- presence-sensitive default merging beyond the timeout/retry fallbacks,
-  implicit HTTP methods, URL
-  normalization, or header canonicalization;
+- presence-sensitive default merging beyond the timeout/retry fallbacks and
+  cookie inheritance, implicit HTTP methods, URL normalization, or header
+  canonicalization;
 - variable-name grammar within the documented `$var` and `${var}` forms,
   escaping, serialization, replacement precedence, or scope beyond the
   injected Binder store;
@@ -232,7 +259,8 @@ The following are not product requirements:
   construction, status rules beyond the documented `ExpectedStatus`
   comparison, or body-validation rules beyond the documented normalized
   expected-response comparison;
-- exact curl, jq, or Git argument vectors and command-result normalization;
+- exact curl, jq, or Git argument vectors other than Curl's cookie-jar flags,
+  and command-result normalization;
 - success or validation-failure layouts not implemented or tested in
   `skeleton/`;
 - selection precedence when concurrent directories reach debug steps;

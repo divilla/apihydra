@@ -55,8 +55,9 @@ Such behavior belongs to an owning service or requires a prior skeleton change.
 
 1. Production constants, types, fields, tags, and method signatures match the
    domain reference exactly.
-2. YAML decoding and JSON encoding preserve the response expectation/runtime
-   schema and reject a list where the scalar `ExpectedStatus` is required.
+2. YAML decoding and JSON encoding preserve the request cookie configuration,
+   request and response cookie jars, and response expectation/runtime schema,
+   and reject a list where the scalar `ExpectedStatus` is required.
 3. `ExpectedStatus` defaults to the zero-value `<any>` sentinel, and provenance
    helpers return the values reached through the binding definition/file/tree
    relationships.

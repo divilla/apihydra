@@ -11,6 +11,7 @@
   [`004-decoder-service.md`](004-decoder-service.md), and
   [`005-resolver-service.md`](005-resolver-service.md)
 - Execution guide: [`010-executor-service.md`](010-executor-service.md)
+- Cookie propagation: [`013-cookies-service.md`](013-cookies-service.md)
 - Status: skeleton-aligned implementation guide
 
 ## Reference contract
@@ -59,9 +60,10 @@ Black-box subprocess fixtures and application coverage belong to
 4. Fatal errors are logged to stderr and retain the exact product exit code
    returned by `run`.
 5. After `Resolver.ResolveSteps`, the application constructs the execution
-   collaborators, validates the directory tree, prepares runtime steps, plans
-   stages, and executes the plan in the exact order represented by the
-   skeleton, without adding behavior absent from that reference.
+   collaborators, including one shared `CookieKeyValueStore`, validates the
+   directory tree, prepares runtime steps, plans stages, and executes the plan
+   in the exact order represented by the skeleton, without adding behavior
+   absent from that reference.
 6. `go test ./cmd/cli`, `go test ./...`, `go test -race ./...`, and
    `git diff --check` pass.
 7. With guides `000` through `010` implemented, completing this guide produces
