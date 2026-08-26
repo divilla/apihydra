@@ -87,11 +87,10 @@ func run(ctx context.Context, args []string, reporter *reporting.Reporter) (int,
         return errs.ExitConfiguration, err
     }
 
-    kvs := execution.NewKeyValueStore()
-    ckvs := execution.NewCookieKeyValueStore()
-    binder := execution.NewBinder(kvs)
+    binder := execution.NewBinder(execution.NewKeyValueStore())
+    cookie := execution.NewCookie(execution.NewCookieKeyValueStore())
     validator := execution.NewValidator()
-    executor := execution.NewExecutor(ckvs, binder, validator, reporter)
+    executor := execution.NewExecutor(cookie, binder, validator, reporter)
     exitCode, err := executor.ValidateDirectories(suite)
     if err != nil {
         return exitCode, err

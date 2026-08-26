@@ -2,7 +2,6 @@ package execution
 
 import (
     "fmt"
-    "strings"
     "sync"
 )
 
@@ -31,43 +30,15 @@ func (s *CookieKeyValueStore) Get(key string) (string, error) {
 }
 
 // GetAll returns all values as single string.
-func (s *CookieKeyValueStore) GetAll() string {
+func (s *CookieKeyValueStore) GetAll() map[string]string {
     s.mu.RLock()
     defer s.mu.RUnlock()
 
-    var values string
-    for _, val := range s.m {
-        values += val + "\n"
-    }
-    return values
-}
-
-// GetIncluded returns all values having listed key.
-func (s *CookieKeyValueStore) GetIncluded(keys []string) string {
-    s.mu.RLock()
-    defer s.mu.RUnlock()
-
-    var values string
+    var m map[string]string
     for key, val := range s.m {
-        if contains(keys, key) {
-            values += val + "\n"
-        }
+        m[key] = val
     }
-    return values
-}
-
-// GetExcluded returns all values but having listed key.
-func (s *CookieKeyValueStore) GetExcluded(keys []string) string {
-    s.mu.RLock()
-    defer s.mu.RUnlock()
-
-    var values string
-    for key, val := range s.m {
-        if !contains(keys, key) {
-            values += val + "\n"
-        }
-    }
-    return values
+    return m
 }
 
 // Set stores a new key and value pair.
@@ -78,14 +49,6 @@ func (s *CookieKeyValueStore) Set(key, val string) {
     s.m[key] = val
 }
 
-// SetAll stores a new key and value pair.
-func (s *CookieKeyValueStore) SetAll(values string) {
-    for line := range strings.Lines(values) {
-        vals := strings.Fields(line)
-        s.Set(join(vals[5], vals[0], vals[1]), line)
-    }
-}
-
 // Del deletes kay value pair by key.
 func (s *CookieKeyValueStore) Del(key string) {
     s.mu.Lock()
@@ -94,7 +57,7 @@ func (s *CookieKeyValueStore) Del(key string) {
     delete(s.m, key)
 }
 
-func join(name, domain, path string) string {
+func makeCookieKey(name, domain, path string) string {
     return fmt.Sprintf("%s:%s:%s", name, domain, path)
 }
 
