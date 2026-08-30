@@ -1,6 +1,6 @@
 ---
 name: change-code
-description: Implement a supplied specification in an existing codebase, including contract checks, production code, acceptance tests, and verification. Use for `$change-code` requests containing an inline specification or identifying a specification file, issue, document, or URL.
+description: Implement a supplied specification or change in an existing codebase, including contract checks, production code, acceptance tests, and verification. Use for `$change-code` requests containing inline requirements or identifying a file, issue, document, or URL.
 ---
 
 # Change Code
@@ -9,12 +9,18 @@ Treat the text after `$change-code` as the specification argument. Read any
 referenced file, issue, document, or URL before editing, and treat the rest of
 the request as constraints.
 
+For an `agent/changes/*.md` argument, also read every current PRD,
+architecture, specification, and change document changed on the branch from
+the merge base with `origin`'s default branch. Treat them as one contract
+bundle, with the supplied change document as its entry point.
+
 ## Establish the contract
 
 1. Read `AGENTS.md`, `skeleton/`, `agent/prd.md`, the supplied specification,
    and `agent/architecture.md` before acting.
 2. Resolve conflicts in this order: `AGENTS.md` > `skeleton/` >
-   `agent/prd.md` > supplied specification > `agent/architecture.md`.
+   `agent/prd.md` > implementation guides or supplied change >
+   `agent/architecture.md`.
 3. Inspect repository status plus the relevant implementation, tests,
    documentation, and build commands. Preserve unrelated user changes.
 4. Treat protected references and declared contracts as binding. If the change
@@ -44,14 +50,15 @@ and coverage thresholds. Inspect the final diff for accidental edits, missing
 criteria, contract drift, and generated-file requirements. Fix failures caused
 by the change; report the exact command and evidence for unrelated failures.
 
-For a specification under `agent/specs/`, record the completed implementation
-in the repository-root `implementation-log.md`. The skill owns this write; do
-not leave it to caller scripts. Append one block in this exact form, keeping one
-blank line after it:
+For an entry point under `agent/specs/` or `agent/changes/`, record the
+completed implementation in the repository-root `implementation-log.md`. The
+skill owns this write; do not leave it to caller scripts. Append one block in
+this exact form, keeping one blank line after it and using `spec` or `change`
+to match the entry-point directory:
 
 ```text
-YYYY-DD-MM HH:MM <spec-slug>
-+<added> -<removed> code - +<added> -<removed> tests --- spec
+YYYY-DD-MM HH:MM <entry-slug>
++<added> -<removed> code - +<added> -<removed> tests --- <spec|change>
 ```
 
 Count the complete implementation diff, including untracked files, but exclude

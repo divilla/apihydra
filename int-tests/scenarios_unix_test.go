@@ -35,9 +35,9 @@ func runUnixSpecificScenarios(t *testing.T, ctx context.Context, binary, runRoot
 		t.Fatalf("missing-git result = code %d, stderr %q, want fatal diagnostic", missingGit.exitCode, missingGit.stderr)
 	}
 
-	badTemp := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "curl-failure"), "TMPDIR="+filepath.Join(tempRoot, "missing-temp"))
-	if badTemp.exitCode == 0 || badTemp.exitCode == 101 || badTemp.stderr == "" {
-		t.Fatalf("bad-temp result = code %d, stderr %q, want fatal diagnostic", badTemp.exitCode, badTemp.stderr)
+	unavailableTemp := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "curl-failure"), "TMPDIR="+filepath.Join(tempRoot, "missing-temp"))
+	if unavailableTemp.exitCode != 0 || unavailableTemp.stderr != "" {
+		t.Fatalf("unavailable-temp result = code %d, stderr %q, want curl success without temporary response storage", unavailableTemp.exitCode, unavailableTemp.stderr)
 	}
 
 	// Exercise command-result branches for coverage without asserting the

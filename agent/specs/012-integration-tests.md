@@ -37,7 +37,9 @@ YAML remains static and unchanged.
   and `int-tests/input/scenarios/` contains auxiliary
   failure and edge-case suites, including a debug step that exposes the
   resolved `request.defaults` value with its 10-second timeout and 3 retries,
-  that must not affect either top-level fixture.
+  a complete authorization header, the raw Curl statement, and latest runtime
+  response values, plus a terminal-error debug scenario; these scenarios must
+  not affect either top-level fixture.
 - Build output is temporary. The harness builds `./cmd/cli` with Go coverage
   instrumentation over `apih/...`, runs the scenarios with `GOCOVERDIR`, and
   removes artifacts through the test temporary directory lifecycle.
@@ -54,10 +56,11 @@ YAML remains static and unchanged.
 
 ## Deliberately unspecified
 
-The suite does not make Reporter layout, same-stage ordering, exact external
-command arguments, or other PRD-unspecified choices into assertions. It checks
-only stable output fragments needed to identify the selected work directory or
-a fatal diagnostic.
+Except for the exact Debug layout and the actual Curl statement exposed by the
+Debug contract, the suite does not make Reporter layout, same-stage ordering,
+particular external-command argument choices, or other PRD-unspecified choices
+into assertions. Other scenarios check only stable output fragments needed to
+identify the selected work directory or a fatal diagnostic.
 
 ## Acceptance criteria
 
@@ -83,9 +86,18 @@ a fatal diagnostic.
    A step with `debug: true` and no configured timeout or retries prints its
    resolved `request.defaults` with timeout `10` and retries `3` as jq-palette
    colored JSON, exits successfully, and leaves its later sibling step
-   unexecuted. The debug JSON is the final process output, and no legacy direct
-   request defaults fields appear. Its `index` field is present in recursively
-   sorted order, and runtime `actual_body` remains serialized from the shared
-   `domain.YAMLString` field.
-9. `make integration-test`, `go test ./...`, `go test -race ./...`, and
+   unexecuted. The Debug dump uses the exact stage/directory/file/Curl/JSON
+   layout; exposes complete POSIX-quoted authorization and cookie headers;
+   prints a multiline request body as the compact, single-quoted final
+   `--data-binary` value; contains no legacy direct request-default fields;
+   contains `index` in recursively sorted order; omits runtime-only `raw_curl`;
+   and serializes valid request, expected, and actual bodies from their shared
+   `domain.YAMLString` fields as structured, jq-prettified JSON while retaining
+   invalid or empty bodies as strings. The dump is the final successful process
+   output.
+9. A debug step whose processing ends in a terminal Curl error prints the
+   complete layout with its latest state and raw attempted Curl statement,
+   retains the terminal exit code and stderr diagnostic, and executes no later
+   step or stage.
+10. `make integration-test`, `go test ./...`, `go test -race ./...`, and
    `git diff --check` pass after guides `000` through `011` are implemented.

@@ -75,14 +75,21 @@ func (e *Executor) Prepare(
 }
 
 // Execute processes the directory tree in stages, running directories in the
-// same stage concurrently. For every runtime step, it calls
+// same stage concurrently. For every non-debug runtime step, it calls
 // Binder.LoadVariables, Binder.InterpolateRequestBody,
 // Binder.InterpolateResponseExpectedBody, runner.Curl,
 // Validator.ValidateTypes, Validator.ValidateStatus, Validator.ValidateBody,
-// and Binder.CaptureResponseVariables in that order. A non-empty
+// and Binder.CaptureResponseVariables in that order. A debug step replaces the
+// runner.Curl phase with runner.CurlBuild, runner.CurlRaw, assignment of the
+// raw statement to Step.RawCurl, and runner.CurlExecute using the unchanged
+// executable, arguments, and request body. Before a debug step finishes or a
+// terminal error is returned, Reporter.Debug receives the latest mutated Step.
+// A successful debug report stops later execution as a clean breakpoint; a
+// terminal execution error retains its original exit code and error after the
+// debug report. A non-empty
 // failed string from ValidateTypes, an ErrValidation from ValidateStatus, and a
 // non-empty diff from ValidateBody are reported through e.report. The response
-// status and body returned by runner.Curl are assigned to
+// status and body returned by runner.Curl or runner.CurlExecute are assigned to
 // step.Response.ActualStatus and step.Response.ActualBody for validation and
 // capture. After all work finishes, Execute returns exit code 101 and a nil
 // error when one or more validations failed. Validation status does not cancel
@@ -284,47 +291,38 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 			step := &dir.RuntimeSteps[groupIndex][stepIndex]
 
 			if exitCode, err := e.binder.LoadVariables(ctx, step); err != nil {
-				return fatalResult(exitCode, err)
+				return e.finishStep(ctx, step, exitCode, err)
 			}
 			if exitCode, err := e.binder.InterpolateRequestBody(ctx, step); err != nil {
-				return fatalResult(exitCode, err)
+				return e.finishStep(ctx, step, exitCode, err)
 			}
 			if exitCode, err := e.binder.InterpolateResponseExpectedBody(ctx, step); err != nil {
-				return fatalResult(exitCode, err)
+				return e.finishStep(ctx, step, exitCode, err)
 			}
 
-			body, status, err := runner.Curl(
-				ctx,
-				step.Request.Method,
-				step.Request.Defaults.BaseURL+step.Request.Defaults.BasePath+step.Request.Path,
-				step.Request.Defaults.Headers,
-				step.Request.Defaults.Timeout,
-				step.Request.Defaults.Retries,
-				step.Request.Query,
-				string(step.Request.Body),
-			)
+			body, status, err := executeRequest(ctx, step)
 			if err != nil {
-				return fatalResult(status, err)
+				return e.finishStep(ctx, step, status, err)
 			}
 			step.Response.ActualStatus = status
 			step.Response.ActualBody = domain.YAMLString(body)
 
 			failedTypes, err := e.val.ValidateTypes(ctx, step)
 			if err != nil {
-				return fatalResult(0, err)
+				return e.finishStep(ctx, step, 0, err)
 			}
 
 			var statusFailure error
 			if err := e.val.ValidateStatus(ctx, step); err != nil {
 				if !errors.Is(err, ErrValidation) {
-					return fatalResult(0, err)
+					return e.finishStep(ctx, step, 0, err)
 				}
 				statusFailure = err
 			}
 
 			diff, err := e.val.ValidateBody(ctx, step)
 			if err != nil {
-				return fatalResult(0, err)
+				return e.finishStep(ctx, step, 0, err)
 			}
 			failureCount := 0
 			if failedTypes != "" {
@@ -348,28 +346,25 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 			}
 			if failedTypes != "" {
 				if err := e.report.ValidationTypes(nextReportContext(), step, failedTypes); err != nil {
-					return fatalResult(0, err)
+					return e.finishStep(ctx, step, 0, err)
 				}
 			}
 			if statusFailure != nil {
 				if err := e.report.ValidationStatus(nextReportContext(), step, statusFailure); err != nil {
-					return fatalResult(0, err)
+					return e.finishStep(ctx, step, 0, err)
 				}
 			}
 			if diff != "" {
 				if err := e.report.ValidationBody(nextReportContext(), step, diff); err != nil {
-					return fatalResult(0, err)
+					return e.finishStep(ctx, step, 0, err)
 				}
 			}
 
 			if exitCode, err := e.binder.CaptureResponseVariables(ctx, step); err != nil {
-				return fatalResult(exitCode, err)
+				return e.finishStep(ctx, step, exitCode, err)
 			}
 			if step.Debug {
-				if err := e.report.Debug(ctx, step); err != nil {
-					return fatalResult(0, err)
-				}
-				return 0, errDebugStop
+				return e.finishStep(ctx, step, 0, nil)
 			}
 		}
 	}
@@ -381,6 +376,58 @@ func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, 
 		return errs.ExitValidation, nil
 	}
 	return 0, nil
+}
+
+func executeRequest(ctx context.Context, step *domain.Step) (string, int, error) {
+	url := step.Request.Defaults.BaseURL + step.Request.Defaults.BasePath + step.Request.Path
+	body := string(step.Request.Body)
+	if !step.Debug {
+		return runner.Curl(
+			ctx,
+			step.Request.Method,
+			url,
+			step.Request.Defaults.Headers,
+			step.Request.Defaults.Timeout,
+			step.Request.Defaults.Retries,
+			step.Request.Query,
+			body,
+		)
+	}
+
+	executable, args, err := runner.CurlBuild(
+		ctx,
+		step.Request.Method,
+		url,
+		step.Request.Defaults.Headers,
+		step.Request.Defaults.Timeout,
+		step.Request.Defaults.Retries,
+		step.Request.Query,
+		body,
+	)
+	if err != nil {
+		return "", 0, err
+	}
+	step.RawCurl = runner.CurlRaw(executable, args)
+	return runner.CurlExecute(ctx, executable, args, body)
+}
+
+func (e *Executor) finishStep(ctx context.Context, step *domain.Step, exitCode int, terminalErr error) (int, error) {
+	if !step.Debug {
+		return fatalResult(exitCode, terminalErr)
+	}
+
+	reportCtx := ctx
+	if terminalErr != nil {
+		reportCtx = context.WithoutCancel(ctx)
+	}
+	reportErr := e.report.Debug(reportCtx, step)
+	if terminalErr != nil {
+		return fatalResult(exitCode, terminalErr)
+	}
+	if reportErr != nil {
+		return fatalResult(0, reportErr)
+	}
+	return 0, errDebugStop
 }
 
 func prepareDirectory(dir *domain.Directory) {

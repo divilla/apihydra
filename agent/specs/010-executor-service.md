@@ -36,7 +36,8 @@ nonfatal validation failures.
 
 - Production output: `internal/execution/executor.go` retains the implemented
   tree validation and scheduler and replaces the `Prepare` and `processDir`
-  TODO bodies with the binding deep-copy and eight-phase execution behavior.
+  TODO bodies with the binding deep-copy and execution behavior, including the
+  Debug-specific `CurlBuild`/`CurlRaw`/`CurlExecute` branch.
 - Test output: `internal/execution/executor_test.go` retains the reference tests
   and adds coverage for deep-copy isolation, every phase and mutation, all
   validation-reporting paths, collaborator failures, success/debug reporting
@@ -64,17 +65,26 @@ nonfatal validation failures.
 5. A fatal stage error cancels shared work and prevents later stages. The first
    fatal result replaces provisional validation and retains its associated code
    and error without being replaced by later results.
-6. Per-step execution uses the eight phases in the reference order, assigns the
-   Curl response status to `Step.Response.ActualStatus`, converts and assigns
-   the Curl response body to the `domain.YAMLString`
-   `Step.Response.ActualBody`, interpolates expected values before Curl runs,
-   and sends a non-empty `ValidateTypes` failed string to
-   `Reporter.ValidationTypes`.
+6. Non-debug per-step execution uses the eight phases in the reference order.
+   A debug step replaces `runner.Curl` with `runner.CurlBuild`,
+   `runner.CurlRaw`, assignment to `Step.RawCurl`, and `runner.CurlExecute`
+   using the unchanged executable, arguments, and request body. `CurlRaw` alone
+   owns its final-data compaction/fallback and POSIX header/data presentation;
+   Executor does not copy, reorder, compact, quote, or otherwise transform the
+   arguments. Both paths assign the Curl response status to
+   `Step.Response.ActualStatus`, convert and assign the Curl response body to
+   the `domain.YAMLString` `Step.Response.ActualBody`, interpolate expected
+   values before Curl runs, and send a non-empty `ValidateTypes` failed string
+   to `Reporter.ValidationTypes`.
 7. Completed validation mismatch traversal continues through remaining work
    and returns code `101` with a nil error.
-8. After Reporter successfully prints a debug step, Executor cancels concurrent
+8. Immediately before a debug step finishes or returns a terminal error,
+   Executor sends Reporter its latest mutated state. After Reporter
+   successfully prints a successful debug step, Executor cancels concurrent
    work, skips all later steps and stages, suppresses directory success output,
    and converts its private stop signal into clean exit code `0` with no error.
+   A terminal error is reported with the latest available state and then
+   retains its original error and exit code.
 9. Presentation, sorting, and per-validator payload rules remain with their
    owning packages.
 10. No TODO or zero-value placeholder remains in `Prepare` or `processDir`;

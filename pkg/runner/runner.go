@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // ErrCommand classifies an external-command failure.
@@ -28,10 +29,29 @@ var ErrJQPretty = errors.New("jq pretty error")
 // ErrGitDiff classifies a Git diff failure.
 var ErrGitDiff = errors.New("git diff error")
 
-const curlStatusMarker = "\n\x1eapih-status:"
+const (
+	curlStatusMarker       = "http-code:"
+	maxInlineCurlBodyChars = 1024
+)
 
-// Curl executes an HTTP request and returns its response body and status code.
+// Curl builds and executes a curl HTTP request and returns its response body
+// and status code. It is equivalent to calling CurlBuild followed by
+// CurlExecute with the returned executable and arguments unchanged and the
+// original body as standard input.
 func Curl(ctx context.Context, method string, url string, headers map[string]string, timeout int, retries int, query string, body string) (string, int, error) {
+	executable, args, err := CurlBuild(ctx, method, url, headers, timeout, retries, query, body)
+	if err != nil {
+		return "", 0, err
+	}
+	return CurlExecute(ctx, executable, args, body)
+}
+
+// CurlBuild constructs the curl executable and complete argument list for an
+// HTTP request without executing it. It returns complete, unredacted values in
+// deterministic argument order. A non-empty body of at most 1,024 Unicode
+// characters is the final --data-binary argument value. A longer body uses @-
+// as that final value. An empty body adds no --data-binary argument.
+func CurlBuild(_ context.Context, method string, url string, headers map[string]string, timeout int, retries int, query string, body string) (executable string, args []string, err error) {
 	baseURL, fragment, hasFragment := strings.Cut(url, "#")
 	if query != "" {
 		separator := "?"
@@ -49,7 +69,7 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 		url += "#" + fragment
 	}
 
-	args := []string{"--disable", "--globoff", "--silent", "--show-error"}
+	args = []string{"--disable", "--globoff", "--silent", "--show-error"}
 	isHead := method == "HEAD"
 	if isHead {
 		args = append(args, "--head")
@@ -71,37 +91,86 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 	if retries > 0 {
 		args = append(args, "--retry", strconv.Itoa(retries))
 	}
+	args = append(args, "--write-out", "%{stderr}"+curlStatusMarker+"%{http_code}")
 	if body != "" {
-		args = append(args, "--data-binary", "@-")
+		bodyArgument := "@-"
+		if utf8.RuneCountInString(body) <= maxInlineCurlBodyChars {
+			bodyArgument = body
+		}
+		args = append(args, "--data-binary", bodyArgument)
 	}
-	responseDir, err := os.MkdirTemp("", "apih-curl-response-")
-	if err != nil {
-		return "", 0, newCommandFailure(ErrCurl, err, "")
-	}
-	defer os.RemoveAll(responseDir)
-	responsePath := filepath.Join(responseDir, "response")
-	args = append(args, "--output", responsePath, "--write-out", curlStatusMarker+"%{http_code}")
+	return "curl", args, nil
+}
 
-	output, stderr, _, err := execute(ctx, "curl", body, args...)
+// CurlExecute executes executable directly with args exactly as received and
+// supplies requestBody as the command's standard input. It does not add,
+// remove, reorder, redact, or otherwise transform arguments. It returns the
+// HTTP response body and status code.
+func CurlExecute(ctx context.Context, executable string, args []string, requestBody string) (responseBody string, status int, err error) {
+	output, stderr, _, err := execute(ctx, executable, requestBody, args...)
+	marker := strings.LastIndex(stderr, curlStatusMarker)
 	if err != nil {
+		if marker >= 0 {
+			stderr = stderr[:marker]
+		}
 		return "", 0, newCommandFailure(ErrCurl, err, stderr)
 	}
-	marker := strings.LastIndex(output, curlStatusMarker)
 	if marker < 0 {
 		return "", 0, newCommandFailure(ErrCurl, errors.New("missing HTTP status"), "")
 	}
-	status, err := strconv.Atoi(strings.TrimSpace(output[marker+len(curlStatusMarker):]))
+	status, err = strconv.Atoi(strings.TrimSpace(stderr[marker+len(curlStatusMarker):]))
 	if err != nil {
 		return "", 0, newCommandFailure(ErrCurl, err, "")
 	}
-	if isHead {
+	if slices.Contains(args, "--head") {
 		return "", status, nil
 	}
-	response, err := os.ReadFile(responsePath)
-	if err != nil {
-		return "", 0, newCommandFailure(ErrCurl, err, "")
+	return output, status, nil
+}
+
+// CurlRaw returns the complete, unredacted textual curl statement represented
+// by executable and args. The result is executable followed by each argument
+// in order, separated by one ASCII space, with no trailing newline. When the
+// final argument is the value following --data-binary and is not @-, CurlRaw
+// attempts to transform it with jq --compact-output .; invalid JSON and jq
+// failures retain the original value. Values following --header and
+// --data-binary are wrapped in POSIX single quotes, with each embedded single
+// quote encoded by closing the quoted string, writing a backslash-escaped
+// single quote, and reopening the quoted string. No other value is transformed,
+// and CurlRaw does not execute the curl request.
+func CurlRaw(executable string, args []string) (raw string) {
+	parts := make([]string, 1, len(args)+1)
+	parts[0] = executable
+	quoteNext := false
+	for index, arg := range args {
+		if quoteNext {
+			if index == len(args)-1 && args[index-1] == "--data-binary" {
+				arg = compactCurlRawBody(arg)
+			}
+			parts = append(parts, quoteShellArgument(arg))
+			quoteNext = false
+			continue
+		}
+
+		parts = append(parts, arg)
+		quoteNext = arg == "--header" || arg == "--data-binary"
 	}
-	return string(response), status, nil
+	return strings.Join(parts, " ")
+}
+
+func compactCurlRawBody(body string) string {
+	if body == "@-" {
+		return body
+	}
+	compact, _, err := jq(context.Background(), ErrJQPretty, body, "--compact-output", ".")
+	if err != nil {
+		return body
+	}
+	return compact
+}
+
+func quoteShellArgument(arg string) string {
+	return "'" + strings.ReplaceAll(arg, "'", "'\\''") + "'"
 }
 
 // JQProject selects members from input and returns them as one recursively

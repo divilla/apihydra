@@ -85,14 +85,36 @@ step. Later steps and files continue executing and reporting after nonfatal
 validation failures, and valid sibling definitions are reported before the
 directory returns validation exit status.
 
-Debug output starts with `Debug <file> step <zero-based-index>:` and renders the
-final runtime step as recursively key-sorted JSON using jq's ANSI token
-palette: blue keys, green string values, gray nulls, and jq's scalar and
-punctuation styles. The serialized representation includes `index` in the
-recursively sorted output. Its `ActualBody` remains the `domain.YAMLString`
-value defined by the shared model. The debug JSON ends with one blank line.
-Once Reporter successfully writes it, all later reporting calls are no-ops so
-nothing can appear beneath the breakpoint, including output racing from
+Debug writes exactly this layout:
+
+```text
+stage: <Step.DirectoryStage()>
+dir-path: <Step.DirectoryPath()>
+file-path: <Step.FilePath()>
+
+curl-command:
+<Step.RawCurl>
+
+<step-json>
+```
+
+`Step.RawCurl` is written verbatim. Reporter does not hide, mask, filter,
+project, quote, escape, stringify, destringify, or otherwise transform it.
+Security-sensitive values, including complete authorization headers and
+cookie-jar contents when present, remain visible. Runner has already applied
+the binding final-data jq compaction/fallback and POSIX header/data quoting to
+`Step.RawCurl`; Reporter neither repeats nor reverses those transformations.
+
+`<step-json>` preserves every member and value from the latest runtime `Step`,
+then projects exactly `Request.Body`, `Response.ExpectedBody`, and
+`Response.ActualBody` for display. Valid JSON body strings are embedded as JSON
+values; empty or invalid JSON remains encoded as a string. The result is
+normalized into recursively key-sorted pretty JSON through `runner.JQPretty`
+and rendered using jq's ANSI token palette: blue keys, green string values,
+gray nulls, and jq's scalar and punctuation styles. The JSON contains `index`;
+`RawCurl` and `Definition` remain absent according to their JSON tags. Reporter
+omits no JSON member or value. Once Reporter successfully writes the complete
+block, all later reporting calls are no-ops, including output racing from
 another directory.
 
 ## Deliberately unspecified
@@ -109,8 +131,11 @@ zero-value TODO bodies are not acceptable production implementations.
 - Test output: `internal/reporting/reporter_test.go` covers every method,
   byte-exact working-directory and terminal output, grouped multi-validation
   output, colored expected-type declarations, indented colored diffs,
-  nil/failing writers, cancellation policy, and concurrent writes under the
-  race detector.
+  the exact Debug provenance/Curl/JSON layout, verbatim pre-rendered Curl
+  content, complete unredacted sensitive values, structured valid JSON bodies
+  with string fallback for invalid or empty bodies, omission of `RawCurl` and
+  `Definition`, nil/failing writers, cancellation policy, and concurrent writes
+  under the race detector.
 - Root `architecture_test.go` proves that production execution output remains
   in this package and fatal diagnostics remain in `cmd/cli`.
 - Each acceptance criterion is traced to a meaningful unit or architecture
@@ -136,10 +161,14 @@ zero-value TODO bodies are not acceptable production implementations.
 6. `ValidationBody` prefixes every diff line with eight spaces and preserves its
    calculated actual-to-expected colors. Its rendered body block contains only
    changed red and green values, with no diff metadata or unchanged context.
-7. `Debug` normalizes the marshaled final step through `runner.JQPretty`, emits
-   jq-palette colored JSON containing `index` in recursively sorted order, and
-   atomically suppresses every later reporting call after the debug block is
-   successfully written. Reporter does not perform validation, schedule debug
-   steps, or call `os.Exit`.
+7. `Debug` emits the byte-exact stage, directory-path, file-path,
+   `curl-command`, and Step JSON layout. It writes `Step.RawCurl` verbatim and
+   complete, preserves every latest Step member and value while projecting
+   valid request/expected/actual JSON bodies as structured values and retaining
+   invalid or empty bodies as strings, normalizes the result through
+   `runner.JQPretty`, emits jq-palette colored JSON with `index` and without
+   `RawCurl` or `Definition`, and atomically suppresses every later reporting
+   call after the block is successfully written. Reporter does not perform
+   validation, schedule debug steps, redact any value, or call `os.Exit`.
 8. No TODO or zero-value placeholder remains in a reporting method; package
    tests, race tests, the ownership test, and `git diff --check` pass.

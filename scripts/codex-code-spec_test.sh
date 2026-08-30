@@ -8,7 +8,7 @@ repo="$test_root/repo"
 remote="$test_root/origin.git"
 fake_bin="$test_root/bin"
 implementation_count="$test_root/implementation-count"
-mkdir -p "$repo/scripts/lib/APIHydra" "$repo/agent/specs" "$repo/other" "$fake_bin"
+mkdir -p "$repo/scripts/lib/APIHydra" "$repo/agent/specs" "$repo/agent/changes" "$repo/other" "$fake_bin"
 
 cleanup() {
 	rm -rf -- "$test_root"
@@ -19,6 +19,7 @@ cp "$script_dir/codex-code-spec.pl" "$repo/scripts/codex-code-spec.pl"
 cp "$script_dir/lib/APIHydra/Progress.pm" "$repo/scripts/lib/APIHydra/Progress.pm"
 printf '%s\n' '# Domain types' >"$repo/agent/specs/000-domain-types.md"
 printf '%s\n' '# Failing change' >"$repo/agent/specs/001-failing-change.md"
+printf '%s\n' '# Enhanced debug' >"$repo/agent/changes/014-enhanced-debug.md"
 printf '%s\n' '# Outside specification directory' >"$repo/other/plain.md"
 printf '%s\n' 'old production one' 'old production two' >"$repo/production.go"
 printf '%s\n' 'old test' >"$repo/production_test.go"
@@ -71,12 +72,13 @@ git -C "$repo" commit -q -m 'source branch commit'
 
 run_implementation() {
 	local output=$1
+	local specification=${2:-agent/specs/000-domain-types.md}
 	(
 		cd "$repo"
 		PATH="$fake_bin:$PATH" \
-			CODEX_TEST_EXPECTED_SPECIFICATION='agent/specs/000-domain-types.md' \
+			CODEX_TEST_EXPECTED_SPECIFICATION="$specification" \
 			CODEX_TEST_IMPLEMENTATION_COUNT="$implementation_count" \
-			./scripts/codex-code-spec.pl agent/specs/000-domain-types.md
+			./scripts/codex-code-spec.pl "$specification"
 	) >"$output"
 }
 
@@ -153,6 +155,15 @@ grep -Fxq 'Implementation complete.' "$first_output"
 ! grep -Eq '^Implement [0-9]' "$first_output"
 grep -Fxq 'Commit: Implement change 000-domain-types' "$first_output"
 [[ -z $(git -C "$repo" status --short) ]]
+
+git -C "$repo" checkout -q master
+git -C "$repo" checkout -q -b change/014-enhanced-debug
+change_output="$test_root/change-output"
+run_implementation "$change_output" agent/changes/014-enhanced-debug.md
+[[ $(git -C "$repo" log -1 --format=%s) == 'Implement change 014-enhanced-debug' ]]
+[[ $(<"$implementation_count") == 2 ]]
+grep -Fq "'\$change-code agent/changes/014-enhanced-debug.md'" "$change_output"
+
 git -C "$repo" checkout -q master
 git -C "$repo" checkout -q -b change/001-failing-change
 failed_output="$test_root/failed-output"
@@ -183,6 +194,6 @@ set +e
 invalid_status=$?
 set -e
 [[ $invalid_status -eq 1 ]]
-grep -Fxq 'codex-code-spec: specification path must match agent/specs/<spec-slug>.md' "$invalid_error"
+grep -Fxq 'codex-code-spec: specification path must match agent/{specs,changes}/<change-slug>.md' "$invalid_error"
 
 printf '%s\n' 'codex-code-spec tests passed'

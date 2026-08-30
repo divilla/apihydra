@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -118,16 +117,6 @@ func TestReporterExportedContract(t *testing.T) {
 	}
 }
 
-func TestDebugRequestReusesDomainDefaults(t *testing.T) {
-	field, ok := reflect.TypeOf(debugRequest{}).FieldByName("Defaults")
-	if !ok {
-		t.Fatal("debugRequest.Defaults field is missing")
-	}
-	if got, want := field.Type, reflect.TypeOf(domain.Defaults{}); got != want {
-		t.Fatalf("debugRequest.Defaults type = %v, want %v", got, want)
-	}
-}
-
 func TestWorkingDirectoryUsesInjectedWriterByteExactly(t *testing.T) {
 	var output bytes.Buffer
 	report := NewReporter(&output)
@@ -173,6 +162,7 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 	step.Response.ActualBody = `{"message":"failed"}`
 	step.Response.ExpectedTypes = map[string][]string{".id": {"string"}}
 	step.Debug = true
+	step.RawCurl = "curl --header Authorization: Bearer complete-secret --header Cookie: session=visible"
 	directory := step.Definition.File.Directory
 
 	debugJSON, err := json.Marshal(debugStepValue(step))
@@ -211,7 +201,11 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 		},
 		"debug": {
 			call: func(report *Reporter) error { return report.Debug(context.Background(), step) },
-			want: fmt.Sprintf("Debug suite/steps.yaml step 3:\n%s\n\n", colorizeJQJSON(prettyDebugJSON)),
+			want: fmt.Sprintf(
+				"stage: 0\ndir-path: /suite\nfile-path: suite/steps.yaml\n\ncurl-command:\n%s\n\n%s\n",
+				step.RawCurl,
+				colorizeJQJSON(prettyDebugJSON),
+			),
 		},
 	}
 
@@ -228,32 +222,100 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 	}
 }
 
-func TestDebugFormatsRequestBodyAsSortedJSON(t *testing.T) {
-	step := &domain.Step{Index: 2}
+func TestDebugProjectsValidJSONBodiesWithoutTransformingOtherValues(t *testing.T) {
+	step := reporterStep("private/steps.yaml", 2)
 	step.Request.Body = `{"b":2,"a":1}`
-	step.Request.Defaults = domain.Defaults{BaseURL: "https://example.test", BasePath: "/api", Timeout: 10, Retries: 3}
+	step.Request.Defaults = domain.Defaults{
+		BaseURL:  "https://example.test",
+		BasePath: "/api",
+		Headers: map[string]string{
+			"Authorization": "Bearer complete-secret",
+			"Cookie":        "session=unredacted-cookie",
+		},
+		Timeout: 10,
+		Retries: 3,
+	}
+	step.Response.ExpectedBody = `{"expected":true}`
+	step.Response.ActualBody = `{"actual":true}`
+	step.RawCurl = "curl --header Authorization: Bearer complete-secret --header Cookie: session=unredacted-cookie"
 	var output bytes.Buffer
 
 	if err := NewReporter(&output).Debug(context.Background(), step); err != nil {
 		t.Fatalf("Debug() error = %v", err)
 	}
 
-	got := output.String()
-	if !strings.HasPrefix(got, "Debug step 2:\n") {
-		t.Fatalf("Debug() output = %q, want standalone step reference", got)
+	payload, err := json.Marshal(debugStepValue(step))
+	if err != nil {
+		t.Fatal(err)
 	}
-	body := strings.Index(got, colorizeJQJSON(`"body": {`))
-	a := strings.Index(got, colorizeJQJSON(`"a": 1`))
-	b := strings.Index(got, colorizeJQJSON(`"b": 2`))
-	if body < 0 || a < body || b < a {
-		t.Fatalf("Debug() output = %q, want request body as key-sorted JSON object", got)
+	pretty, _, err := runner.JQPretty(context.Background(), string(payload))
+	if err != nil {
+		t.Fatal(err)
 	}
-	defaults := strings.Index(got, colorizeJQJSON(`"defaults": {`))
-	basePath := strings.Index(got, colorizeJQJSON(`"base_path": "/api"`))
-	baseURL := strings.Index(got, colorizeJQJSON(`"base_url": "https://example.test"`))
-	timeout := strings.Index(got, colorizeJQJSON(`"timeout": 10`))
-	if defaults < 0 || basePath < defaults || baseURL < defaults || timeout < defaults {
-		t.Fatalf("Debug() output = %q, want defaults nested under request", got)
+	want := fmt.Sprintf(
+		"stage: 0\ndir-path: /suite\nfile-path: private/steps.yaml\n\ncurl-command:\n%s\n\n%s\n",
+		step.RawCurl,
+		colorizeJQJSON(pretty),
+	)
+	if got := output.String(); got != want {
+		t.Fatalf("Debug() output = %q, want exact projected Step dump %q", got, want)
+	}
+	var projected struct {
+		Request struct {
+			Body map[string]any `json:"body"`
+		} `json:"request"`
+		Response struct {
+			ExpectedBody map[string]any `json:"expected_body"`
+			ActualBody   map[string]any `json:"actual_body"`
+		} `json:"response"`
+	}
+	if err := json.Unmarshal(payload, &projected); err != nil {
+		t.Fatalf("decode projected Debug JSON: %v", err)
+	}
+	if projected.Request.Body["a"] != float64(1) || projected.Request.Body["b"] != float64(2) ||
+		projected.Response.ExpectedBody["expected"] != true || projected.Response.ActualBody["actual"] != true {
+		t.Fatalf("projected Debug bodies = request %#v, expected %#v, actual %#v", projected.Request.Body, projected.Response.ExpectedBody, projected.Response.ActualBody)
+	}
+	for _, complete := range []string{"Bearer complete-secret", "session=unredacted-cookie"} {
+		if !strings.Contains(output.String(), complete) {
+			t.Fatalf("Debug() output omitted sensitive value %q: %q", complete, output.String())
+		}
+	}
+	if strings.Contains(output.String(), "raw_curl") || strings.Contains(output.String(), "definition") {
+		t.Fatalf("Debug() Step JSON contains runtime-only field: %q", output.String())
+	}
+}
+
+func TestDebugPreservesInvalidAndEmptyBodiesAsStrings(t *testing.T) {
+	step := reporterStep("invalid/steps.yaml", 0)
+	step.Request.Body = "not-json"
+	step.Response.ExpectedBody = ""
+	step.Response.ActualBody = "plain response"
+
+	payload, err := json.Marshal(debugStepValue(step))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var projected struct {
+		Request struct {
+			Body any `json:"body"`
+		} `json:"request"`
+		Response struct {
+			ExpectedBody any `json:"expected_body"`
+			ActualBody   any `json:"actual_body"`
+		} `json:"response"`
+	}
+	if err := json.Unmarshal(payload, &projected); err != nil {
+		t.Fatal(err)
+	}
+	if projected.Request.Body != "not-json" || projected.Response.ExpectedBody != "" || projected.Response.ActualBody != "plain response" {
+		t.Fatalf("projected invalid bodies = request %#v, expected %#v, actual %#v", projected.Request.Body, projected.Response.ExpectedBody, projected.Response.ActualBody)
+	}
+}
+
+func TestDebugStepValuePreservesNil(t *testing.T) {
+	if got := debugStepValue(nil); got != nil {
+		t.Fatalf("debugStepValue(nil) = %#v, want nil", got)
 	}
 }
 
@@ -499,38 +561,37 @@ func TestReporterClassifiesContextualShortWrites(t *testing.T) {
 		}
 	})
 	t.Run("debug", func(t *testing.T) {
-		err := NewReporter(shortWriter{}).Debug(context.Background(), nil)
+		err := NewReporter(shortWriter{}).Debug(context.Background(), reporterStep("steps.yaml", 0))
 		if !errors.Is(err, ErrReporter) || !errors.Is(err, io.ErrShortWrite) {
 			t.Fatalf("Debug() error = %v, want ErrReporter and io.ErrShortWrite", err)
 		}
 	})
 }
 
-func TestReporterUsesSafeFallbackReferences(t *testing.T) {
+func TestDebugSuppressesEveryLaterReport(t *testing.T) {
 	var output bytes.Buffer
 	report := NewReporter(&output)
-	if err := report.Success(context.Background(), nil); err != nil {
-		t.Fatalf("Success() error = %v", err)
-	}
-	if err := report.Debug(context.Background(), nil); err != nil {
+	step := reporterStep("steps.yaml", 0)
+	step.RawCurl = "curl --url https://example.test"
+	if err := report.Debug(context.Background(), step); err != nil {
 		t.Fatalf("Debug() error = %v", err)
 	}
-	step := &domain.Step{Index: 7}
+	want := output.String()
 	step.Response.ExpectedTypes = map[string][]string{".value": {"string"}}
 	if err := report.ValidationTypes(finalValidationContext(report), step, `{"selector":".value","actual":"number"}`); err != nil {
-		t.Fatalf("ValidationTypes() error = %v", err)
+		t.Fatalf("ValidationTypes() after Debug error = %v", err)
 	}
 	if err := report.Success(context.Background(), reporterDirectory("later.yaml")); err != nil {
-		t.Fatalf("Success() after debug error = %v", err)
+		t.Fatalf("Success() after Debug error = %v", err)
 	}
 	if err := report.WorkingDirectory("/later"); err != nil {
-		t.Fatalf("WorkingDirectory() after debug error = %v", err)
+		t.Fatalf("WorkingDirectory() after Debug error = %v", err)
 	}
-	if err := report.Debug(context.Background(), &domain.Step{Index: 99}); err != nil {
-		t.Fatalf("Debug() after debug error = %v", err)
+	if err := report.Debug(context.Background(), reporterStep("other.yaml", 99)); err != nil {
+		t.Fatalf("Debug() after Debug error = %v", err)
 	}
-	if got, want := output.String(), "Debug <unknown step>:\n\x1b[0;90mnull\x1b[0m\n\n"; got != want {
-		t.Fatalf("fallback output = %q, want %q", got, want)
+	if got := output.String(); got != want {
+		t.Fatalf("output after Debug = %q, want unchanged %q", got, want)
 	}
 }
 

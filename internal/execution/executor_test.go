@@ -56,6 +56,7 @@ func TestPrepareDeepCopiesAllMutableStepStateAcrossTree(t *testing.T) {
 		".value": {"string", "null"},
 	}
 	step.Response.Capture = map[string]domain.YAMLString{"captured": ".value"}
+	step.RawCurl = "curl --header Authorization: Bearer preserved"
 
 	childStep := step
 	childStep.Index = 5
@@ -500,23 +501,20 @@ func TestProcessDirRunsEightPhasesMutatesRuntimeAndReportsDebugSuccess(t *testin
 	logPath := filepath.Join(commandDir, "phases")
 	t.Setenv("APIH_EXECUTOR_LOG", logPath)
 	installExecutorCommand(t, commandDir, "curl", `
-output=
 url=
 previous=
 for argument do
   case "$previous" in
-    output) output=$argument; previous=; continue ;;
     url) url=$argument; previous=; continue ;;
   esac
   case "$argument" in
-    --output) previous=output ;;
     --url) previous=url ;;
   esac
 done
 body=$(/bin/cat)
 printf 'curl|%s|%s\n' "$url" "$body" >> "$APIH_EXECUTOR_LOG"
-printf '%s' "$body" > "$output"
-printf '\n\036apih-status:201'
+printf '%s' "$body"
+printf 'http-code:201' >&2
 `)
 	installExecutorCommand(t, commandDir, "jq", `
 input=$(/bin/cat)
@@ -532,6 +530,7 @@ case "$last" in
     ;;
   *)
     case "$*" in
+      *'--compact-output .'*) printf 'curl-raw-body\n' >> "$APIH_EXECUTOR_LOG" ;;
       *'--sort-keys --'*) printf 'body-actual\n' >> "$APIH_EXECUTOR_LOG" ;;
       *) printf 'body-expected\n' >> "$APIH_EXECUTOR_LOG" ;;
     esac
@@ -592,6 +591,7 @@ esac
 	wantOrder := []string{
 		`curl|https://example.test/api/first|{"token":"one"}`,
 		"types", "body-expected", "body-actual", "capture",
+		"curl-raw-body",
 		`curl|https://example.test/api/second|{"token":"one"}`,
 		"types", "body-expected", "body-actual",
 		"body-expected",
@@ -599,8 +599,83 @@ esac
 	if got := strings.Fields(phaseLog); !reflect.DeepEqual(got, wantOrder) {
 		t.Fatalf("phase order = %v, want %v", got, wantOrder)
 	}
-	if !strings.Contains(output.String(), "Debug steps.yaml step 1:") || strings.Contains(output.String(), "[\x1b[38;5;10m✓\x1b[0m]") {
+	debugStep := &dir.RuntimeSteps[0][1]
+	for _, want := range []string{
+		"stage: 0\ndir-path: /suite\nfile-path: steps.yaml\n\ncurl-command:\n",
+		debugStep.RawCurl,
+		`"actual_body"`,
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("processDir() output = %q, want %q", output.String(), want)
+		}
+	}
+	if !strings.Contains(debugStep.RawCurl, "curl --disable --globoff --silent --show-error --request POST") ||
+		strings.Contains(output.String(), "[\x1b[38;5;10m✓\x1b[0m]") {
 		t.Fatalf("processDir() output = %q, want terminal debug without success", output.String())
+	}
+}
+
+func TestDebugTerminalCurlErrorReportsLatestUnredactedStateAndPreservesError(t *testing.T) {
+	commandDir := newExecutorCommandDir(t)
+	installExecutorCommand(t, commandDir, "curl", `/bin/cat >/dev/null; printf 'connection refused' >&2; exit 27`)
+	installPassthroughExecutorJQ(t, commandDir)
+
+	step := executorStep("secure/steps.yaml", 4)
+	step.Debug = true
+	step.Request.Method = "POST"
+	step.Request.Defaults.BaseURL = "https://example.test"
+	step.Request.Path = "/private"
+	step.Request.Defaults.Headers = map[string]string{
+		"Authorization": "Bearer complete-secret",
+		"Cookie":        "session=unredacted-cookie",
+	}
+	step.Request.Body = `{"latest":"request"}`
+	step.Response.ExpectedBody = `{"latest":"expected"}`
+	var output bytes.Buffer
+	executor := executorForStep(t, NewBinder(NewKeyValueStore()), step, &output)
+
+	exitCode, err := executor.processDir(context.Background(), step.Definition.File.Directory)
+	if exitCode != 27 || !errors.Is(err, runner.ErrCurl) {
+		t.Fatalf("processDir() = (%d, %v), want original Curl exit 27", exitCode, err)
+	}
+	runtimeStep := &step.Definition.File.Directory.RuntimeSteps[0][0]
+	if runtimeStep.RawCurl == "" || runtimeStep.Response.ActualStatus != 0 || runtimeStep.Response.ActualBody != "" {
+		t.Fatalf("latest runtime state = RawCurl %q, status %d, body %q", runtimeStep.RawCurl, runtimeStep.Response.ActualStatus, runtimeStep.Response.ActualBody)
+	}
+	for _, want := range []string{
+		"stage: 0\ndir-path: /suite\nfile-path: secure/steps.yaml\n\ncurl-command:\n" + runtimeStep.RawCurl,
+		"Authorization: Bearer complete-secret",
+		"Cookie: session=unredacted-cookie",
+		`"body"`,
+		`"latest"`,
+		`"request"`,
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("terminal Debug output = %q, want %q", output.String(), want)
+		}
+	}
+}
+
+func TestDebugTerminalErrorReportsAfterExecutionContextCancellation(t *testing.T) {
+	commandDir := newExecutorCommandDir(t)
+	installPassthroughExecutorJQ(t, commandDir)
+
+	step := executorStep("steps.yaml", 0)
+	step.Debug = true
+	step.RawCurl = "curl --url https://example.test"
+	var output bytes.Buffer
+	executor := NewExecutor(nil, nil, reporting.NewReporter(&output))
+	wantErr := errors.New("terminal execution error")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	exitCode, err := executor.finishStep(ctx, &step, 27, wantErr)
+	if exitCode != 27 || !errors.Is(err, wantErr) {
+		t.Fatalf("finishStep() = (%d, %v), want original terminal error and exit 27", exitCode, err)
+	}
+	if got := output.String(); !strings.Contains(got, "stage: 0\ndir-path: /suite\nfile-path: steps.yaml") ||
+		!strings.Contains(got, step.RawCurl) {
+		t.Fatalf("finishStep() output = %q, want terminal Debug state", got)
 	}
 }
 
@@ -626,26 +701,23 @@ func TestProcessDirReportsEveryValidationAndContinuesThroughCaptureAndLaterSteps
 	logPath := filepath.Join(commandDir, "phases")
 	t.Setenv("APIH_EXECUTOR_LOG", logPath)
 	installExecutorCommand(t, commandDir, "curl", `
-output=
 url=
 previous=
 for argument do
   case "$previous" in
-    output) output=$argument; previous=; continue ;;
     url) url=$argument; previous=; continue ;;
   esac
   case "$argument" in
-    --output) previous=output ;;
     --url) previous=url ;;
   esac
 done
 /bin/cat >/dev/null
 case "$url" in
-  */bad) printf 'actual' > "$output"; status=500 ;;
-  *) printf 'same' > "$output"; status=200 ;;
+  */bad) printf 'actual'; status=500 ;;
+  *) printf 'same'; status=200 ;;
 esac
 printf 'curl|%s\n' "$url" >> "$APIH_EXECUTOR_LOG"
-printf '\n\036apih-status:%s' "$status"
+printf 'http-code:%s' "$status" >&2
 `)
 	installExecutorCommand(t, commandDir, "jq", `
 input=$(/bin/cat)
@@ -956,14 +1028,9 @@ func installExecutorCommand(t *testing.T, dir, name, body string) {
 func installSuccessfulExecutorCurl(t *testing.T, dir, body string, status int) {
 	t.Helper()
 	installExecutorCommand(t, dir, "curl", `
-output=
-for argument do
-  if [ "${previous-}" = output ]; then output=$argument; previous=; continue; fi
-  if [ "$argument" = --output ]; then previous=output; fi
-done
 /bin/cat >/dev/null
-printf '%s' '`+body+`' > "$output"
-printf '\n\036apih-status:`+strconv.Itoa(status)+`'
+printf '%s' '`+body+`'
+printf 'http-code:`+strconv.Itoa(status)+`' >&2
 `)
 }
 

@@ -1,0 +1,13 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        path: /terminal-error
+        defaults:
+          base_url: http://127.0.0.1:0
+          headers:
+            Authorization: Bearer terminal-debug-secret
+      debug: true
+    - request:
+        path: /after-terminal-error

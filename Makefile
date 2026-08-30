@@ -20,9 +20,9 @@ init:
 	@go install golang.org/x/lint/golint@latest
 	@go install honnef.co/go/tools/cmd/staticcheck@latest
 
-implement: ## Implement and review a specification: make implement <spec-path>
+implement: ## Implement and review a specification or change: make implement <spec-or-change-path>
 	@if [ "$(words $(IMPLEMENT_ARGS))" -ne 1 ]; then \
-		echo "usage: make implement <spec-path>" >&2; \
+		echo "usage: make implement <spec-or-change-path>" >&2; \
 		exit 2; \
 	fi
 	@scripts/create-change-branch.sh "$(firstword $(IMPLEMENT_ARGS))"

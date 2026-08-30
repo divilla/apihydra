@@ -7,11 +7,10 @@ use Errno qw(EINTR);
 use File::Basename qw(dirname);
 use File::Spec;
 use File::Temp qw(tempdir);
-use FindBin;
 use IO::Handle;
 use IO::Select;
 use POSIX qw(WIFEXITED WIFSIGNALED WEXITSTATUS WTERMSIG setpgid);
-use lib "$FindBin::Bin/lib";
+use lib File::Spec->catdir(dirname(abs_path(__FILE__)), 'lib');
 use APIHydra::Progress;
 
 STDOUT->autoflush(1);
@@ -289,8 +288,8 @@ sub main {
 
 	my $specification = $arguments[0];
 	-f $specification or fail("specification file not found: $specification");
-	my ($change_name) = $specification =~ m{\Aagent/specs/([^/]+)\.md\z}
-		or fail('specification path must match agent/specs/<spec-slug>.md');
+	my ($change_name) = $specification =~ m{\Aagent/(?:specs|changes)/([^/]+)\.md\z}
+		or fail('specification path must match agent/{specs,changes}/<change-slug>.md');
 	my $branch = "change/$change_name";
 	my ($current_branch, $branch_status) = capture_command(0, 'git', 'branch', '--show-current');
 	$branch_status == 0 or exit $branch_status;

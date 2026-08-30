@@ -29,7 +29,10 @@ positions uses `*domain.Defaults`.
 `Step.Response.ExpectedBody` and `Step.Response.ActualBody` both use
 `domain.YAMLString`, retaining its marshaling and unmarshaling behavior for the
 expected and runtime body values. `Step.Index` is an `int`, is omitted from
-YAML, and is encoded in JSON as `index`.
+YAML, and is encoded in JSON as `index`. `Step.RawCurl` is runtime-only state:
+it retains the complete unredacted statement returned by `runner.CurlRaw` and
+is omitted from both YAML and JSON because Reporter emits it separately from
+the Debug Step encoding.
 
 ## Boundaries
 
@@ -51,7 +54,7 @@ with the packages named in the PRD.
   incompatible shapes, the absence of the former direct default-related
   request fields, value rather than pointer defaults fields, `YAMLString`
   expected/actual body round trips, the step index schema, and every provenance
-  helper;
+  helper, plus `RawCurl` exclusion from YAML and JSON;
   root `architecture_test.go` enforces the package boundaries against
   production paths rather than the protected skeleton tree and preserves the
   canonical skeleton TODO convention.
@@ -72,8 +75,9 @@ Such behavior belongs to an owning service or requires a prior skeleton change.
    domain reference exactly.
 2. YAML decoding and JSON encoding preserve the response expectation/runtime
    schema, keep both response bodies as `YAMLString`, encode `Step.Index` under
-   `index` while omitting it from YAML, and reject a list where the scalar
-   `ExpectedStatus` is required.
+   `index` while omitting it from YAML, omit runtime-only `Step.RawCurl` from
+   both formats, and reject a list where the scalar `ExpectedStatus` is
+   required.
 3. `ExpectedStatus` defaults to the zero-value `<any>` sentinel, and provenance
    helpers return the values reached through the binding definition/file/tree
    relationships.

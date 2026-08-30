@@ -7,11 +7,10 @@ use Errno qw(EINTR);
 use File::Basename qw(dirname);
 use File::Spec;
 use File::Temp qw(tempdir);
-use FindBin;
 use IO::Handle;
 use IO::Select;
 use POSIX qw(WIFEXITED WIFSIGNALED WEXITSTATUS WTERMSIG setpgid);
-use lib "$FindBin::Bin/lib";
+use lib File::Spec->catdir(dirname(abs_path(__FILE__)), 'lib');
 use APIHydra::Progress;
 
 STDOUT->autoflush(1);

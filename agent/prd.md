@@ -33,11 +33,46 @@ decoding, validation, and resolution; directory-tree validation; runtime-step
 preparation and stage planning; and staged execution with response validation
 and reporting.
 
-A step with `debug: true` is a terminal breakpoint. After the step finishes,
-its runtime state is normalized through jq, printed as jq-palette ANSI-colored
-JSON, and the application completes successfully. No later step or stage is
-executed, and no success, validation, diagnostic, or other output follows the
-debug JSON.
+A step with `debug: true` is a terminal breakpoint. Immediately before the
+step finishes, or before processing returns a terminal error, Reporter prints
+the latest runtime state in the exact Debug layout. The dump contains the
+step's stage, directory path, file path, complete unredacted Curl statement,
+and prettified jq-palette ANSI-colored JSON encoding. It never hides, masks,
+filters, or omits a member or value from those representations, including
+authorization headers and other security-sensitive values. For display only,
+valid JSON in request, expected-response, and actual-response body strings is
+embedded as structured JSON before jq formatting; empty or invalid JSON bodies
+remain strings. A successful debug step completes the application
+successfully; a terminal error retains its error and exit code after the dump.
+No later step or stage is executed. No later execution output follows a
+successful Debug dump; after a terminal error dump, fatal stderr diagnostics
+remain owned by `cmd/cli`.
+
+## Debug Curl presentation
+
+Runner keeps request execution arguments separate from their Debug
+presentation. `CurlBuild` applies these request-body rules:
+
+- an empty body adds no `--data-binary` argument;
+- a non-empty body of at most 1,024 Unicode characters is the final
+  `--data-binary` argument value; and
+- a longer body uses `@-` as that final value.
+
+`CurlExecute` receives the executable and argument list returned by
+`CurlBuild` unchanged and receives the original request body on standard input
+regardless of which body argument is selected.
+
+On the Debug path, `CurlRaw` derives the displayed statement from that same
+executable and argument list without mutating them. It preserves their order,
+separates every member with one ASCII space, and adds no trailing newline. If
+the final argument is the value following `--data-binary` and is not `@-`, it
+attempts `jq --compact-output .` using that value as input. Successful jq output
+replaces only the displayed value; invalid JSON or any jq failure retains the
+original value. It then wraps every value following `--header` or
+`--data-binary` in POSIX single quotes and encodes every embedded single quote
+as `'\''`. Every other argument remains untransformed. These presentation
+rules never redact header or body data and do not change the request executed
+by `CurlExecute`.
 
 ## Package ownership
 
@@ -52,7 +87,7 @@ hierarchy:
 | `internal/execution` | The key-value store, variable phases, response validation, step preparation, and staged execution. |
 | `internal/reporting` | Human-readable execution output through an injected standard-output writer. |
 | `pkg/errs` | Contextual error construction and exit-code metadata. |
-| `pkg/runner` | External-command operations. |
+| `pkg/runner` | External-command construction, unredacted Curl rendering, and execution operations. |
 
 The architecture test makes four ownership rules enforceable:
 
@@ -118,7 +153,9 @@ before it. Defaults remain values throughout resolution; the shared domain and
 Resolver contracts do not use `*domain.Defaults` pointers.
 
 `Step` has exactly the reference fields under `Vars`, `Request`, `Response`,
-and `Debug`, plus `Index` and source `Definition`. Fields typed as `YAMLString`
+and `Debug`, plus `Index`, runtime-only `RawCurl`, and source `Definition`.
+`RawCurl` retains the complete unredacted statement returned by
+`runner.CurlRaw` for the latest runtime request. Fields typed as `YAMLString`
 remain `YAMLString`; specs must not replace them with parallel presence or
 arbitrary-value wrappers.
 
@@ -134,7 +171,8 @@ arbitrary-value wrappers.
 `ExpectedStatus` is one deterministic HTTP status. Its zero value is the
 `<any>` substitute: when `ExpectedStatus == 0`, every `ActualStatus` is valid.
 For every non-zero `ExpectedStatus`, `ActualStatus` must equal it.
-`runner.Curl` supplies the two actual response values at runtime.
+`runner.Curl`, or `runner.CurlExecute` on the Debug path, supplies the two
+actual response values at runtime.
 Validator treats response types, status, and body as separate validation
 phases. Type validation builds a jq filter from `ExpectedTypes`, evaluates it
 against `ActualBody` through `runner.JQFilter`, and represents mismatches with a
@@ -144,8 +182,13 @@ diff string rather than as the fatal error result of `ValidateBody`.
 The JSON names on declarative and runtime step fields match their YAML names.
 Resolved request defaults are nested under `request.defaults` in both YAML and
 JSON, using the field names defined by `domain.Defaults`.
-`Definition` is omitted from JSON and `Index` is encoded as `index`. Reporter
-includes `index` when it serializes a step for debug output.
+`Definition` and `RawCurl` are omitted from YAML and JSON, while `Index` is
+omitted from YAML and encoded as `index` in JSON. Reporter includes `index`
+when it serializes a step for Debug output and emits `RawCurl` separately under
+`curl-command:`. Debug presentation preserves the shared `YAMLString` fields
+and projects only valid JSON values in `Request.Body`,
+`Response.ExpectedBody`, and `Response.ActualBody` as structured JSON; invalid
+or empty values remain strings.
 `DirectoryStage`, `DirectoryPath`, and `FilePath` derive provenance through
 `Step.Definition.File.Directory` exactly as implemented by the skeleton.
 
@@ -249,7 +292,8 @@ The following are not product requirements:
   construction, status rules beyond the documented `ExpectedStatus`
   comparison, or body-validation rules beyond the documented normalized
   expected-response comparison;
-- exact curl, jq, or Git argument vectors and command-result normalization;
+- curl, jq, or Git argument-vector choices and command-result normalization
+  beyond the request-body placement and Debug Curl presentation rules above;
 - success or validation-failure layouts not implemented or tested in
   `skeleton/`;
 - selection precedence when concurrent directories reach debug steps;
@@ -278,3 +322,10 @@ updated to match.
    by the PRD, architecture, and specification guides.
 6. No behavior listed as unspecified is asserted by a package guide.
 7. `go test ./...`, `go test -race ./...`, and `git diff --check` pass.
+8. Debug emits the exact provenance/Curl/Step layout, contains complete
+   unredacted runtime values, presents the Curl body according to the
+   1,024-character/final-argument, jq-compaction, fallback, and POSIX-quoting
+   rules above, presents valid request/expected/actual JSON bodies as structured
+   jq-prettified values while retaining other bodies as strings, uses the
+   `CurlBuild`/`CurlRaw`/`CurlExecute` sequence for debug steps, and preserves
+   terminal errors after reporting the latest available state.

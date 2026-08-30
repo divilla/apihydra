@@ -8,9 +8,10 @@ trap 'rm -rf -- "$test_root"' EXIT
 repo="$test_root/skeleton/repo with spaces"
 fake_bin="$test_root/bin"
 log="$test_root/tool.log"
-mkdir -p "$repo/pkg/runner" "$repo/scripts" "$repo/agent/specs" "$fake_bin"
+mkdir -p "$repo/pkg/runner" "$repo/scripts" "$repo/agent/specs" "$repo/agent/changes" "$fake_bin"
 cp "$script_dir/../Makefile" "$repo/Makefile"
 printf '%s\n' '# Domain types' >"$repo/agent/specs/000-domain-types.md"
+printf '%s\n' '# Enhanced debug' >"$repo/agent/changes/014-enhanced-debug.md"
 
 cat >"$fake_bin/go" <<'EOF'
 #!/usr/bin/env bash
@@ -113,6 +114,16 @@ grep -Fxq 'golint:apih/pkg/runner' "$log"
 expected_implement_log=$'create-change-branch.sh:agent/specs/000-domain-types.md\ncodex-code-spec.pl:agent/specs/000-domain-types.md\ncodex-review-loop.pl:agent/specs/000-domain-types.md'
 [[ $(<"$log") == "$expected_implement_log" ]]
 
+: >"$log"
+(
+	cd "$repo"
+	PATH="$fake_bin:$PATH" \
+		MAKEFILE_TEST_LOG="$log" \
+		make implement agent/changes/014-enhanced-debug.md
+)
+expected_change_log=$'create-change-branch.sh:agent/changes/014-enhanced-debug.md\ncodex-code-spec.pl:agent/changes/014-enhanced-debug.md\ncodex-review-loop.pl:agent/changes/014-enhanced-debug.md'
+[[ $(<"$log") == "$expected_change_log" ]]
+
 usage_error="$test_root/implement-usage-error"
 set +e
 (
@@ -122,6 +133,6 @@ set +e
 usage_status=$?
 set -e
 [[ $usage_status -eq 2 ]]
-grep -Fxq 'usage: make implement <spec-path>' "$usage_error"
+grep -Fxq 'usage: make implement <spec-or-change-path>' "$usage_error"
 
 printf '%s\n' 'Makefile tests passed'

@@ -2,18 +2,19 @@
 
 This directory contains maintained, user-owned helpers for working with the APIHydra repository. These files are intentional project tooling, not generated output or repository-hygiene candidates. Do not delete or relocate them without explicit user approval.
 
-## Implement a specification
+## Implement a specification or change
 
 Run the complete implementation and review workflow with:
 
 ```shell
 make implement agent/specs/000-domain-types.md
+make implement agent/changes/014-enhanced-debug.md
 ```
 
-This creates and checks out the specification's change branch, uses
-`$change-code` to implement the specification, commits that result, and then
-starts the review loop. Each findings pass uses `$change-fix-findings` before
-the loop commits and pushes the resulting fixes.
+This creates and checks out the entry's change branch, uses `$change-code` to
+implement the specification or change, commits that result, and then starts the
+review loop. Each findings pass uses `$change-fix-findings` before the loop
+commits and pushes the resulting fixes.
 
 ## `commit-user.pl` and `commit-agent.pl`
 
@@ -40,17 +41,19 @@ Both scripts resolve the repository root from their own location, so they can be
 
 ## `create-change-branch.sh`
 
-Create and check out a change branch for a specification:
+Create and check out a change branch for a specification or change:
 
 ```shell
 scripts/create-change-branch.sh agent/specs/000-domain-types.md
+scripts/create-change-branch.sh agent/changes/014-enhanced-debug.md
 ```
 
-The specification path must have the form `agent/specs/<spec-slug>.md`. The
-script requires a clean working tree, checks out `master`, fetches remote refs,
-and verifies that `master` is clean. It then creates and checks out
-`change/<spec-slug>`, stopping if that branch already exists locally or as an
-`origin` remote-tracking ref. On success, it prints the new branch name.
+The path must have the form `agent/{specs,changes}/<change-slug>.md`. The script
+requires a clean working tree, checks out `master`, fetches remote refs, and
+verifies that `master` is clean. It then checks out an existing local
+`change/<change-slug>` branch, creates a local tracking branch when only
+`origin/change/<change-slug>` exists, or creates a new branch when neither
+exists. On success, it prints the checked-out branch name.
 
 ## `change-merge-direct.pl`
 
@@ -77,15 +80,18 @@ clean, and `origin/master` must be its ancestor. The script rejects detached
 
 ## `codex-code-spec.pl`
 
-Implement a specification on its already-checked-out change branch:
+Implement a specification or change on its already-checked-out change branch:
 
 ```shell
 scripts/codex-code-spec.pl agent/specs/000-domain-types.md
+scripts/codex-code-spec.pl agent/changes/014-enhanced-debug.md
 ```
 
-The specification path must have the form `agent/specs/<spec-slug>.md`, and the
-current branch must be `change/<spec-slug>`. The script requires a clean working
-tree so the automated commit cannot absorb unrelated changes.
+The path must have the form `agent/{specs,changes}/<change-slug>.md`, and the
+current branch must be `change/<change-slug>`. Change documents make both Codex
+skills read the branch's changed PRD, architecture, specification, and change
+documents as one contract bundle. The script requires a clean working tree so
+the automated commit cannot absorb unrelated changes.
 
 The startup context is printed in `Repository`, `Specification`, `Branch`
 order, followed by an `=== Implementation ===` heading and the rendered Codex
@@ -99,7 +105,7 @@ interrupt behavior as `codex-review-loop.pl`. Raw JSON output is suppressed on
 success and printed on failure. When Codex succeeds, the script requires both a
 final response and repository changes. It prints the final response between the
 progress line and the changed-file list, then commits and pushes the changes as
-`Implement change <spec-slug>`. Temporary output stays outside the repository
+`Implement change <change-slug>`. Temporary output stays outside the repository
 and is removed on exit.
 
 ## `codex-review-loop.pl`

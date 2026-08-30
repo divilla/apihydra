@@ -273,7 +273,10 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		t.Fatalf("debug defaults = code %d, stdout %q, stderr %q, want success", debugDefaults.exitCode, debugDefaults.stdout, debugDefaults.stderr)
 	}
 	for _, want := range []string{
-		"Debug steps.yaml step 0:\n",
+		"stage: 0\ndir-path: /\nfile-path: steps.yaml\n\ncurl-command:\ncurl ",
+		`--write-out %{stderr}http-code:%{http_code} --data-binary '{"request":true}'`,
+		"--header 'Authorization: Bearer complete-debug-secret'",
+		"--header 'Cookie: session=unredacted-cookie'",
 		"\x1b[1;34m\"defaults\"\x1b[0m",
 		"\x1b[1;34m\"index\"\x1b[0m\x1b[1;39m:\x1b[0m \x1b[0;39m0\x1b[0m",
 		"\x1b[1;34m\"actual_body\"\x1b[0m",
@@ -284,14 +287,18 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 			t.Fatalf("debug defaults stdout = %q, want %q", debugDefaults.stdout, want)
 		}
 	}
-	if strings.Contains(debugDefaults.stdout, "[\x1b[38;5;10m✓\x1b[0m]") || !strings.HasSuffix(debugDefaults.stdout, "\x1b[0m\n\n") {
+	if strings.Contains(debugDefaults.stdout, "--output") || strings.Contains(debugDefaults.stdout, "apih-curl-response-") {
+		t.Fatalf("debug defaults stdout = %q, contains temporary curl response output", debugDefaults.stdout)
+	}
+	if strings.Contains(debugDefaults.stdout, "[\x1b[38;5;10m✓\x1b[0m]") || !strings.HasSuffix(debugDefaults.stdout, "\x1b[0m\n") {
 		t.Fatalf("debug defaults stdout = %q, want debug JSON as final output", debugDefaults.stdout)
 	}
 	plainDebug := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString(debugDefaults.stdout, "")
-	jsonStart := strings.IndexByte(plainDebug, '{')
+	jsonStart := strings.LastIndex(plainDebug, "\n{")
 	if jsonStart < 0 {
 		t.Fatalf("debug defaults stdout = %q, want JSON object", debugDefaults.stdout)
 	}
+	jsonStart++
 	var debugStep map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(plainDebug[jsonStart:])), &debugStep); err != nil {
 		t.Fatalf("decode debug defaults JSON: %v; stdout = %q", err, debugDefaults.stdout)
@@ -313,12 +320,44 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if debugStep["index"] != float64(0) {
 		t.Fatalf("debug index = %#v, want 0", debugStep["index"])
 	}
+	requestBody, ok := request["body"].(map[string]any)
+	if !ok || requestBody["request"] != true {
+		t.Fatalf("debug request.body = %#v, want prettified JSON object", request["body"])
+	}
 	response, ok := debugStep["response"].(map[string]any)
 	if !ok {
 		t.Fatalf("debug response = %#v, want object", debugStep["response"])
 	}
-	if _, ok := response["actual_body"].(map[string]any); !ok {
-		t.Fatalf("debug actual_body = %#v, want JSON object serialized from YAMLString", response["actual_body"])
+	actualBody, ok := response["actual_body"].(map[string]any)
+	if !ok || actualBody["version"] != float64(0) {
+		t.Fatalf("debug actual_body = %#v, want prettified JSON object", response["actual_body"])
+	}
+	expectedBody, ok := response["expected_body"].(map[string]any)
+	if !ok || expectedBody["version"] != float64(0) {
+		t.Fatalf("debug expected_body = %#v, want prettified JSON object", response["expected_body"])
+	}
+	if _, exists := debugStep["raw_curl"]; exists {
+		t.Fatalf("debug Step JSON contains runtime-only raw_curl: %#v", debugStep)
+	}
+
+	debugTerminalSuite := filepath.Join("scenarios", "debug-terminal-error")
+	debugTerminal := runCLI(t, ctx, binary, runRoot, coverageDir, debugTerminalSuite)
+	if debugTerminal.exitCode == 0 || debugTerminal.exitCode == 101 || debugTerminal.stderr == "" {
+		t.Fatalf("terminal debug = code %d, stdout %q, stderr %q, want fatal diagnostic", debugTerminal.exitCode, debugTerminal.stdout, debugTerminal.stderr)
+	}
+	for _, want := range []string{
+		"stage: 0\ndir-path: /\nfile-path: steps.yaml\n\ncurl-command:\ncurl ",
+		"Authorization: Bearer terminal-debug-secret",
+		`"actual_status"`,
+		`"actual_body"`,
+	} {
+		if !strings.Contains(debugTerminal.stdout, want) {
+			t.Fatalf("terminal debug stdout = %q, want %q", debugTerminal.stdout, want)
+		}
+	}
+	stringBodyDebug := runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "invalid-debug-request-body"))
+	if stringBodyDebug.exitCode != 0 || stringBodyDebug.stderr != "" || !strings.Contains(stringBodyDebug.stdout, `"not-json"`) {
+		t.Fatalf("string-body debug = code %d, stdout %q, stderr %q, want successful complete Step encoding", stringBodyDebug.exitCode, stringBodyDebug.stdout, stringBodyDebug.stderr)
 	}
 	nilExpectedTypes := runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "nil-expected-types"))
 	if nilExpectedTypes.exitCode != 101 || nilExpectedTypes.stderr != "" {
@@ -350,6 +389,9 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if requests.contains(observedRequest{method: http.MethodGet, path: "/after-debug"}) {
 		t.Fatal("HTTP requests contain /after-debug, want execution stopped at debug step")
 	}
+	if requests.contains(observedRequest{method: http.MethodGet, path: "/after-terminal-error"}) {
+		t.Fatal("HTTP requests contain /after-terminal-error, want terminal debug to stop execution")
+	}
 
 	fatalScenarios := []struct {
 		suite    string
@@ -365,7 +407,6 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		{filepath.Join("scenarios", "invalid-actual-body"), -1},
 		{filepath.Join("scenarios", "invalid-type-selector"), -1},
 		{filepath.Join("scenarios", "invalid-capture-selector"), -1},
-		{filepath.Join("scenarios", "invalid-debug-request-body"), -1},
 		{filepath.Join("scenarios", "duplicate-capture"), 103},
 		{filepath.Join("scenarios", "concurrent-fatal"), -1},
 	}

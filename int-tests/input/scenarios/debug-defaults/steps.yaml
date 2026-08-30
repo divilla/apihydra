@@ -4,6 +4,14 @@ spec:
   steps:
     - request:
         path: /zero-types
+        body: |
+          {
+            "request": true
+          }
+        defaults:
+          headers:
+            Authorization: Bearer complete-debug-secret
+            Cookie: session=unredacted-cookie
       response:
         expected_body: '{"version":0}'
       debug: true

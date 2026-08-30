@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/goccy/go-yaml"
@@ -115,6 +116,7 @@ func TestDomainSchemaMatchesReference(t *testing.T) {
 		{"Request", nil, `yaml:"request" json:"request"`},
 		{"Response", nil, `yaml:"response" json:"response"`},
 		{"Debug", reflect.TypeOf(false), `yaml:"debug" json:"debug"`},
+		{"RawCurl", reflect.TypeOf(""), `yaml:"-" json:"-"`},
 		{"Definition", reflect.TypeOf((*StepsDefinition)(nil)), `yaml:"-" json:"-"`},
 	})
 	assertFields(t, reflect.TypeOf(Step{}).Field(2).Type, []fieldSchema{
@@ -190,6 +192,7 @@ spec:
 	}
 
 	step.Index = 4
+	step.RawCurl = "curl --header Authorization: Bearer complete-secret"
 	encodedJSON, err := json.Marshal(step)
 	if err != nil {
 		t.Fatalf("Marshal JSON error = %v", err)
@@ -219,6 +222,14 @@ spec:
 	}
 	if got := document["index"]; got != float64(4) {
 		t.Fatalf("JSON index = %#v, want 4", got)
+	}
+	for _, omitted := range []string{"RawCurl", "raw_curl", "Definition", "definition"} {
+		if _, exists := document[omitted]; exists {
+			t.Fatalf("JSON contains runtime-only field %q", omitted)
+		}
+	}
+	if strings.Contains(string(encodedYAML), "curl --header") || strings.Contains(string(encodedJSON), "complete-secret") {
+		t.Fatal("runtime-only RawCurl was serialized")
 	}
 }
 

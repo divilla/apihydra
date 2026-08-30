@@ -1,6 +1,6 @@
 ---
 name: change-fix-findings
-description: Validate and fix review findings against a supplied specification in an existing codebase. Use for `$change-fix-findings` requests that identify the specification and provide findings inline or through standard input.
+description: Validate and fix review findings against a supplied specification or change in an existing codebase. Use for `$change-fix-findings` requests that identify the entry point and provide findings inline or through standard input.
 ---
 
 # Change Fix Findings
@@ -9,12 +9,18 @@ Treat the text after `$change-fix-findings` as the specification argument and
 the supplied findings as review feedback. Read the specification and all
 findings before editing.
 
+For an `agent/changes/*.md` argument, also read every current PRD,
+architecture, specification, and change document changed on the branch from
+the merge base with `origin`'s default branch. Treat them as one contract
+bundle, with the supplied change document as its entry point.
+
 ## Validate
 
 1. Read `AGENTS.md`, `skeleton/`, `agent/prd.md`, the supplied specification,
    and `agent/architecture.md`.
 2. Resolve conflicts in this order: `AGENTS.md` > `skeleton/` >
-   `agent/prd.md` > supplied specification > `agent/architecture.md`.
+   `agent/prd.md` > implementation guides or supplied change >
+   `agent/architecture.md`.
 3. Inspect repository status and the code, tests, and documentation relevant to
    each finding. Preserve unrelated user changes.
 4. Validate each finding against the contracts and repository evidence. Treat
@@ -40,7 +46,7 @@ fixes, and contract drift. Fix failures caused by the changes and report exact
 evidence for unrelated failures.
 
 When valid findings change the repository, append their statistics to the
-latest matching specification block in the repository-root
+latest matching implementation block in the repository-root
 `implementation-log.md`. The skill owns this write; do not leave it to caller
 scripts. Replace the block's final blank line with this exact line followed by
 one blank line:

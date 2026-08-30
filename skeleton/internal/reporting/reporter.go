@@ -83,9 +83,26 @@ func (r *Reporter) ValidationBody(ctx context.Context, step *domain.Step, diff s
 	return nil
 }
 
-// Debug reports the final runtime state of a selected debug step to the
-// injected standard-output writer. It returns a reporting error without
-// terminating execution.
+// Debug reports the latest runtime state of a selected debug step to the
+// injected standard-output writer with exactly these fields and blank lines:
+//
+//	stage: <Step.DirectoryStage()>
+//	dir-path: <Step.DirectoryPath()>
+//	file-path: <Step.FilePath()>
+//
+//	curl-command:
+//	<Step.RawCurl>
+//
+//	<prettified-and-ANSI-colored-Step-JSON>
+//
+// RawCurl and Definition remain absent from the Step JSON according to their
+// JSON tags. Debug preserves every other Step member and value, projecting only
+// Request.Body, Response.ExpectedBody, and Response.ActualBody for display:
+// valid JSON strings are embedded as JSON values, while empty or invalid JSON
+// remains encoded as a string. It neither redacts nor omits data. Debug
+// atomically suppresses all later reporting calls after successfully writing
+// the complete block. It returns a reporting error without terminating
+// execution.
 func (r *Reporter) Debug(ctx context.Context, step *domain.Step) error {
 	// TODO: implement
 	return nil

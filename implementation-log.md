@@ -70,3 +70,8 @@
 2026-26-08 15:46 013-unified-defaults-structure
 +13 -13 code - +78 -69 tests --- review fixes 01
 +2 -16 code - +11 -0 tests --- review fixes 02
+
+2026-30-08 12:13 014-enhanced-debug
++164 -114 code - +248 -51 tests --- change
++29 -12 code - +29 -0 tests --- review fixes 01
++2 -4 code - +41 -0 tests --- review fixes 02
