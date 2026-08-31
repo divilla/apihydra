@@ -17,6 +17,20 @@ import (
 
 func runPlatformSpecificScenarios(t *testing.T, ctx context.Context, binary, workDir, coverageDir string) {
 	t.Helper()
+	t.Run("live PTY active-stage redraw", func(t *testing.T) {
+		result := runCLIWithPTY(t, ctx, binary, workDir, coverageDir, filepath.Join("test2", "validation"))
+		if result.exitCode != 101 || result.stderr != "" {
+			t.Fatalf("PTY validation result = code %d, stderr %q", result.exitCode, result.stderr)
+		}
+		if !strings.Contains(result.stdout, "\x1b[7A\r\x1b[J") {
+			t.Fatalf("PTY output has no viewport-capped active-stage redraw sequence: %q", result.stdout)
+		}
+		debug := runCLIWithPTY(t, ctx, binary, workDir, coverageDir, filepath.Join("scenarios", "debug-defaults"))
+		if debug.exitCode != 0 || debug.stderr != "" || !strings.Contains(debug.stdout, "curl-command:") {
+			t.Fatalf("PTY Debug result = code %d, stdout %q, stderr %q", debug.exitCode, debug.stdout, debug.stderr)
+		}
+	})
+
 	t.Run("closed PTY output failures", func(t *testing.T) {
 		for _, suite := range []string{
 			filepath.Join("scenarios", "success-output"),
@@ -49,12 +63,52 @@ func runPlatformSpecificScenarios(t *testing.T, ctx context.Context, binary, wor
 	})
 }
 
+func runCLIWithPTY(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string) cliResult {
+	t.Helper()
+	master, slave := openPTY(t)
+	cmd := exec.CommandContext(ctx, binary, suite)
+	cmd.Dir = workDir
+	cmd.Env = cliEnvironment(coverageDir)
+	var stderr strings.Builder
+	cmd.Stdout = slave
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		_ = master.Close()
+		_ = slave.Close()
+		t.Fatalf("start PTY %s: %v", suite, err)
+	}
+	_ = slave.Close()
+
+	var stdout strings.Builder
+	buffer := make([]byte, 4096)
+	for {
+		count, readErr := master.Read(buffer)
+		if count > 0 {
+			_, _ = stdout.Write(buffer[:count])
+		}
+		if readErr != nil {
+			break
+		}
+	}
+	_ = master.Close()
+	err := cmd.Wait()
+	exitCode := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("wait PTY %s: %v", suite, err)
+		}
+		exitCode = exitErr.ExitCode()
+	}
+	return cliResult{exitCode: exitCode, stdout: stdout.String(), stderr: stderr.String()}
+}
+
 func runCLIWithClosedPTY(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string) cliResult {
 	t.Helper()
 	master, slave := openPTY(t)
 	cmd := exec.CommandContext(ctx, binary, suite)
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "GOCOVERDIR="+coverageDir)
+	cmd.Env = cliEnvironment(coverageDir)
 	var stderr strings.Builder
 	cmd.Stdout = slave
 	cmd.Stderr = &stderr
@@ -107,6 +161,17 @@ func openPTY(t *testing.T) (*os.File, *os.File) {
 		_ = master.Close()
 		t.Fatalf("open PTY slave: %v", err)
 	}
+	size := struct {
+		rows    uint16
+		columns uint16
+		xpixels uint16
+		ypixels uint16
+	}{rows: 8, columns: 40}
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, slave.Fd(), syscall.TIOCSWINSZ, uintptr(unsafe.Pointer(&size))); errno != 0 {
+		_ = master.Close()
+		_ = slave.Close()
+		t.Fatalf("set PTY size: %v", errno)
+	}
 	return master, slave
 }
 
@@ -124,7 +189,7 @@ func runCLIWhileRevokingDirectory(t *testing.T, ctx context.Context, binary, wor
 
 	cmd := exec.CommandContext(ctx, binary, suite)
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "GOCOVERDIR="+coverageDir)
+	cmd.Env = cliEnvironment(coverageDir)
 	var stdout strings.Builder
 	var stderr strings.Builder
 	cmd.Stdout = &stdout

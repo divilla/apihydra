@@ -1,0 +1,10 @@
+app: apihydra
+kind: steps
+metadata:
+  name: ordered-directory-fast
+spec:
+  steps:
+    - request:
+        path: /fast-success
+      response:
+        expected_status: 200

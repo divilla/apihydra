@@ -12,6 +12,7 @@ spec:
           headers:
             Authorization: Bearer complete-debug-secret
             Cookie: session=unredacted-cookie
+            X-Visual-Tab: "before\tafter"
       response:
         expected_body: '{"version":0}'
       debug: true

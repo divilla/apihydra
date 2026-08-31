@@ -15,7 +15,8 @@ The binding skeleton defines Validator's API, comparison contracts, and error
 classifications. This guide does not reproduce them. Separate type, status,
 and body operations let Executor report every nonfatal mismatch through the
 corresponding Reporter method. Executor defines invocation order and
-suite-level result handling.
+suite-level result handling. Validator retains the injected `domain.Config` so
+body diffs use `Config.TempRunDir` without global state.
 
 ## Deliberately unspecified
 
@@ -57,9 +58,9 @@ Projection must never synthesize a missing field as `null`. Consequently, an
 expected `"aaa": null` fails validation when the actual response omits `aaa`,
 while an actual `"aaa": null` satisfies that field. On inequality, Validator
 passes the unchanged normalized expected body and filtered normalized actual
-body to `runner.GitDiff`. Runner presents that mismatch as the correction from
-actual to expected: red values come from actual and green values come from
-expected.
+body to `runner.GitDiff` together with `Config.TempRunDir`. Runner presents that
+mismatch as the correction from actual to expected: red values come from actual
+and green values come from expected.
 
 ## Required implementation and tests
 
@@ -74,8 +75,9 @@ expected.
 
 ## Acceptance criteria
 
-1. Exported names, signatures, and static error text match the reference, and
-   production methods do not retain zero-value TODO bodies.
+1. Exported names, signatures, constructor-retained Config, and static error
+   text match the reference, and production methods do not retain zero-value
+   TODO bodies.
 2. Type validation builds a filter from `ExpectedTypes`, evaluates it against
    the `YAMLString` `ActualBody` with `runner.JQFilter`, and returns
    `(failed string, error)`.
@@ -87,9 +89,9 @@ expected.
    and requires exact equality otherwise. Body validation prettifies the
    expected body unchanged, projects only present actual fields selected by the
    expected shape, does not equate a missing field with an expected null, returns
-   an empty diff for equal normalized bodies, and returns the `GitDiff` result
-   for unequal bodies without swapping the normalized expected and actual
-   arguments.
+   an empty diff for equal normalized bodies, and returns the run-directory-
+   scoped `GitDiff` result for unequal bodies without swapping the normalized
+   expected and actual arguments.
 4. Validator does not print, schedule work, or choose the process exit code.
 5. No validation language, comparison algorithm, external-tool dependency, or
    failure payload absent from the skeleton is specified here.

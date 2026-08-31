@@ -26,7 +26,8 @@ command construction and execution internals remain encapsulated by Runner.
 `JQProject` and `JQExtract` are distinct operations: projection preserves a
 selected object shape for document comparison, while extraction returns the
 selected value for capture. `JQFilter` is the generic filtering boundary used
-by type validation. `GitDiff` replaces any legacy `BatDiff`/`bat` boundary.
+by type validation. `GitDiff` replaces any legacy `BatDiff`/`bat` boundary and
+receives the CLI-created run directory explicitly.
 
 ## Deliberately unspecified
 
@@ -37,8 +38,7 @@ body-placement and raw-rendering rules, the reference does not fix:
 
 - the executable and remaining argument-list choices made for Curl, jq, and Git
   operations;
-- use of temporary files or environment variables, and stdin policy outside
-  Curl's binding request-body contract;
+- stdin policy outside Curl's binding request-body contract;
 - sorting beyond the `JQProject` and `JQPretty` result descriptions, including
   `JQFilter` output formatting;
 - treatment of empty inputs, jq streams, or semantic non-zero statuses;
@@ -71,7 +71,10 @@ contract:
   data value is the final Curl argument. In both cases, the original request
   body remains command standard input and is visible in Debug through
   `Step.Request.Body`.
-- `GitDiff(expected, actual)` keeps the named documents separate but compares
+- `GitDiff(tempRunDir, expected, actual)` creates private operation directories
+  only below `tempRunDir/git-diff`, removes each operation directory before
+  returning, never uses or falls back to the system temporary directory, keeps
+  the named documents separate, and compares
   `actual` as the source with `expected` as the target. Red `-` values are
   actual values to remove or replace; green `+` values are expected values to
   add. Runner explicitly selects terminal palette color 210 (`#ff8787`) for
@@ -89,7 +92,11 @@ contract:
   operations and retains the binding exported API and static errors.
 - Test output: `pkg/runner/runner_test.go` covers successful results, command
   startup/failure/cancellation, data passed to each operation, and result/error
-  normalization chosen within the contract. Curl coverage proves `Curl` is
+  normalization chosen within the contract. GitDiff coverage proves every
+  artifact is namespaced under the injected run directory, concurrent
+  operations use distinct private children, operation cleanup is attempted on
+  every return, and the shared OS temporary directory is unused. Curl coverage
+  proves `Curl` is
   equivalent to `CurlBuild` plus `CurlExecute`, the executable and arguments
   reach execution unchanged, the request body reaches standard input, and
   `CurlBuild` uses the inclusive 1,024-Unicode-character threshold and final
@@ -110,8 +117,9 @@ contract:
    `CurlBuild`, `CurlRaw`, and `CurlExecute` neither expose `exec.Cmd` nor move
    command execution outside Runner.
 3. `JQFilter` evaluates its filter against its input, `JQProject` and
-   `JQPretty` return comparable normalized JSON, and `GitDiff` preserves the
-   color behavior required by the reference contract.
+   `JQPretty` return comparable normalized JSON, and `GitDiff` uses only its
+   injected run directory while preserving the color behavior required by the
+   reference contract.
 4. No external command is invoked by another production package.
 5. No `BatDiff`, `bat` dependency, additional shell policy, or command-line
    contract beyond the reference-defined compaction and quoting is invented

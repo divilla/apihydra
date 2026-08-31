@@ -75,3 +75,13 @@
 +164 -114 code - +248 -51 tests --- change
 +29 -12 code - +29 -0 tests --- review fixes 01
 +2 -4 code - +41 -0 tests --- review fixes 02
+
+2026-30-08 23:53 015-parallelism-and-tmp-dir
++562 -203 code - +1242 -124 tests --- change
++26 -4 code - +166 -12 tests --- review fixes 01
++92 -15 code - +258 -60 tests --- review fixes 02
++62 -31 code - +96 -73 tests --- review fixes 03
++25 -6 code - +21 -2 tests --- review fixes 04
++13 -2 code - +78 -7 tests --- review fixes 05
++3 -3 code - +25 -2 tests --- review fixes 06
++46 -21 code - +37 -0 tests --- review fixes 07

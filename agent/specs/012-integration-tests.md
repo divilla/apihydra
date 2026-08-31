@@ -56,8 +56,8 @@ YAML remains static and unchanged.
 
 ## Deliberately unspecified
 
-Except for the exact Debug layout and the actual Curl statement exposed by the
-Debug contract, the suite does not make Reporter layout, same-stage ordering,
+Except for the exact Debug layout, actual Curl statement, and binding ordered
+stage transaction contract, the suite does not make Reporter presentation,
 particular external-command argument choices, or other PRD-unspecified choices
 into assertions. Other scenarios check only stable output fragments needed to
 identify the selected work directory or a fatal diagnostic.
@@ -100,4 +100,11 @@ identify the selected work directory or a fatal diagnostic.
    retains the terminal exit code and stderr diagnostic, and executes no later
    step or stage.
 10. `make integration-test`, `go test ./...`, `go test -race ./...`, and
-   `git diff --check` pass after guides `000` through `011` are implemented.
+    `git diff --check` pass after guides `000` through `011` are implemented.
+11. Scenarios cover native pflag forms and rejection rules, all three
+    parallelism modes, sequential stage barriers, deterministic logical
+    directory/file/step output order under deliberately reversed completion,
+    live active-stage terminal redraws, one-shot non-terminal stage output,
+    final fatal diagnostic ordering, use of a unique
+    `os.UserCacheDir()/apih/run-*` directory, and best-effort run-directory
+    cleanup without any system-temporary fallback.

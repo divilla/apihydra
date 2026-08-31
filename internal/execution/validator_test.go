@@ -14,8 +14,13 @@ import (
 )
 
 func TestValidatorExportedContract(t *testing.T) {
-	if validator := NewValidator(); validator == nil {
-		t.Fatal("NewValidator() = nil")
+	config := domain.Config{TempRunDir: t.TempDir()}
+	validator := NewValidator(config)
+	if validator == nil {
+		t.Fatal("NewValidator(domain.Config{}) = nil")
+	}
+	if validator.config != config {
+		t.Fatalf("NewValidator() config = %#v, want %#v", validator.config, config)
 	}
 	if got, want := ErrValidation.Error(), "validation error"; got != want {
 		t.Fatalf("ErrValidation = %q, want %q", got, want)
@@ -24,7 +29,7 @@ func TestValidatorExportedContract(t *testing.T) {
 		t.Fatalf("ErrValidatorFatal = %q, want %q", got, want)
 	}
 
-	var _ func() *Validator = NewValidator
+	var _ func(domain.Config) *Validator = NewValidator
 	var _ func(*Validator, context.Context, *domain.Step) error = (*Validator).ValidateStatus
 	var _ func(*Validator, context.Context, *domain.Step) (string, error) = (*Validator).ValidateBody
 	var _ func(*Validator, context.Context, *domain.Step) (string, error) = (*Validator).ValidateTypes
@@ -48,7 +53,7 @@ func TestValidateStatusSupportsWildcardAndExactComparison(t *testing.T) {
 			step.Response.ActualStatus = test.actual
 			wantStep := *step
 
-			err := NewValidator().ValidateStatus(context.Background(), step)
+			err := NewValidator(domain.Config{}).ValidateStatus(context.Background(), step)
 			if got := errors.Is(err, ErrValidation); got != test.wantErr {
 				t.Fatalf("ValidateStatus() error = %v, ErrValidation = %t, want %t", err, got, test.wantErr)
 			}
@@ -109,7 +114,7 @@ printf '%s\n' '{"selector":".active","expected":["boolean"],"actual":"string"}'
 	step.Response.ExpectedTypes = map[string][]string{".active": {"boolean"}}
 	wantStep := cloneValidatorStep(step)
 
-	failed, err := NewValidator().ValidateTypes(context.Background(), step)
+	failed, err := NewValidator(domain.Config{}).ValidateTypes(context.Background(), step)
 	if err != nil {
 		t.Fatalf("ValidateTypes() error = %v", err)
 	}
@@ -135,7 +140,7 @@ func TestValidateTypesReturnsEmptyResultWhenAllTypesMatch(t *testing.T) {
 	step := &domain.Step{}
 	step.Response.ActualBody = `{"active":true}`
 
-	failed, err := NewValidator().ValidateTypes(context.Background(), step)
+	failed, err := NewValidator(domain.Config{}).ValidateTypes(context.Background(), step)
 	if err != nil || failed != "" {
 		t.Fatalf("ValidateTypes() = (%q, %v), want empty success", failed, err)
 	}
@@ -160,7 +165,8 @@ printf '%s\n' '}'
 	step.Response.ActualBody = `{"a":1,"b":2}`
 	wantStep := cloneValidatorStep(step)
 
-	diff, err := NewValidator().ValidateBody(context.Background(), step)
+	tempRunDir := t.TempDir()
+	diff, err := NewValidator(domain.Config{TempRunDir: tempRunDir}).ValidateBody(context.Background(), step)
 	if err != nil || diff != "" {
 		t.Fatalf("ValidateBody() = (%q, %v), want empty success", diff, err)
 	}
@@ -187,7 +193,7 @@ func TestValidateBodySkipsUnspecifiedExpectedBody(t *testing.T) {
 	step.Response.ActualBody = `{"ignored":true}`
 	wantStep := cloneValidatorStep(step)
 
-	diff, err := NewValidator().ValidateBody(context.Background(), step)
+	diff, err := NewValidator(domain.Config{}).ValidateBody(context.Background(), step)
 	if err != nil || diff != "" {
 		t.Fatalf("ValidateBody() = (%q, %v), want empty success", diff, err)
 	}
@@ -226,7 +232,8 @@ exit 1
 	step := &domain.Step{}
 	step.Response.ExpectedBody = `{"value":"expected"}`
 	step.Response.ActualBody = `{"value":"actual"}`
-	diff, err := NewValidator().ValidateBody(context.Background(), step)
+	tempRunDir := t.TempDir()
+	diff, err := NewValidator(domain.Config{TempRunDir: tempRunDir}).ValidateBody(context.Background(), step)
 	if err != nil {
 		t.Fatalf("ValidateBody() error = %v", err)
 	}
@@ -239,6 +246,13 @@ exit 1
 	}
 	if got := readValidatorFile(t, actualPath); got != `{"value":"actual"}` {
 		t.Fatalf("GitDiff actual = %q, want normalized actual body", got)
+	}
+	entries, err := os.ReadDir(filepath.Join(tempRunDir, "git-diff"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("Validator retained GitDiff operation artifacts: %v", entries)
 	}
 }
 
@@ -308,7 +322,7 @@ esac
 			step.Response.ExpectedTypes = map[string][]string{".": {"object"}}
 			wantStep := cloneValidatorStep(step)
 
-			result, err := test.call(NewValidator(), step)
+			result, err := test.call(NewValidator(domain.Config{TempRunDir: t.TempDir()}), step)
 			if result != "" || !errors.Is(err, ErrValidatorFatal) || !errors.Is(err, test.want) {
 				t.Fatalf("validator result = (%q, %v), want empty fatal %v", result, err, test.want)
 			}
@@ -331,11 +345,11 @@ func TestValidatorPropagatesContextCancellation(t *testing.T) {
 	step.Response.ExpectedBody = `{}`
 	step.Response.ActualBody = `{}`
 
-	failed, typeErr := NewValidator().ValidateTypes(ctx, step)
+	failed, typeErr := NewValidator(domain.Config{}).ValidateTypes(ctx, step)
 	if failed != "" || !errors.Is(typeErr, context.Canceled) || !errors.Is(typeErr, ErrValidatorFatal) {
 		t.Fatalf("ValidateTypes(canceled) = (%q, %v), want canceled fatal error", failed, typeErr)
 	}
-	diff, bodyErr := NewValidator().ValidateBody(ctx, step)
+	diff, bodyErr := NewValidator(domain.Config{}).ValidateBody(ctx, step)
 	if diff != "" || !errors.Is(bodyErr, context.Canceled) || !errors.Is(bodyErr, ErrValidatorFatal) {
 		t.Fatalf("ValidateBody(canceled) = (%q, %v), want canceled fatal error", diff, bodyErr)
 	}

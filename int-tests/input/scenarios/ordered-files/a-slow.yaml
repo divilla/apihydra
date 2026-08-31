@@ -1,0 +1,10 @@
+app: apihydra
+kind: steps
+metadata:
+  name: ordered-file-slow
+spec:
+  steps:
+    - request:
+        path: /slow-success
+      response:
+        expected_status: 200

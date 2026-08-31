@@ -22,16 +22,27 @@ that reference except for removing the `apih/skeleton/` import prefix. This
 guide does not reproduce the reference code or control flow.
 
 Keeping composition in `cmd/cli` prevents definition, execution, and reporting
-packages from acquiring process-level responsibilities. The CLI adds no flags,
-filters, debug-selection policy, exported helpers, configuration types, or
-alternate application constructors absent from the reference.
+packages from acquiring process-level responsibilities. CLI uses native
+`pflag` behavior to populate the binding `domain.Config`, validates the
+parallelism range and single optional directory, creates the per-run cache
+directory, detects terminal stdout for Reporter, and injects Config into
+Validator and Executor. It adds no filters, debug-selection policy, exported
+helpers, configuration carriers, or alternate application constructors absent
+from the reference.
+
+Every valid run owns one private `run-*` directory below
+`os.UserCacheDir()/apih`. `run` defers best-effort removal of the entire
+directory and suppresses every cleanup failure. Abrupt termination may leave a
+run directory. Help and invalid invocations do not create one.
 
 ## Application package tests
 
 Tests remain in `cmd/cli/*_test.go` and follow
 `skeleton/cmd/cli/main_test.go`, using production import paths. They verify
-invalid-path rejection, successful main-flow completion, and output failure
-handling without adding production test seams absent from the skeleton.
+native pflag forms, help, invalid arguments and paths, cache creation and silent
+best-effort cleanup, successful main-flow completion, terminal detection,
+output failure handling, and final diagnostic ordering without adding
+production test seams absent from the skeleton.
 
 Black-box subprocess fixtures and application coverage belong to
 [`012-integration-tests.md`](012-integration-tests.md), not this package guide.
@@ -51,18 +62,27 @@ Black-box subprocess fixtures and application coverage belong to
 
 1. `cmd/cli/main.go` is identical to `skeleton/cmd/cli/main.go` after replacing
    `apih/skeleton/` import prefixes with `apih/`.
-2. Invalid selected paths return `errs.ExitConfiguration` and no working
-   directory output; a successful main flow returns `0` after
-   reporting the working directory.
-3. Reporter output failures return `errs.ExitInternal` and preserve the writer
+2. Native pflag attached, equals, repeated, interspersed, and `--` behavior is
+   preserved. `-p`/`--parallelism` defaults to `1`, the last occurrence wins,
+   only `0..2` is valid, at most one directory is accepted, help exits `0` on
+   stdout without a run, and other invocation errors exit `102` on stderr.
+3. Invalid selected paths return `errs.ExitConfiguration` and no working
+   directory output; a successful main flow returns `0` after reporting the
+   working directory.
+4. Every valid run uses a unique private directory below
+   `os.UserCacheDir()/apih`, injects it as `Config.TempRunDir`, and attempts to
+   remove it on every controlled return. Cleanup failures are silent and do not
+   alter results or produce output.
+5. Reporter output failures return `errs.ExitInternal` and preserve the writer
    failure.
-4. Fatal errors are logged to stderr and retain the exact product exit code
-   returned by `run`.
-5. After `Resolver.ResolveSteps`, the application constructs the execution
+6. Fatal errors are logged to stderr after the final ordered stdout stage
+   render, retain the exact product exit code returned by `run`, include the
+   available directory/file/step provenance, and are followed by no output.
+7. After `Resolver.ResolveSteps`, the application constructs the execution
    collaborators, validates the directory tree, prepares runtime steps, plans
    stages, and executes the plan in the exact order represented by the
    skeleton, without adding behavior absent from that reference.
-6. `go test ./cmd/cli`, `go test ./...`, `go test -race ./...`, and
+8. `go test ./cmd/cli`, `go test ./...`, `go test -race ./...`, and
    `git diff --check` pass.
-7. With guides `000` through `010` implemented, completing this guide produces
+9. With guides `000` through `010` implemented, completing this guide produces
    a runnable `apih` application and enables the `012` black-box suite.

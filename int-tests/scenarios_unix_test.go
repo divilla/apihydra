@@ -34,6 +34,16 @@ func runUnixSpecificScenarios(t *testing.T, ctx context.Context, binary, runRoot
 	if missingGit.exitCode == 0 || missingGit.exitCode == 101 || missingGit.stderr == "" {
 		t.Fatalf("missing-git result = code %d, stderr %q, want fatal diagnostic", missingGit.exitCode, missingGit.stderr)
 	}
+	for name, curlScript := range map[string]string{
+		"missing status": "#!/bin/sh\nprintf 'response without status'\n",
+		"invalid status": "#!/bin/sh\nprintf 'response'\nprintf 'http-code:not-a-number' >&2\n",
+	} {
+		malformedCurlTools := createToolDirectory(t, map[string]string{"curl": curlScript}, []string{"jq", "git"})
+		malformedCurl := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "success-output"), "PATH="+malformedCurlTools)
+		if malformedCurl.exitCode == 0 || malformedCurl.exitCode == 101 || malformedCurl.stderr == "" {
+			t.Fatalf("curl %s result = code %d, stderr %q, want fatal diagnostic", name, malformedCurl.exitCode, malformedCurl.stderr)
+		}
+	}
 
 	unavailableTemp := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "curl-failure"), "TMPDIR="+filepath.Join(tempRoot, "missing-temp"))
 	if unavailableTemp.exitCode != 0 || unavailableTemp.stderr != "" {
@@ -70,47 +80,69 @@ func runUnixSpecificScenarios(t *testing.T, ctx context.Context, binary, runRoot
 		t.Fatalf("debug-jq failure result = code %d, stderr %q, want fatal diagnostic", debugJQFailure.exitCode, debugJQFailure.stderr)
 	}
 
+	operationCacheRoot := filepath.Join(tempRoot, "git-operation-cache")
+	operationCache := userCacheDirectory(operationCacheRoot)
+	if err := os.MkdirAll(operationCache, 0o700); err != nil {
+		t.Fatalf("create Git operation cache: %v", err)
+	}
+	operationCounter := filepath.Join(tempRoot, "git-operation-jq-counter")
+	operationScript := fmt.Sprintf("#!/bin/sh\ncount=0\nif [ -f %q ]; then read count < %q; fi\ncount=$((count + 1))\nprintf '%%s' \"$count\" > %q\nif [ \"$count\" -eq 1 ]; then for run in %q/apih/run-*; do /bin/mkdir \"$run/git-diff\"; /bin/chmod 500 \"$run/git-diff\"; done; exit 0; fi\nif [ \"$count\" -eq 2 ]; then printf '{\"value\":1}'; else printf '{\"value\":2}'; fi\n", operationCounter, operationCounter, operationCounter, operationCache)
+	operationTools := createToolDirectory(t, map[string]string{"jq": operationScript}, []string{"curl", "git"})
+	operationEnvironment := append([]string{"PATH=" + operationTools}, userCacheEnvironment(operationCacheRoot)...)
+	operationFailure := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("test2", "body-only"), operationEnvironment...)
+	if operationFailure.exitCode == 0 || operationFailure.exitCode == 101 || operationFailure.stderr == "" {
+		t.Fatalf("Git operation-directory failure = code %d, stderr %q, want fatal diagnostic", operationFailure.exitCode, operationFailure.stderr)
+	}
+
 	t.Run("permission-denial scenarios", func(t *testing.T) {
 		requirePermissionDenialScenarios(t)
 
-		gitTemp := filepath.Join(tempRoot, "git-temp-denied")
-		if err := os.Mkdir(gitTemp, 0o700); err != nil {
-			t.Fatalf("create Git temp directory: %v", err)
+		lockedCacheRoot := filepath.Join(tempRoot, "locked-cache")
+		lockedAppCache := filepath.Join(userCacheDirectory(lockedCacheRoot), "apih")
+		if err := os.MkdirAll(filepath.Dir(lockedAppCache), 0o700); err != nil {
+			t.Fatalf("create application cache parent: %v", err)
+		}
+		if err := os.Symlink("/proc", lockedAppCache); err != nil {
+			t.Fatalf("create unwritable application cache link: %v", err)
+		}
+		runDirectoryFailure := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "success-output"), userCacheEnvironment(lockedCacheRoot)...)
+		if runDirectoryFailure.exitCode != 103 || runDirectoryFailure.stdout != "" || runDirectoryFailure.stderr == "" {
+			t.Fatalf("run directory failure = code %d, stdout %q, stderr %q", runDirectoryFailure.exitCode, runDirectoryFailure.stdout, runDirectoryFailure.stderr)
+		}
+
+		gitCacheRoot := filepath.Join(tempRoot, "git-cache-denied")
+		gitCache := userCacheDirectory(gitCacheRoot)
+		if err := os.MkdirAll(gitCache, 0o700); err != nil {
+			t.Fatalf("create Git cache directory: %v", err)
 		}
 		gitCounter := filepath.Join(tempRoot, "git-jq-counter")
-		gitTempScript := fmt.Sprintf("#!/bin/sh\ncount=0\nif [ -f %q ]; then read count < %q; fi\ncount=$((count + 1))\nprintf '%%s' \"$count\" > %q\nif [ \"$count\" -eq 1 ]; then /bin/chmod 500 %q; exit 0; fi\nif [ \"$count\" -eq 2 ]; then printf '{\"value\":1}'; else printf '{\"value\":2}'; fi\n", gitCounter, gitCounter, gitCounter, gitTemp)
+		gitTempScript := fmt.Sprintf("#!/bin/sh\ncount=0\nif [ -f %q ]; then read count < %q; fi\ncount=$((count + 1))\nprintf '%%s' \"$count\" > %q\nif [ \"$count\" -eq 1 ]; then for run in %q/apih/run-*; do /bin/chmod 500 \"$run\"; done; exit 0; fi\nif [ \"$count\" -eq 2 ]; then printf '{\"value\":1}'; else printf '{\"value\":2}'; fi\n", gitCounter, gitCounter, gitCounter, gitCache)
 		gitTempTools := createToolDirectory(t, map[string]string{"jq": gitTempScript}, []string{"curl", "git"})
-		gitTempFailure := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("test2", "body-only"), "PATH="+gitTempTools, "TMPDIR="+gitTemp)
-		if err := os.Chmod(gitTemp, 0o700); err != nil {
-			t.Fatalf("restore Git temp directory: %v", err)
-		}
+		gitTempEnvironment := append([]string{"PATH=" + gitTempTools}, userCacheEnvironment(gitCacheRoot)...)
+		gitTempFailure := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("test2", "body-only"), gitTempEnvironment...)
 		if gitTempFailure.exitCode == 0 || gitTempFailure.exitCode == 101 || gitTempFailure.stderr == "" {
 			t.Fatalf("Git temp failure result = code %d, stderr %q, want fatal diagnostic", gitTempFailure.exitCode, gitTempFailure.stderr)
 		}
 
-		curlPath, err := exec.LookPath("curl")
-		if err != nil {
-			t.Fatalf("locate curl: %v", err)
+		umaskCacheRoot := filepath.Join(tempRoot, "umask-cache")
+		if err := os.Mkdir(umaskCacheRoot, 0o777); err != nil {
+			t.Fatalf("create umask cache directory: %v", err)
 		}
-		umaskTemp := filepath.Join(tempRoot, "umask-temp")
-		if err := os.Mkdir(umaskTemp, 0o777); err != nil {
-			t.Fatalf("create umask temp directory: %v", err)
-		}
-		curlProxy := fmt.Sprintf("#!/bin/sh\nfor directory in \"$TMPDIR\"/*; do\n  if [ -d \"$directory\" ]; then /bin/chmod 700 \"$directory\"; fi\ndone\nexec %q \"$@\"\n", curlPath)
-		umaskTools := createToolDirectory(t, map[string]string{"curl": curlProxy}, []string{"jq", "git"})
-		gitExpectedFailure := runCLIWithUmask(t, ctx, binary, runRoot, coverageDir, filepath.Join("test2", "body-only"), "PATH="+umaskTools, "TMPDIR="+umaskTemp)
+		gitExpectedFailure := runCLIWithUmask(t, ctx, binary, runRoot, coverageDir, filepath.Join("test2", "body-only"), userCacheEnvironment(umaskCacheRoot)...)
 		if gitExpectedFailure.exitCode == 0 || gitExpectedFailure.exitCode == 101 || gitExpectedFailure.stderr == "" {
 			t.Fatalf("Git expected-file failure result = code %d, stderr %q, want fatal diagnostic", gitExpectedFailure.exitCode, gitExpectedFailure.stderr)
 		}
 
-		gitActualTemp := filepath.Join(tempRoot, "git-actual-temp")
-		if err := os.Mkdir(gitActualTemp, 0o700); err != nil {
-			t.Fatalf("create actual-file temp directory: %v", err)
+		gitActualCacheRoot := filepath.Join(tempRoot, "git-actual-cache")
+		gitActualCache := userCacheDirectory(gitActualCacheRoot)
+		if err := os.MkdirAll(gitActualCache, 0o700); err != nil {
+			t.Fatalf("create actual-file cache directory: %v", err)
 		}
 		actualCounter := filepath.Join(tempRoot, "actual-jq-counter")
 		actualScript := fmt.Sprintf("#!/bin/sh\ncount=0\nif [ -f %q ]; then read count < %q; fi\ncount=$((count + 1))\nprintf '%%s' \"$count\" > %q\nif [ \"$count\" -eq 1 ]; then exit 0; fi\nif [ \"$count\" -eq 2 ]; then /usr/bin/head -c 5000000 /dev/zero; else printf '{}'; fi\n", actualCounter, actualCounter, actualCounter)
 		actualTools := createToolDirectory(t, map[string]string{"jq": actualScript}, []string{"curl", "git"})
-		gitActualFailure := runCLIWithFileSizeLimit(t, ctx, binary, runRoot, coverageDir, filepath.Join("test2", "body-only"), "PATH="+actualTools, "TMPDIR="+gitActualTemp)
+		actualEnvironment := append([]string{"PATH=" + actualTools}, userCacheEnvironment(gitActualCacheRoot)...)
+		gitActualFailure := runCLIWithFileSizeLimit(t, ctx, binary, runRoot, coverageDir, filepath.Join("test2", "body-only"), actualEnvironment...)
 		if gitActualFailure.exitCode == 0 || gitActualFailure.exitCode == 101 || gitActualFailure.stderr == "" {
 			t.Fatalf("Git actual-file failure result = code %d, stderr %q, want fatal diagnostic", gitActualFailure.exitCode, gitActualFailure.stderr)
 		}
@@ -173,8 +205,7 @@ func runCLIWithFileSizeLimit(t *testing.T, ctx context.Context, binary, workDir,
 	t.Helper()
 	cmd := exec.CommandContext(ctx, "sh", "-c", `ulimit -f 2048; exec "$1" "$2"`, "sh", binary, suite)
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "GOCOVERDIR="+coverageDir)
-	cmd.Env = append(cmd.Env, env...)
+	cmd.Env = cliEnvironment(coverageDir, env...)
 	var stdout strings.Builder
 	var stderr strings.Builder
 	cmd.Stdout = &stdout
@@ -194,7 +225,7 @@ func runCLIWithFileSizeLimit(t *testing.T, ctx context.Context, binary, workDir,
 func runCLIWithoutWorkingDirectory(t *testing.T, ctx context.Context, binary, workDir, coverageDir string) cliResult {
 	t.Helper()
 	cmd := exec.CommandContext(ctx, "sh", "-c", `cd "$1" && rmdir "$1" && exec "$2"`, "sh", workDir, binary)
-	cmd.Env = append(os.Environ(), "GOCOVERDIR="+coverageDir)
+	cmd.Env = cliEnvironment(coverageDir)
 	var stdout strings.Builder
 	var stderr strings.Builder
 	cmd.Stdout = &stdout
@@ -215,8 +246,7 @@ func runCLIWithUmask(t *testing.T, ctx context.Context, binary, workDir, coverag
 	t.Helper()
 	cmd := exec.CommandContext(ctx, "sh", "-c", `umask 0777; exec "$1" "$2"`, "sh", binary, suite)
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "GOCOVERDIR="+coverageDir)
-	cmd.Env = append(cmd.Env, env...)
+	cmd.Env = cliEnvironment(coverageDir, env...)
 	var stdout strings.Builder
 	var stderr strings.Builder
 	cmd.Stdout = &stdout

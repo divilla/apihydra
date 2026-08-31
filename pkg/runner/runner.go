@@ -197,9 +197,17 @@ func JQPretty(ctx context.Context, input string) (string, int, error) {
 }
 
 // GitDiff compares expected with actual and preserves Git's original color
-// output in the returned headerless diff.
-func GitDiff(ctx context.Context, expected, actual string) (string, int, error) {
-	tempDir, err := os.MkdirTemp("", "apih-git-diff-")
+// output in the returned headerless diff. It creates private operation
+// directories only below tempRunDir/git-diff and removes each operation
+// directory before returning. tempRunDir is the CLI-owned directory for the
+// current application run; GitDiff never falls back to a system temporary
+// directory.
+func GitDiff(ctx context.Context, tempRunDir, expected, actual string) (string, int, error) {
+	operationsDir := filepath.Join(tempRunDir, "git-diff")
+	if err := os.MkdirAll(operationsDir, 0o700); err != nil {
+		return "", -1, newCommandFailure(ErrGitDiff, err, "")
+	}
+	tempDir, err := os.MkdirTemp(operationsDir, "operation-")
 	if err != nil {
 		return "", -1, newCommandFailure(ErrGitDiff, err, "")
 	}

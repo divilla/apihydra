@@ -2,8 +2,8 @@
 
 ## Status and ownership
 
-- Binding domain reference: [`skeleton/internal/domain/suite.go`](../../skeleton/internal/domain/suite.go)
-- Reference domain tests: [`skeleton/internal/domain/suite_test.go`](../../skeleton/internal/domain/suite_test.go)
+- Binding domain references: [`skeleton/internal/domain/config.go`](../../skeleton/internal/domain/config.go), [`skeleton/internal/domain/suite.go`](../../skeleton/internal/domain/suite.go)
+- Reference domain tests: [`skeleton/internal/domain/config_test.go`](../../skeleton/internal/domain/config_test.go), [`skeleton/internal/domain/suite_test.go`](../../skeleton/internal/domain/suite_test.go)
 - Binding package-boundary test: [`skeleton/architecture_test.go`](../../skeleton/architecture_test.go)
 - Shared product contract: [`prd.md`](../prd.md)
 - Status: skeleton-aligned implementation guide
@@ -19,6 +19,11 @@ boundaries in the PRD executable.
 The type declarations in the skeleton are implementation, not illustrative
 schema. Their field types, tags, constants, and method behavior are retained
 exactly after removing only the `apih/skeleton/` package location.
+
+`domain.Config` is the single injected invocation configuration. Its three
+untagged fields retain parsed parallelism, the optional positional directory,
+and the CLI-created private run directory. Packages do not duplicate this
+carrier or replace it with global flags or temporary-directory state.
 
 `DefaultsDefinition.Spec`, `Directory.ResolvedDefaults`,
 `StepsDefinition.Spec.Defaults`, and `Step.Request.Defaults` are all
@@ -43,8 +48,9 @@ with the packages named in the PRD.
 
 ## Required implementation and tests
 
-- Production output: `internal/domain/suite.go` implements the complete binding
-  domain reference without a competing model hierarchy.
+- Production output: `internal/domain/config.go` and `internal/domain/suite.go`
+  implement the complete binding domain references without a competing model
+  hierarchy.
 - Repository bootstrap: the existing module and Makefile keep protected
   `skeleton/` packages out of production targets, tolerate an empty production
   package list before this guide is implemented, and begin checking production
@@ -72,7 +78,7 @@ Such behavior belongs to an owning service or requires a prior skeleton change.
 ## Acceptance criteria
 
 1. Production constants, types, fields, tags, and method signatures match the
-   domain reference exactly.
+   domain references exactly, including the untagged `Config` schema.
 2. YAML decoding and JSON encoding preserve the response expectation/runtime
    schema, keep both response bodies as `YAMLString`, encode `Step.Index` under
    `index` while omitting it from YAML, omit runtime-only `Step.RawCurl` from

@@ -51,6 +51,7 @@ func TestPackageBoundaries(t *testing.T) {
 
 func TestSharedDomainTypesHaveOneOwner(t *testing.T) {
 	sharedTypes := map[string]struct{}{
+		"Config":             {},
 		"DocumentKind":       {},
 		"Suite":              {},
 		"Directory":          {},
@@ -65,7 +66,7 @@ func TestSharedDomainTypesHaveOneOwner(t *testing.T) {
 	}
 
 	err := walkProductionGoFiles(func(path string) error {
-		if path == filepath.FromSlash("internal/domain/suite.go") {
+		if path == filepath.FromSlash("internal/domain/suite.go") || path == filepath.FromSlash("internal/domain/config.go") {
 			return nil
 		}
 		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)

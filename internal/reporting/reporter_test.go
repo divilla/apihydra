@@ -30,6 +30,15 @@ func (shortWriter) Write(payload []byte) (int, error) {
 	return len(payload) - 1, nil
 }
 
+type descriptorWriter struct {
+	bytes.Buffer
+	fd uintptr
+}
+
+func (w *descriptorWriter) Fd() uintptr {
+	return w.fd
+}
+
 type divergentStringWriter struct {
 	output            bytes.Buffer
 	writeCalled       bool
@@ -96,9 +105,11 @@ func (w *gateWriter) String() string {
 }
 
 func TestReporterExportedContract(t *testing.T) {
-	var _ func(io.Writer) *Reporter = NewReporter
+	var _ func(io.Writer, bool) *Reporter = NewReporter
 	var _ func(*Reporter, string) error = (*Reporter).WorkingDirectory
-	var _ func(*Reporter, context.Context, *domain.Directory) error = (*Reporter).Success
+	var _ func(*Reporter, context.Context, []*domain.Directory) error = (*Reporter).BeginStage
+	var _ func(*Reporter, context.Context) error = (*Reporter).EndStage
+	var _ func(*Reporter, context.Context, *domain.StepsDefinition) error = (*Reporter).Success
 	var _ func(*Reporter, context.Context, *domain.Step, string) error = (*Reporter).ValidationTypes
 	var _ func(*Reporter, context.Context, *domain.Step, error) error = (*Reporter).ValidationStatus
 	var _ func(*Reporter, context.Context, *domain.Step, string) error = (*Reporter).ValidationBody
@@ -119,7 +130,7 @@ func TestReporterExportedContract(t *testing.T) {
 
 func TestWorkingDirectoryUsesInjectedWriterByteExactly(t *testing.T) {
 	var output bytes.Buffer
-	report := NewReporter(&output)
+	report := NewReporter(&output, false)
 
 	if err := report.WorkingDirectory("/work"); err != nil {
 		t.Fatalf("WorkingDirectory() error = %v", err)
@@ -129,10 +140,26 @@ func TestWorkingDirectoryUsesInjectedWriterByteExactly(t *testing.T) {
 	}
 }
 
+func TestNewReporterUsesTerminalDimensionsWhenAvailable(t *testing.T) {
+	previous := getTerminalSize
+	getTerminalSize = func(fd int) (int, int, error) {
+		if fd != 17 {
+			t.Fatalf("terminal descriptor = %d, want 17", fd)
+		}
+		return 132, 43, nil
+	}
+	t.Cleanup(func() { getTerminalSize = previous })
+
+	report := NewReporter(&descriptorWriter{fd: 17}, true)
+	if report.terminalWidth != 132 || report.terminalHeight != 43 {
+		t.Fatalf("terminal dimensions = %dx%d, want 132x43", report.terminalWidth, report.terminalHeight)
+	}
+}
+
 func TestWorkingDirectoryPreservesReferenceWritePath(t *testing.T) {
 	writer := &divergentStringWriter{writeStringErr: errors.New("WriteString must not be called")}
 
-	if err := NewReporter(writer).WorkingDirectory("/work"); err != nil {
+	if err := NewReporter(writer, false).WorkingDirectory("/work"); err != nil {
 		t.Fatalf("WorkingDirectory() error = %v", err)
 	}
 	if !writer.writeCalled {
@@ -147,7 +174,7 @@ func TestWorkingDirectoryPreservesReferenceWritePath(t *testing.T) {
 }
 
 func TestWorkingDirectoryPreservesReferenceShortWriteHandling(t *testing.T) {
-	if err := NewReporter(shortWriter{}).WorkingDirectory("/work"); err != nil {
+	if err := NewReporter(shortWriter{}, false).WorkingDirectory("/work"); err != nil {
 		t.Fatalf("WorkingDirectory() error = %v, want nil from reference fmt.Fprintf path", err)
 	}
 }
@@ -163,7 +190,6 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 	step.Response.ExpectedTypes = map[string][]string{".id": {"string"}}
 	step.Debug = true
 	step.RawCurl = "curl --header Authorization: Bearer complete-secret --header Cookie: session=visible"
-	directory := step.Definition.File.Directory
 
 	debugJSON, err := json.Marshal(debugStepValue(step))
 	if err != nil {
@@ -178,7 +204,7 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 		want string
 	}{
 		"success": {
-			call: func(report *Reporter) error { return report.Success(context.Background(), directory) },
+			call: func(report *Reporter) error { return report.Success(context.Background(), step.Definition) },
 			want: "[\x1b[38;5;10m✓\x1b[0m] /suite/steps\n",
 		},
 		"types": {
@@ -212,7 +238,7 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			var output bytes.Buffer
-			if err := test.call(NewReporter(&output)); err != nil {
+			if err := test.call(NewReporter(&output, false)); err != nil {
 				t.Fatalf("reporting error = %v", err)
 			}
 			if got := output.String(); got != test.want {
@@ -240,7 +266,7 @@ func TestDebugProjectsValidJSONBodiesWithoutTransformingOtherValues(t *testing.T
 	step.RawCurl = "curl --header Authorization: Bearer complete-secret --header Cookie: session=unredacted-cookie"
 	var output bytes.Buffer
 
-	if err := NewReporter(&output).Debug(context.Background(), step); err != nil {
+	if err := NewReporter(&output, false).Debug(context.Background(), step); err != nil {
 		t.Fatalf("Debug() error = %v", err)
 	}
 
@@ -329,7 +355,7 @@ func TestReporterGroupsEveryValidationForOneStepUnderOneFailureHeader(t *testing
 		".version":      {"number", "null"},
 	}
 	var output bytes.Buffer
-	report := NewReporter(&output)
+	report := NewReporter(&output, false)
 
 	failedTypes := "{\"selector\":\".version\",\"actual\":\"string\"}\n" +
 		"{\"selector\":\".change_types\",\"actual\":\"object\"}"
@@ -362,12 +388,12 @@ func TestSuccessReportsOnlyDefinitionsWithoutValidationFailures(t *testing.T) {
 	step := &domain.Step{Definition: create}
 	step.Response.ExpectedTypes = map[string][]string{".version": {"int"}}
 	var output bytes.Buffer
-	report := NewReporter(&output)
+	report := NewReporter(&output, false)
 
 	if err := report.ValidationTypes(finalValidationContext(report), step, `{"selector":".version","actual":"string"}`); err != nil {
 		t.Fatalf("ValidationTypes() error = %v", err)
 	}
-	if err := report.Success(context.Background(), directory); err != nil {
+	if err := report.Success(context.Background(), update); err != nil {
 		t.Fatalf("Success() error = %v", err)
 	}
 
@@ -388,7 +414,7 @@ func TestValidationTypesFallsBackToEveryOriginalDeclaration(t *testing.T) {
 	}
 	var output bytes.Buffer
 
-	if err := NewReporter(&output).ValidationTypes(context.Background(), step, "non-JSON failure"); err != nil {
+	if err := NewReporter(&output, false).ValidationTypes(context.Background(), step, "non-JSON failure"); err != nil {
 		t.Fatalf("ValidationTypes() error = %v", err)
 	}
 
@@ -405,7 +431,7 @@ func TestValidationBodyPreservesColoredDiff(t *testing.T) {
 	const diff = "\x1b[38;5;210m-actual\x1b[m\n\x1b[92m+expected\x1b[m"
 	var output bytes.Buffer
 
-	if err := NewReporter(&output).ValidationBody(context.Background(), reporterStep("steps.yaml", 0), diff); err != nil {
+	if err := NewReporter(&output, false).ValidationBody(context.Background(), reporterStep("steps.yaml", 0), diff); err != nil {
 		t.Fatalf("ValidationBody() error = %v", err)
 	}
 	wantIndentedDiff := "        \x1b[38;5;210m-actual\x1b[m\n" +
@@ -421,7 +447,7 @@ func TestReporterPreservesWriterFailureCauses(t *testing.T) {
 	tests := map[string]func(*Reporter) error{
 		"working directory": func(report *Reporter) error { return report.WorkingDirectory("/work") },
 		"success": func(report *Reporter) error {
-			return report.Success(context.Background(), step.Definition.File.Directory)
+			return report.Success(context.Background(), step.Definition)
 		},
 		"types": func(report *Reporter) error {
 			return report.ValidationTypes(context.Background(), step, "failed")
@@ -435,7 +461,7 @@ func TestReporterPreservesWriterFailureCauses(t *testing.T) {
 
 	for name, call := range tests {
 		t.Run(name, func(t *testing.T) {
-			err := call(NewReporter(failingWriter{err: wantErr}))
+			err := call(NewReporter(failingWriter{err: wantErr}, false))
 			if !errors.Is(err, ErrReporter) || !errors.Is(err, wantErr) {
 				t.Fatalf("reporting error = %v, want ErrReporter and writer cause", err)
 			}
@@ -464,7 +490,7 @@ func TestReporterRejectsNilOutputWithoutPanicking(t *testing.T) {
 			}
 		})
 		t.Run(name+" nil writer", func(t *testing.T) {
-			if err := call(NewReporter(nil)); !errors.Is(err, ErrReporter) {
+			if err := call(NewReporter(nil, false)); !errors.Is(err, ErrReporter) {
 				t.Fatalf("reporting error = %v, want ErrReporter", err)
 			}
 		})
@@ -476,7 +502,7 @@ func TestReporterCancellationPolicySkipsContextualWrites(t *testing.T) {
 	cancel()
 	step := reporterStep("steps.yaml", 0)
 	tests := map[string]func(*Reporter) error{
-		"success": func(report *Reporter) error { return report.Success(ctx, step.Definition.File.Directory) },
+		"success": func(report *Reporter) error { return report.Success(ctx, step.Definition) },
 		"types":   func(report *Reporter) error { return report.ValidationTypes(ctx, step, "failed") },
 		"status":  func(report *Reporter) error { return report.ValidationStatus(ctx, step, errors.New("mismatch")) },
 		"body":    func(report *Reporter) error { return report.ValidationBody(ctx, step, "diff") },
@@ -486,7 +512,7 @@ func TestReporterCancellationPolicySkipsContextualWrites(t *testing.T) {
 	for name, call := range tests {
 		t.Run(name, func(t *testing.T) {
 			var output bytes.Buffer
-			err := call(NewReporter(&output))
+			err := call(NewReporter(&output, false))
 			if !errors.Is(err, ErrReporter) || !errors.Is(err, context.Canceled) {
 				t.Fatalf("reporting error = %v, want ErrReporter and context.Canceled", err)
 			}
@@ -499,17 +525,19 @@ func TestReporterCancellationPolicySkipsContextualWrites(t *testing.T) {
 
 func TestReporterRechecksCancellationAfterWaitingForWriter(t *testing.T) {
 	writer := &gateWriter{started: make(chan struct{}, 1), release: make(chan struct{})}
-	report := NewReporter(writer)
+	report := NewReporter(writer, false)
 	firstDone := make(chan error, 1)
+	first := reporterDirectory("first.yaml")
 	go func() {
-		firstDone <- report.Success(context.Background(), reporterDirectory("first.yaml"))
+		firstDone <- report.Success(context.Background(), first.StepsDefinitions[0])
 	}()
 	<-writer.started
 
 	ctx, cancel := context.WithCancel(context.Background())
 	secondDone := make(chan error, 1)
+	second := reporterDirectory("second.yaml")
 	go func() {
-		secondDone <- report.Success(ctx, reporterDirectory("second.yaml"))
+		secondDone <- report.Success(ctx, second.StepsDefinitions[0])
 	}()
 	cancel()
 	close(writer.release)
@@ -527,14 +555,15 @@ func TestReporterRechecksCancellationAfterWaitingForWriter(t *testing.T) {
 
 func TestReporterSerializesConcurrentWrites(t *testing.T) {
 	writer := &yieldingBuffer{}
-	report := NewReporter(writer)
+	report := NewReporter(writer, false)
 	const reports = 32
 	var wait sync.WaitGroup
 	for index := 0; index < reports; index++ {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			if err := report.Success(context.Background(), reporterDirectory(fmt.Sprintf("dir-%02d.yaml", index))); err != nil {
+			directory := reporterDirectory(fmt.Sprintf("dir-%02d.yaml", index))
+			if err := report.Success(context.Background(), directory.StepsDefinitions[0]); err != nil {
 				t.Errorf("Success() error = %v", err)
 			}
 		}()
@@ -555,13 +584,14 @@ func TestReporterSerializesConcurrentWrites(t *testing.T) {
 
 func TestReporterClassifiesContextualShortWrites(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		err := NewReporter(shortWriter{}).Success(context.Background(), reporterDirectory("work.yaml"))
+		directory := reporterDirectory("work.yaml")
+		err := NewReporter(shortWriter{}, false).Success(context.Background(), directory.StepsDefinitions[0])
 		if !errors.Is(err, ErrReporter) || !errors.Is(err, io.ErrShortWrite) {
 			t.Fatalf("Success() error = %v, want ErrReporter and io.ErrShortWrite", err)
 		}
 	})
 	t.Run("debug", func(t *testing.T) {
-		err := NewReporter(shortWriter{}).Debug(context.Background(), reporterStep("steps.yaml", 0))
+		err := NewReporter(shortWriter{}, false).Debug(context.Background(), reporterStep("steps.yaml", 0))
 		if !errors.Is(err, ErrReporter) || !errors.Is(err, io.ErrShortWrite) {
 			t.Fatalf("Debug() error = %v, want ErrReporter and io.ErrShortWrite", err)
 		}
@@ -570,7 +600,7 @@ func TestReporterClassifiesContextualShortWrites(t *testing.T) {
 
 func TestDebugSuppressesEveryLaterReport(t *testing.T) {
 	var output bytes.Buffer
-	report := NewReporter(&output)
+	report := NewReporter(&output, false)
 	step := reporterStep("steps.yaml", 0)
 	step.RawCurl = "curl --url https://example.test"
 	if err := report.Debug(context.Background(), step); err != nil {
@@ -581,7 +611,8 @@ func TestDebugSuppressesEveryLaterReport(t *testing.T) {
 	if err := report.ValidationTypes(finalValidationContext(report), step, `{"selector":".value","actual":"number"}`); err != nil {
 		t.Fatalf("ValidationTypes() after Debug error = %v", err)
 	}
-	if err := report.Success(context.Background(), reporterDirectory("later.yaml")); err != nil {
+	later := reporterDirectory("later.yaml")
+	if err := report.Success(context.Background(), later.StepsDefinitions[0]); err != nil {
 		t.Fatalf("Success() after Debug error = %v", err)
 	}
 	if err := report.WorkingDirectory("/later"); err != nil {
@@ -597,7 +628,7 @@ func TestDebugSuppressesEveryLaterReport(t *testing.T) {
 
 func TestDebugClassifiesJQFailureAsReportingFailure(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	err := NewReporter(&bytes.Buffer{}).Debug(context.Background(), &domain.Step{})
+	err := NewReporter(&bytes.Buffer{}, false).Debug(context.Background(), &domain.Step{})
 	if !errors.Is(err, ErrReporter) || !errors.Is(err, runner.ErrJQPretty) {
 		t.Fatalf("Debug() error = %v, want ErrReporter and ErrJQPretty", err)
 	}
@@ -614,6 +645,350 @@ func TestColorizeJQJSONUsesJQTerminalPalette(t *testing.T) {
 		"\x1b[1;39m}\x1b[0m"
 	if got := colorizeJQJSON(input); got != want {
 		t.Fatalf("colorizeJQJSON() = %q, want %q", got, want)
+	}
+}
+
+func TestNonTerminalStageCommitsOnceInCanonicalOrder(t *testing.T) {
+	first := reporterDirectory("stage/first.yaml")
+	second := reporterDirectory("stage/second.yaml")
+	var output bytes.Buffer
+	report := NewReporter(&output, false)
+
+	if err := report.BeginStage(context.Background(), []*domain.Directory{first, second}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), second.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("partial non-terminal output = %q, want empty", output.String())
+	}
+	if err := report.Success(context.Background(), first.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("partial non-terminal output = %q, want empty", output.String())
+	}
+	if err := report.EndStage(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	want := "[\x1b[38;5;10m✓\x1b[0m] /stage/first\n" +
+		"[\x1b[38;5;10m✓\x1b[0m] /stage/second\n"
+	if got := output.String(); got != want {
+		t.Fatalf("committed stage = %q, want canonical %q", got, want)
+	}
+	if err := report.EndStage(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := output.String(); got != want {
+		t.Fatalf("second EndStage output = %q, want unchanged", got)
+	}
+}
+
+func TestStageSnapshotIsRenderedOnlyForImplicitOutput(t *testing.T) {
+	definition := reporterDirectory("stage/first.yaml").StepsDefinitions[0]
+	file := newFileOutput()
+	file.block.WriteString("accumulated output")
+	stage := &stageOutput{
+		order: []*domain.StepsDefinition{definition},
+		files: map[*domain.StepsDefinition]*fileOutput{definition: file},
+	}
+
+	if got := stage.implicitSnapshot(); got != "" {
+		t.Fatalf("explicit stage snapshot = %q, want empty", got)
+	}
+	stage.implicit = true
+	if got, want := stage.implicitSnapshot(), "accumulated output"; got != want {
+		t.Fatalf("implicit stage snapshot = %q, want %q", got, want)
+	}
+}
+
+func TestTerminalRedrawChangesOnlyActiveStageRegion(t *testing.T) {
+	first := reporterDirectory("stage/first.yaml")
+	second := reporterDirectory("stage/second.yaml")
+	later := reporterDirectory("later/only.yaml")
+	var output bytes.Buffer
+	report := NewReporter(&output, true)
+
+	if err := report.WorkingDirectory("/work"); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.BeginStage(context.Background(), []*domain.Directory{first, second}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), second.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), first.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "\x1b[1A\r\x1b[J[\x1b[38;5;10m✓\x1b[0m] /stage/first\n[\x1b[38;5;10m✓\x1b[0m] /stage/second\n") {
+		t.Fatalf("terminal redraw = %q, want active-region clear and canonical redraw", output.String())
+	}
+	if got := strings.Count(output.String(), "Working Directory: /work\n\n"); got != 1 {
+		t.Fatalf("working-directory heading count = %d, want 1", got)
+	}
+	if err := report.EndStage(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	completed := output.Len()
+
+	if err := report.BeginStage(context.Background(), []*domain.Directory{later}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), later.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	suffix := output.String()[completed:]
+	if strings.Contains(suffix, "/stage/") || strings.HasPrefix(suffix, "\x1b[") {
+		t.Fatalf("later-stage output rewrote completed stage: %q", suffix)
+	}
+}
+
+func TestTerminalRedrawTracksWrappedVisualRowsAndViewportHeight(t *testing.T) {
+	first := reporterDirectory("a.yaml")
+	wrapped := reporterDirectory("a-very-long-name.yaml")
+	var output bytes.Buffer
+	report := NewReporter(&output, true)
+	report.terminalWidth = 10
+	report.terminalHeight = 20
+
+	if err := report.BeginStage(context.Background(), []*domain.Directory{first, wrapped}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), wrapped.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), first.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "\x1b[3A\r\x1b[J") {
+		t.Fatalf("wrapped terminal redraw = %q, want three-row cursor movement", output.String())
+	}
+
+	output.Reset()
+	report = NewReporter(&output, true)
+	report.terminalWidth = 10
+	report.terminalHeight = 2
+	if err := report.BeginStage(context.Background(), []*domain.Directory{first, wrapped}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), wrapped.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), first.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "\x1b[1A\r\x1b[J") {
+		t.Fatalf("viewport-limited redraw = %q, want cursor movement capped to visible rows", output.String())
+	}
+}
+
+func TestTerminalRedrawRefreshesDimensionsAndReflowsPreviousContent(t *testing.T) {
+	previous := getTerminalSize
+	dimensions := [][2]int{{20, 24}, {20, 24}, {10, 24}}
+	calls := 0
+	getTerminalSize = func(fd int) (int, int, error) {
+		if fd != 17 {
+			t.Fatalf("terminal descriptor = %d, want 17", fd)
+		}
+		index := min(calls, len(dimensions)-1)
+		calls++
+		return dimensions[index][0], dimensions[index][1], nil
+	}
+	t.Cleanup(func() { getTerminalSize = previous })
+
+	first := reporterDirectory("1234567890.yaml")
+	second := reporterDirectory("second.yaml")
+	writer := &descriptorWriter{fd: 17}
+	report := NewReporter(writer, true)
+	if err := report.BeginStage(context.Background(), []*domain.Directory{first, second}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), first.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), second.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+
+	if calls != 3 {
+		t.Fatalf("terminal-size queries = %d, want constructor plus both redraws", calls)
+	}
+	if !strings.Contains(writer.String(), "\x1b[2A\r\x1b[J") {
+		t.Fatalf("resized terminal redraw = %q, want two-row movement after reflow", writer.String())
+	}
+}
+
+func TestVisualRowsToCursorIgnoresANSIAndUsesDisplayWidth(t *testing.T) {
+	content := "\x1b[38;5;10m✓\x1b[0m 12345678\n界界\n"
+	if got, want := visualRowsToCursor(content, 5), 3; got != want {
+		t.Fatalf("visualRowsToCursor() = %d, want %d", got, want)
+	}
+
+	tests := map[string]struct {
+		content string
+		width   int
+		want    int
+	}{
+		"empty":              {width: 5},
+		"invalid width":      {content: "value"},
+		"no final newline":   {content: "value", width: 5},
+		"wrapped final line": {content: "values", width: 5, want: 1},
+		"empty line":         {content: "\n", width: 5, want: 1},
+		"tab stop":           {content: "\tvalue\n", width: 8, want: 2},
+		"carriage return":    {content: "old\rnew\n", width: 5, want: 1},
+		"wrapped carriage":   {content: "values\rnew\n", width: 5, want: 2},
+		"grapheme cluster":   {content: "👨‍👩‍👧‍👦123\n", width: 5, want: 1},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := visualRowsToCursor(test.content, test.width); got != test.want {
+				t.Fatalf("visualRowsToCursor(%q, %d) = %d, want %d", test.content, test.width, got, test.want)
+			}
+		})
+	}
+}
+
+func TestBufferedDebugIsFinalAndSuppressesLaterEvents(t *testing.T) {
+	first := reporterDirectory("stage/first.yaml")
+	second := reporterDirectory("stage/second.yaml")
+	step := &domain.Step{Definition: first.StepsDefinitions[0], RawCurl: "curl --url example.test"}
+	var output bytes.Buffer
+	report := NewReporter(&output, false)
+
+	if err := report.BeginStage(context.Background(), []*domain.Directory{first, second}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), second.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Debug(context.Background(), step); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), first.StepsDefinitions[0]); err != nil {
+		t.Fatal(err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("Debug wrote before non-terminal barrier: %q", output.String())
+	}
+	if err := report.EndStage(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	got := output.String()
+	if strings.Contains(got, "/stage/first\n") {
+		t.Fatalf("post-Debug success was reported: %q", got)
+	}
+	if success, debug := strings.Index(got, "/stage/second\n"), strings.Index(got, "stage: 0\n"); success < 0 || debug < success {
+		t.Fatalf("Debug was not final after canonical file output: %q", got)
+	}
+}
+
+func TestStageMethodsPreserveContextAndWriterFailures(t *testing.T) {
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := NewReporter(&bytes.Buffer{}, false).BeginStage(canceled, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("BeginStage(canceled) error = %v", err)
+	}
+	if err := NewReporter(&bytes.Buffer{}, false).EndStage(canceled); !errors.Is(err, context.Canceled) {
+		t.Fatalf("EndStage(canceled) error = %v", err)
+	}
+	if err := (*Reporter)(nil).BeginStage(context.Background(), nil); !errors.Is(err, ErrReporter) {
+		t.Fatalf("nil BeginStage error = %v", err)
+	}
+
+	wantErr := errors.New("stage write failed")
+	directory := reporterDirectory("stage/fail.yaml")
+	report := NewReporter(failingWriter{err: wantErr}, false)
+	if err := report.BeginStage(context.Background(), []*domain.Directory{nil, directory}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), directory.StepsDefinitions[0]); err != nil {
+		t.Fatalf("buffered Success error = %v", err)
+	}
+	if err := report.EndStage(context.Background()); !errors.Is(err, wantErr) {
+		t.Fatalf("EndStage writer error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestTerminalDebugRedrawsAccumulatedFilesAndStopsNewStages(t *testing.T) {
+	directory := reporterDirectory("stage/steps.yaml")
+	step := &domain.Step{Definition: directory.StepsDefinitions[0], RawCurl: "curl"}
+	var output bytes.Buffer
+	report := NewReporter(&output, true)
+	if err := report.BeginStage(context.Background(), []*domain.Directory{directory}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), step.Definition); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Debug(context.Background(), step); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "\x1b[1A\r\x1b[J") || !strings.Contains(output.String(), "\nstage: 0\n") {
+		t.Fatalf("terminal Debug redraw = %q", output.String())
+	}
+	if err := report.BeginStage(context.Background(), nil); err != nil {
+		t.Fatalf("BeginStage after Debug error = %v", err)
+	}
+	if err := report.EndStage(context.Background()); err != nil {
+		t.Fatalf("terminal EndStage error = %v", err)
+	}
+}
+
+func TestTerminalStageClassifiesRedrawFailure(t *testing.T) {
+	wantErr := errors.New("redraw failed")
+	directory := reporterDirectory("stage/steps.yaml")
+	report := NewReporter(failingWriter{err: wantErr}, true)
+	if err := report.BeginStage(context.Background(), []*domain.Directory{directory}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), directory.StepsDefinitions[0]); !errors.Is(err, wantErr) {
+		t.Fatalf("terminal Success error = %v, want %v", err, wantErr)
+	}
+
+	stage := &stageOutput{
+		order: []*domain.StepsDefinition{nil},
+		files: map[*domain.StepsDefinition]*fileOutput{nil: nil},
+		debug: "debug-only",
+	}
+	if got := stage.render(); got != "debug-only" {
+		t.Fatalf("stage render = %q, want debug-only", got)
+	}
+	if got := (*stageOutput)(nil).render(); got != "" {
+		t.Fatalf("nil stage render = %q, want empty", got)
+	}
+}
+
+func TestFailedFileDoesNotGainSuccessAndFormattingHandlesEmptyPayloads(t *testing.T) {
+	directory := reporterDirectory("stage/failed.yaml")
+	step := &domain.Step{Definition: directory.StepsDefinitions[0]}
+	var output bytes.Buffer
+	report := NewReporter(&output, false)
+	if err := report.BeginStage(context.Background(), []*domain.Directory{directory}); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.ValidationStatus(finalValidationContext(report), step, ErrStatusValidation); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.Success(context.Background(), step.Definition); err != nil {
+		t.Fatal(err)
+	}
+	if err := report.EndStage(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "✓") {
+		t.Fatalf("failed file gained success output: %q", output.String())
+	}
+
+	step.Response.ExpectedTypes = map[string][]string{".known": {"string"}}
+	if got := formatExpectedTypes(step, `{"selector":".missing"}`); got != "    expected_types:\n" {
+		t.Fatalf("unknown failed selector output = %q", got)
+	}
+	if got := formatExpectedBody(""); got != "    expected_body:\n" {
+		t.Fatalf("empty body diff output = %q", got)
 	}
 }
 

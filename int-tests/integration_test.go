@@ -3,6 +3,7 @@
 package inttests
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -112,6 +114,9 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 			_, _ = w.Write([]byte("not-json"))
 			return
 		}
+		if r.URL.Path == "/slow-success" {
+			time.Sleep(100 * time.Millisecond)
+		}
 		if r.URL.Path == "/hang" {
 			<-r.Context().Done()
 			return
@@ -175,6 +180,131 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		t.Fatalf("file path stderr = %q, want invalid-path diagnostic", nondirectory.stderr)
 	}
 
+	runArguments := func(args []string, env ...string) cliResult {
+		var stdout strings.Builder
+		result := runCLIArguments(t, ctx, binary, runRoot, coverageDir, args, &stdout, env...)
+		result.stdout = stdout.String()
+		return result
+	}
+	helpCache := filepath.Join(tempRoot, "help-cache")
+	for _, helpFlag := range []string{"-h", "--help"} {
+		help := runArguments([]string{helpFlag}, userCacheEnvironment(helpCache)...)
+		if help.exitCode != 0 || help.stderr != "" || !strings.Contains(help.stdout, "--parallelism") {
+			t.Fatalf("%s result = code %d, stdout %q, stderr %q", helpFlag, help.exitCode, help.stdout, help.stderr)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(userCacheDirectory(helpCache), "apih")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("help created application cache: %v", err)
+	}
+	helpOutputPath := filepath.Join(tempRoot, "help-output")
+	if err := os.WriteFile(helpOutputPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	readOnlyHelpOutput, err := os.Open(helpOutputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	helpWriteFailure := runCLIArguments(t, ctx, binary, runRoot, coverageDir, []string{"--help"}, readOnlyHelpOutput)
+	_ = readOnlyHelpOutput.Close()
+	if helpWriteFailure.exitCode != 103 || helpWriteFailure.stderr == "" {
+		t.Fatalf("help write failure = code %d, stderr %q", helpWriteFailure.exitCode, helpWriteFailure.stderr)
+	}
+	for _, args := range [][]string{
+		{"--unknown"},
+		{"-p", "many"},
+		{"--parallelism=3"},
+		{"test1", "test2"},
+	} {
+		invalidArguments := runArguments(args)
+		if invalidArguments.exitCode != 102 || invalidArguments.stdout != "" || invalidArguments.stderr == "" {
+			t.Fatalf("invalid arguments %v = code %d, stdout %q, stderr %q", args, invalidArguments.exitCode, invalidArguments.stdout, invalidArguments.stderr)
+		}
+	}
+	orderedDirectories := runArguments([]string{filepath.Join("scenarios", "ordered-directories")})
+	if orderedDirectories.exitCode != 0 || orderedDirectories.stderr != "" {
+		t.Fatalf("ordered directories = code %d, stderr %q", orderedDirectories.exitCode, orderedDirectories.stderr)
+	}
+	if slow, fast := strings.Index(orderedDirectories.stdout, "/a-slow/steps\n"), strings.Index(orderedDirectories.stdout, "/b-fast/steps\n"); slow < 0 || fast < slow {
+		t.Fatalf("ordered directory output = %q, want slow plan entry before fast completion", orderedDirectories.stdout)
+	}
+	orderedFiles := runArguments([]string{"--parallelism=2", filepath.Join("scenarios", "ordered-files")})
+	if orderedFiles.exitCode != 0 || orderedFiles.stderr != "" {
+		t.Fatalf("ordered files = code %d, stderr %q", orderedFiles.exitCode, orderedFiles.stderr)
+	}
+	if slow, fast := strings.Index(orderedFiles.stdout, "/a-slow\n"), strings.Index(orderedFiles.stdout, "/b-fast\n"); slow < 0 || fast < slow {
+		t.Fatalf("ordered file output = %q, want slow plan entry before fast completion", orderedFiles.stdout)
+	}
+	modeSuite := filepath.Join("scenarios", "success-output")
+	cacheUnavailable := runArguments([]string{modeSuite}, unavailableUserCacheEnvironment()...)
+	if cacheUnavailable.exitCode != 103 || cacheUnavailable.stdout != "" || cacheUnavailable.stderr == "" {
+		t.Fatalf("unavailable user cache = code %d, stdout %q, stderr %q", cacheUnavailable.exitCode, cacheUnavailable.stdout, cacheUnavailable.stderr)
+	}
+	cacheRoot := filepath.Join(tempRoot, "cache-file-root")
+	cacheFile := userCacheDirectory(cacheRoot)
+	if err := os.MkdirAll(filepath.Dir(cacheFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cacheFile, []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cachePathFailure := runArguments([]string{modeSuite}, userCacheEnvironment(cacheRoot)...)
+	if cachePathFailure.exitCode != 103 || cachePathFailure.stdout != "" || cachePathFailure.stderr == "" {
+		t.Fatalf("cache path failure = code %d, stdout %q, stderr %q", cachePathFailure.exitCode, cachePathFailure.stdout, cachePathFailure.stderr)
+	}
+	for _, args := range [][]string{
+		{"-p0", modeSuite},
+		{modeSuite, "-p", "1"},
+		{"--parallelism=2", modeSuite},
+		{"-p", "0", "--parallelism", "2", modeSuite},
+		{"--", modeSuite},
+	} {
+		modeResult := runArguments(args)
+		if modeResult.exitCode != 0 || modeResult.stderr != "" || !strings.Contains(modeResult.stdout, "/steps\n") {
+			t.Fatalf("parallelism arguments %v = code %d, stdout %q, stderr %q", args, modeResult.exitCode, modeResult.stdout, modeResult.stderr)
+		}
+	}
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatalf("locate git: %v", err)
+	}
+	operationLog := filepath.Join(tempRoot, "git-operation-dirs")
+	gitProxy := fmt.Sprintf("#!/bin/sh\npwd >> %q\nexec %q \"$@\"\n", operationLog, realGit)
+	tempTools := createToolDirectory(t, map[string]string{"git": gitProxy}, []string{"curl", "jq"})
+	runCacheRoot := filepath.Join(tempRoot, "run-cache")
+	runCache := userCacheDirectory(runCacheRoot)
+	missingSystemTemp := filepath.Join(tempRoot, "missing-system-temp")
+	for range 2 {
+		overrides := append([]string{
+			"PATH=" + tempTools,
+			"TMPDIR=" + missingSystemTemp,
+		}, userCacheEnvironment(runCacheRoot)...)
+		result := runArguments(
+			[]string{"--parallelism=2", filepath.Join("test2", "body-only")},
+			overrides...,
+		)
+		if result.exitCode != 101 || result.stderr != "" {
+			t.Fatalf("run-scoped GitDiff = code %d, stderr %q", result.exitCode, result.stderr)
+		}
+	}
+	operationBytes, err := os.ReadFile(operationLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operationDirs := strings.Fields(string(operationBytes))
+	if len(operationDirs) != 2 || operationDirs[0] == operationDirs[1] {
+		t.Fatalf("GitDiff operation directories = %v, want two unique paths", operationDirs)
+	}
+	for _, operationDir := range operationDirs {
+		runDir := filepath.Dir(filepath.Dir(operationDir))
+		if filepath.Dir(runDir) != filepath.Join(runCache, "apih") || !strings.HasPrefix(filepath.Base(runDir), "run-") {
+			t.Fatalf("GitDiff operation directory = %q, want cache-scoped run path", operationDir)
+		}
+		if _, err := os.Stat(runDir); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("run directory cleanup error for %q: %v", runDir, err)
+		}
+	}
+
 	successSuite := "test1"
 	success := runCLI(t, ctx, binary, runRoot, coverageDir, successSuite)
 	if success.exitCode != 0 {
@@ -185,6 +315,9 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	}
 	if !strings.Contains(success.stdout, "Working Directory:") {
 		t.Fatalf("test1 stdout = %q, want working-directory output", success.stdout)
+	}
+	if rootStage, childStage := strings.Index(success.stdout, "/steps\n"), strings.Index(success.stdout, "/child/steps\n"); rootStage < 0 || childStage < rootStage {
+		t.Fatalf("test1 stdout = %q, want sequential stage output order", success.stdout)
 	}
 	// Exercise URL handling for coverage without making its unspecified
 	// normalization behavior part of the black-box contract.
@@ -429,6 +562,15 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if siblingCancellation.exitCode == 0 || siblingCancellation.exitCode == 101 || siblingCancellation.stderr == "" {
 		t.Fatalf("many-siblings result = code %d, stderr %q, want fatal diagnostic", siblingCancellation.exitCode, siblingCancellation.stderr)
 	}
+	for index := range 200 {
+		if err := os.Link(siblingSource, filepath.Join(manySiblings, "fatal", fmt.Sprintf("steps-%03d.yaml", index))); err != nil {
+			t.Fatalf("create same-directory file fixture: %v", err)
+		}
+	}
+	fileCancellation := runArguments([]string{"--parallelism=2", filepath.Join("scenarios", "many-siblings")})
+	if fileCancellation.exitCode == 0 || fileCancellation.exitCode == 101 || fileCancellation.stderr == "" {
+		t.Fatalf("many-files result = code %d, stderr %q, want fatal diagnostic", fileCancellation.exitCode, fileCancellation.stderr)
+	}
 	blockedOutputCancellation := runCLIWithDelayedOutput(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "concurrent-fatal"), 300*time.Millisecond)
 	if blockedOutputCancellation.exitCode == 0 || blockedOutputCancellation.exitCode == 101 || blockedOutputCancellation.stderr == "" {
 		t.Fatalf("blocked-output cancellation result = code %d, stderr %q, want fatal diagnostic", blockedOutputCancellation.exitCode, blockedOutputCancellation.stderr)
@@ -445,6 +587,26 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		if result.stderr == "" {
 			t.Fatalf("%s stderr is empty, want fatal diagnostic", scenario.suite)
 		}
+	}
+	combinedFatal, combinedOutput := runCLICombined(
+		t,
+		ctx,
+		binary,
+		runRoot,
+		coverageDir,
+		filepath.Join("scenarios", "missing-request-variable"),
+	)
+	if combinedFatal.exitCode != 103 {
+		t.Fatalf("combined fatal exit code = %d, want 103; output = %q", combinedFatal.exitCode, combinedOutput)
+	}
+	for _, provenance := range []string{"step execution error", "file steps.yaml", "yaml path spec.steps[0]"} {
+		if !strings.Contains(combinedOutput, provenance) {
+			t.Fatalf("combined fatal output = %q, want provenance %q", combinedOutput, provenance)
+		}
+	}
+	lastLine := combinedOutput[strings.LastIndex(strings.TrimSuffix(combinedOutput, "\n"), "\n")+1:]
+	if !strings.Contains(lastLine, "yaml path spec.steps[0]") {
+		t.Fatalf("fatal diagnostic was not the final application output: %q", combinedOutput)
 	}
 
 	server.Close()
@@ -585,10 +747,14 @@ func runCLIWithOutput(t *testing.T, ctx context.Context, binary, workDir, covera
 
 func runCLICommand(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string, output io.Writer, env ...string) cliResult {
 	t.Helper()
-	cmd := exec.CommandContext(ctx, binary, suite)
+	return runCLIArguments(t, ctx, binary, workDir, coverageDir, []string{suite}, output, env...)
+}
+
+func runCLIArguments(t *testing.T, ctx context.Context, binary, workDir, coverageDir string, args []string, output io.Writer, env ...string) cliResult {
+	t.Helper()
+	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "GOCOVERDIR="+coverageDir)
-	cmd.Env = append(cmd.Env, env...)
+	cmd.Env = cliEnvironment(coverageDir, env...)
 	var stderr strings.Builder
 	cmd.Stdout = output
 	cmd.Stderr = &stderr
@@ -598,11 +764,31 @@ func runCLICommand(t *testing.T, ctx context.Context, binary, workDir, coverageD
 	if err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
-			t.Fatalf("run %s: %v", suite, err)
+			t.Fatalf("run %v: %v", args, err)
 		}
 		exitCode = exitErr.ExitCode()
 	}
 	return cliResult{exitCode: exitCode, stderr: stderr.String()}
+}
+
+func runCLICombined(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string) (cliResult, string) {
+	t.Helper()
+	cmd := exec.CommandContext(ctx, binary, suite)
+	cmd.Dir = workDir
+	cmd.Env = cliEnvironment(coverageDir)
+	var combined bytes.Buffer
+	cmd.Stdout = &combined
+	cmd.Stderr = &combined
+	err := cmd.Run()
+	exitCode := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("run combined %s: %v", suite, err)
+		}
+		exitCode = exitErr.ExitCode()
+	}
+	return cliResult{exitCode: exitCode}, combined.String()
 }
 
 func runCLIWithDelayedOutput(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string, delay time.Duration) cliResult {
@@ -615,7 +801,7 @@ func runCLIWithDelayedOutput(t *testing.T, ctx context.Context, binary, workDir,
 
 	cmd := exec.CommandContext(ctx, binary, suite)
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "GOCOVERDIR="+coverageDir)
+	cmd.Env = cliEnvironment(coverageDir)
 	var stdout strings.Builder
 	var stderr strings.Builder
 	cmd.Stdout = writer
@@ -648,6 +834,62 @@ func runCLIWithDelayedOutput(t *testing.T, ctx context.Context, binary, workDir,
 		exitCode = exitErr.ExitCode()
 	}
 	return cliResult{exitCode: exitCode, stdout: stdout.String(), stderr: stderr.String()}
+}
+
+func cliEnvironment(coverageDir string, overrides ...string) []string {
+	environment := os.Environ()
+	environment = setEnvironmentValue(environment, "GOCOVERDIR="+coverageDir)
+	for _, value := range userCacheEnvironment(filepath.Join(filepath.Dir(coverageDir), "cache")) {
+		environment = setEnvironmentValue(environment, value)
+	}
+	for _, override := range overrides {
+		environment = setEnvironmentValue(environment, override)
+	}
+	return environment
+}
+
+func userCacheDirectory(root string) string {
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(root, "Library", "Caches")
+	}
+	return root
+}
+
+func userCacheEnvironment(root string) []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{"HOME=" + root}
+	case "windows":
+		return []string{"LocalAppData=" + root}
+	default:
+		return []string{"XDG_CACHE_HOME=" + root}
+	}
+}
+
+func unavailableUserCacheEnvironment() []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{"HOME="}
+	case "windows":
+		return []string{"LocalAppData="}
+	default:
+		return []string{"XDG_CACHE_HOME=", "HOME="}
+	}
+}
+
+func setEnvironmentValue(environment []string, value string) []string {
+	key, _, found := strings.Cut(value, "=")
+	if !found {
+		return append(environment, value)
+	}
+	prefix := key + "="
+	filtered := environment[:0]
+	for _, existing := range environment {
+		if !strings.HasPrefix(existing, prefix) {
+			filtered = append(filtered, existing)
+		}
+	}
+	return append(filtered, value)
 }
 
 func permissionDenialScenariosSupported(effectiveUserID int) bool {

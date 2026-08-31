@@ -17,6 +17,13 @@ var ErrInvalidDirectoryTree = errors.New("invalid directory tree")
 // ErrExecutionCanceled classifies cancellation of staged execution.
 var ErrExecutionCanceled = errors.New("execution canceled")
 
+// ErrInvalidParallelism classifies a Config.Parallelism value outside 0..2.
+var ErrInvalidParallelism = errors.New("invalid parallelism")
+
+// ErrStepExecution classifies a terminal step failure before errs adds its
+// definition-file and spec.steps[index] provenance.
+var ErrStepExecution = errors.New("step execution error")
+
 var errDebugStop = errors.New("debug stop")
 
 // Executor prepares, schedules, executes, validates, and reports runtime
@@ -25,18 +32,22 @@ type Executor struct {
 	binder *Binder
 	val    *Validator
 	report *reporting.Reporter
+	config domain.Config
 }
 
-// NewExecutor retains the collaborators used during execution.
+// NewExecutor retains the collaborators and run configuration used during
+// execution.
 func NewExecutor(
 	binder *Binder,
 	validator *Validator,
 	report *reporting.Reporter,
+	config domain.Config,
 ) *Executor {
 	return &Executor{
 		binder: binder,
 		val:    validator,
 		report: report,
+		config: config,
 	}
 }
 
@@ -74,8 +85,18 @@ func (e *Executor) Prepare(
 	prepareDirectory(suite.Root)
 }
 
-// Execute processes the directory tree in stages, running directories in the
-// same stage concurrently. For every non-debug runtime step, it calls
+// Execute processes stages sequentially with a barrier after each stage.
+// Config.Parallelism 0 processes directories and files serially, 1 processes
+// same-stage directories concurrently and each directory's files serially,
+// and 2 processes same-stage directories and each directory's files
+// concurrently. Directory and file task sets are unbounded. Steps within one
+// file are always serial. All modes retain plan, file-slice, and step-slice
+// order as the canonical reporting order and use the same shared Binder store.
+// Before and after each stage, Execute calls Reporter.BeginStage and
+// Reporter.EndStage so concurrent output is redrawn or committed in canonical
+// directory/file/step order.
+//
+// For every non-debug runtime step, it calls
 // Binder.LoadVariables, Binder.InterpolateRequestBody,
 // Binder.InterpolateResponseExpectedBody, runner.Curl,
 // Validator.ValidateTypes, Validator.ValidateStatus, Validator.ValidateBody,
@@ -93,12 +114,16 @@ func (e *Executor) Prepare(
 // step.Response.ActualStatus and step.Response.ActualBody for validation and
 // capture. After all work finishes, Execute returns exit code 101 and a nil
 // error when one or more validations failed. Validation status does not cancel
-// remaining work.
+// remaining work. A terminal step error is wrapped with ErrStepExecution plus
+// definition-file and spec.steps[index] provenance. Active work is canceled
+// and joined, Reporter.EndStage makes the ordered stage render final, and the
+// returned fatal diagnostic is the last application output. No later step,
+// file, directory, stage, or reporting event is allowed.
 func (e *Executor) Execute(
 	ctx context.Context,
 	stages [][]*domain.Directory,
 ) (int, error) {
-	exitCode, err := executeStages(ctx, stages, e.processDir)
+	exitCode, err := executeStages(ctx, stages, e.config.Parallelism, e.report, e.processDir)
 	if err != nil {
 		return exitCode, err
 	}
@@ -194,7 +219,11 @@ func (d *stagedDirs) setStages(dir *domain.Directory) {
 	}
 }
 
-type directoryProcessor func(context.Context, *domain.Directory) (int, error)
+type resultPublisher func(int, error)
+
+type directoryProcessor func(context.Context, resultPublisher, *domain.Directory) (int, error)
+
+type fileProcessor func(context.Context, *domain.Directory, int) (int, error)
 
 type processResult struct {
 	mu   sync.Mutex
@@ -230,19 +259,44 @@ func (r *processResult) setResult(code int, err error) {
 func executeStages(
 	ctx context.Context,
 	dirs [][]*domain.Directory,
+	parallelism int,
+	report *reporting.Reporter,
 	process directoryProcessor,
 ) (int, error) {
+	if parallelism < 0 || parallelism > 2 {
+		return errs.ExitConfiguration, errs.Build(errs.ExitConfiguration, ErrInvalidParallelism, nil, parallelism)
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var firstStatusCode int
 
 	for _, stage := range dirs {
-		exitCode, err := executeStage(ctx, cancel, stage, process)
+		if err := ctx.Err(); err != nil {
+			return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrExecutionCanceled, err)
+		}
+		if report != nil {
+			if err := report.BeginStage(ctx, stage); err != nil {
+				return errs.Code(err, errs.ExitInternal), err
+			}
+		}
+
+		exitCode, err := executeStage(ctx, cancel, stage, parallelism > 0, process)
+		var endErr error
+		if report != nil {
+			endErr = report.EndStage(context.WithoutCancel(ctx))
+		}
 		if errors.Is(err, errDebugStop) {
+			if endErr != nil {
+				return errs.Code(endErr, errs.ExitInternal), endErr
+			}
 			return 0, nil
 		}
 		if err != nil {
 			return exitCode, err
+		}
+		if endErr != nil {
+			return errs.Code(endErr, errs.ExitInternal), endErr
 		}
 		if firstStatusCode == 0 && exitCode != 0 {
 			firstStatusCode = exitCode
@@ -259,20 +313,34 @@ func executeStage(
 	ctx context.Context,
 	cancel context.CancelFunc,
 	dirs []*domain.Directory,
+	parallel bool,
 	process directoryProcessor,
 ) (int, error) {
-	var wg sync.WaitGroup
 	var result processResult
+	publish := func(code int, err error) {
+		result.setResult(code, err)
+		if err != nil {
+			cancel()
+		}
+	}
+	if !parallel {
+		for _, dir := range dirs {
+			exitCode, err := process(ctx, publish, dir)
+			publish(exitCode, err)
+			if err != nil {
+				break
+			}
+		}
+		return result.code, result.err
+	}
 
+	var wg sync.WaitGroup
 	for _, dir := range dirs {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			exitCode, err := process(ctx, dir)
-			result.setResult(exitCode, err)
-			if err != nil {
-				cancel()
-			}
+			exitCode, err := process(ctx, publish, dir)
+			publish(exitCode, err)
 		}()
 	}
 
@@ -280,96 +348,159 @@ func executeStage(
 	return result.code, result.err
 }
 
-func (e *Executor) processDir(ctx context.Context, dir *domain.Directory) (int, error) {
+func executeFiles(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	dir *domain.Directory,
+	parallel bool,
+	process fileProcessor,
+) (int, error) {
+	var result processResult
+	if !parallel {
+		for fileIndex := range dir.RuntimeSteps {
+			exitCode, err := process(ctx, dir, fileIndex)
+			result.setResult(exitCode, err)
+			if err != nil {
+				cancel()
+				break
+			}
+		}
+		return result.code, result.err
+	}
+
+	var wg sync.WaitGroup
+	for fileIndex := range dir.RuntimeSteps {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			exitCode, err := process(ctx, dir, fileIndex)
+			result.setResult(exitCode, err)
+			if err != nil {
+				cancel()
+			}
+		}()
+	}
+	wg.Wait()
+	return result.code, result.err
+}
+
+func executeDirectoryFiles(
+	ctx context.Context,
+	publish resultPublisher,
+	dir *domain.Directory,
+	parallel bool,
+	process fileProcessor,
+) (int, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	return executeFiles(ctx, cancel, dir, parallel, func(ctx context.Context, dir *domain.Directory, fileIndex int) (int, error) {
+		exitCode, err := process(ctx, dir, fileIndex)
+		if err != nil && publish != nil {
+			publish(exitCode, err)
+		}
+		return exitCode, err
+	})
+}
+
+func (e *Executor) processDir(ctx context.Context, publish resultPublisher, dir *domain.Directory) (int, error) {
 	if err := ctx.Err(); err != nil {
 		return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrExecutionCanceled, err)
 	}
+	return executeDirectoryFiles(ctx, publish, dir, e.config.Parallelism == 2, e.processFile)
+}
 
+// processFile executes one RuntimeSteps group serially. It retains the existing
+// per-step phase, validation, capture, and Debug contracts; reports successful
+// completion for the corresponding StepsDefinitions entry; and returns
+// validation status when any step in the file mismatched. Before returning a
+// terminal error it wraps that error with ErrStepExecution and
+// spec.steps[index] provenance through errs.StepExecutionError. A successful
+// Debug report returns errDebugStop.
+func (e *Executor) processFile(ctx context.Context, dir *domain.Directory, fileIndex int) (int, error) {
 	validationFailed := false
-	for groupIndex := range dir.RuntimeSteps {
-		for stepIndex := range dir.RuntimeSteps[groupIndex] {
-			step := &dir.RuntimeSteps[groupIndex][stepIndex]
+	for stepIndex := range dir.RuntimeSteps[fileIndex] {
+		step := &dir.RuntimeSteps[fileIndex][stepIndex]
 
-			if exitCode, err := e.binder.LoadVariables(ctx, step); err != nil {
-				return e.finishStep(ctx, step, exitCode, err)
-			}
-			if exitCode, err := e.binder.InterpolateRequestBody(ctx, step); err != nil {
-				return e.finishStep(ctx, step, exitCode, err)
-			}
-			if exitCode, err := e.binder.InterpolateResponseExpectedBody(ctx, step); err != nil {
-				return e.finishStep(ctx, step, exitCode, err)
-			}
+		if err := ctx.Err(); err != nil {
+			return fatalResult(0, wrapStepFailure(step, err))
+		}
+		if exitCode, err := e.binder.LoadVariables(ctx, step); err != nil {
+			return e.finishStep(ctx, step, exitCode, err)
+		}
+		if exitCode, err := e.binder.InterpolateRequestBody(ctx, step); err != nil {
+			return e.finishStep(ctx, step, exitCode, err)
+		}
+		if exitCode, err := e.binder.InterpolateResponseExpectedBody(ctx, step); err != nil {
+			return e.finishStep(ctx, step, exitCode, err)
+		}
 
-			body, status, err := executeRequest(ctx, step)
-			if err != nil {
-				return e.finishStep(ctx, step, status, err)
-			}
-			step.Response.ActualStatus = status
-			step.Response.ActualBody = domain.YAMLString(body)
+		body, status, err := executeRequest(ctx, step)
+		if err != nil {
+			return e.finishStep(ctx, step, status, err)
+		}
+		step.Response.ActualStatus = status
+		step.Response.ActualBody = domain.YAMLString(body)
 
-			failedTypes, err := e.val.ValidateTypes(ctx, step)
-			if err != nil {
+		failedTypes, err := e.val.ValidateTypes(ctx, step)
+		if err != nil {
+			return e.finishStep(ctx, step, 0, err)
+		}
+		var statusFailure error
+		if err := e.val.ValidateStatus(ctx, step); err != nil {
+			if !errors.Is(err, ErrValidation) {
 				return e.finishStep(ctx, step, 0, err)
 			}
-
-			var statusFailure error
-			if err := e.val.ValidateStatus(ctx, step); err != nil {
-				if !errors.Is(err, ErrValidation) {
-					return e.finishStep(ctx, step, 0, err)
-				}
-				statusFailure = err
+			statusFailure = err
+		}
+		diff, err := e.val.ValidateBody(ctx, step)
+		if err != nil {
+			return e.finishStep(ctx, step, 0, err)
+		}
+		failureCount := 0
+		if failedTypes != "" {
+			failureCount++
+		}
+		if statusFailure != nil {
+			failureCount++
+		}
+		if diff != "" {
+			failureCount++
+		}
+		if failureCount > 0 {
+			validationFailed = true
+		}
+		nextReportContext := func() context.Context {
+			failureCount--
+			if failureCount == 0 {
+				return context.WithValue(ctx, e.report, true)
 			}
-
-			diff, err := e.val.ValidateBody(ctx, step)
-			if err != nil {
+			return ctx
+		}
+		if failedTypes != "" {
+			if err := e.report.ValidationTypes(nextReportContext(), step, failedTypes); err != nil {
 				return e.finishStep(ctx, step, 0, err)
 			}
-			failureCount := 0
-			if failedTypes != "" {
-				failureCount++
+		}
+		if statusFailure != nil {
+			if err := e.report.ValidationStatus(nextReportContext(), step, statusFailure); err != nil {
+				return e.finishStep(ctx, step, 0, err)
 			}
-			if statusFailure != nil {
-				failureCount++
+		}
+		if diff != "" {
+			if err := e.report.ValidationBody(nextReportContext(), step, diff); err != nil {
+				return e.finishStep(ctx, step, 0, err)
 			}
-			if diff != "" {
-				failureCount++
-			}
-			if failureCount > 0 {
-				validationFailed = true
-			}
-			nextReportContext := func() context.Context {
-				failureCount--
-				if failureCount == 0 {
-					return context.WithValue(ctx, e.report, true)
-				}
-				return ctx
-			}
-			if failedTypes != "" {
-				if err := e.report.ValidationTypes(nextReportContext(), step, failedTypes); err != nil {
-					return e.finishStep(ctx, step, 0, err)
-				}
-			}
-			if statusFailure != nil {
-				if err := e.report.ValidationStatus(nextReportContext(), step, statusFailure); err != nil {
-					return e.finishStep(ctx, step, 0, err)
-				}
-			}
-			if diff != "" {
-				if err := e.report.ValidationBody(nextReportContext(), step, diff); err != nil {
-					return e.finishStep(ctx, step, 0, err)
-				}
-			}
+		}
 
-			if exitCode, err := e.binder.CaptureResponseVariables(ctx, step); err != nil {
-				return e.finishStep(ctx, step, exitCode, err)
-			}
-			if step.Debug {
-				return e.finishStep(ctx, step, 0, nil)
-			}
+		if exitCode, err := e.binder.CaptureResponseVariables(ctx, step); err != nil {
+			return e.finishStep(ctx, step, exitCode, err)
+		}
+		if step.Debug {
+			return e.finishStep(ctx, step, 0, nil)
 		}
 	}
 
-	if err := e.report.Success(ctx, dir); err != nil {
+	if err := e.report.Success(ctx, dir.StepsDefinitions[fileIndex]); err != nil {
 		return fatalResult(0, err)
 	}
 	if validationFailed {
@@ -413,7 +544,10 @@ func executeRequest(ctx context.Context, step *domain.Step) (string, int, error)
 
 func (e *Executor) finishStep(ctx context.Context, step *domain.Step, exitCode int, terminalErr error) (int, error) {
 	if !step.Debug {
-		return fatalResult(exitCode, terminalErr)
+		return fatalResult(exitCode, wrapStepFailure(step, terminalErr))
+	}
+	if terminalErr != nil && ctx.Err() != nil && errors.Is(terminalErr, ctx.Err()) {
+		return fatalResult(exitCode, wrapStepFailure(step, terminalErr))
 	}
 
 	reportCtx := ctx
@@ -422,12 +556,24 @@ func (e *Executor) finishStep(ctx context.Context, step *domain.Step, exitCode i
 	}
 	reportErr := e.report.Debug(reportCtx, step)
 	if terminalErr != nil {
-		return fatalResult(exitCode, terminalErr)
+		return fatalResult(exitCode, wrapStepFailure(step, terminalErr))
 	}
 	if reportErr != nil {
-		return fatalResult(0, reportErr)
+		return fatalResult(0, wrapStepFailure(step, reportErr))
 	}
 	return 0, errDebugStop
+}
+
+func wrapStepFailure(step *domain.Step, terminalErr error) error {
+	if terminalErr == nil {
+		return nil
+	}
+	return errs.StepExecutionError(
+		step,
+		fmt.Sprintf("spec.steps[%d]", step.Index),
+		ErrStepExecution,
+		terminalErr,
+	)
 }
 
 func prepareDirectory(dir *domain.Directory) {

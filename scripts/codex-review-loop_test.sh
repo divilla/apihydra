@@ -72,6 +72,9 @@ if [[ ${1-} == exec && ${2-} == review && ${3-} == --json ]]; then
 	done
 	[[ "$base" == "$CODEX_TEST_EXPECTED_BASE" ]]
 	[[ -n "$output" ]]
+	if [[ ${CODEX_TEST_NO_SESSION-} != 1 ]]; then
+		printf '%s\n' '{"type":"thread.started","thread_id":"123e4567-e89b-12d3-a456-426614174000"}'
+	fi
 	if [[ ${CODEX_TEST_FAIL_REVIEW-} == 1 ]]; then
 		printf '%s\n' 'simulated Codex review failure' >&2
 		exit 42
@@ -222,9 +225,14 @@ awk '
 		closing = following
 	}
 	if (length(separator) != width || closing != separator) exit 1
+	if (command ~ /^codex exec review /) {
+		if ((getline session) <= 0 || session != "codex-session-id: 123e4567-e89b-12d3-a456-426614174000") exit 1
+		if ((getline session_closing) <= 0 || session_closing != separator) exit 1
+		sessions++
+	}
 	commands++
 }
-END { if (commands != 3 || inputs != 1) exit 1 }
+END { if (commands != 3 || inputs != 1 || sessions != 2) exit 1 }
 ' "$output"
 printf -v expected_review_command \
 	'codex exec review --json --base %q -o %q' \
@@ -302,6 +310,47 @@ grep -Fxq "$expected_review_command" "$explicit_base_output"
 [[ $(<"$review_count") == 3 ]]
 [[ "$explicit_findings_file" != "$findings_file" ]]
 [[ ! -e "$explicit_findings_dir" ]]
+
+live_session_output="$test_root/live-session-output"
+(
+	cd "$repo"
+	PATH="$fake_bin:$PATH" \
+		CODEX_TEST_REVIEW_RESULT_SET=1 \
+		CODEX_TEST_REVIEW_RESULT='No actionable defects found.' \
+		CODEX_TEST_REVIEW_DELAY=1 \
+		CODEX_TEST_EXPECTED_BASE="$develop_base" \
+		./scripts/codex-review-loop.pl "$specification" --base develop
+) >"$live_session_output" &
+live_session_pid=$!
+for _ in {1..100}; do
+	grep -Fq 'codex-session-id: 123e4567-e89b-12d3-a456-426614174000' "$live_session_output" && break
+	kill -0 "$live_session_pid" 2>/dev/null || break
+	sleep 0.02
+done
+grep -Fq 'codex-session-id: 123e4567-e89b-12d3-a456-426614174000' "$live_session_output"
+kill -0 "$live_session_pid"
+wait "$live_session_pid"
+
+missing_session_output="$test_root/missing-session-output"
+missing_session_error="$test_root/missing-session-error"
+set +e
+(
+	cd "$repo"
+	PATH="$fake_bin:$PATH" \
+		CODEX_TEST_NO_SESSION=1 \
+		CODEX_TEST_REVIEW_RESULT_SET=1 \
+		CODEX_TEST_REVIEW_RESULT='No actionable defects found.' \
+		CODEX_TEST_EXPECTED_BASE="$develop_base" \
+		./scripts/codex-review-loop.pl "$specification" --base develop
+) >"$missing_session_output" 2>"$missing_session_error"
+missing_session_status=$?
+set -e
+missing_session_findings_file=$(sed -n 's/^Findings: //p' "$missing_session_output" | head -n 1)
+[[ $missing_session_status -eq 1 ]]
+grep -Eq '^\[❌\] [0-9]+:[0-9]{2}$' "$missing_session_output"
+grep -Fxq 'codex-review-loop: Codex review output did not contain a thread.started session id' "$missing_session_error"
+! grep -Fq 'codex-session-id:' "$missing_session_output"
+[[ ! -e "${missing_session_findings_file%/*}" ]]
 
 failed_review_output="$test_root/failed-review-output"
 failed_review_error="$test_root/failed-review-error"

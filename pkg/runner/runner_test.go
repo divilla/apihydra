@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"unicode/utf8"
 )
@@ -40,7 +41,7 @@ func TestExportedContract(t *testing.T) {
 	var _ func(context.Context, string, string) (string, int, error) = JQExtract
 	var _ func(context.Context, string, string) (string, int, error) = JQFilter
 	var _ func(context.Context, string) (string, int, error) = JQPretty
-	var _ func(context.Context, string, string) (string, int, error) = GitDiff
+	var _ func(context.Context, string, string, string) (string, int, error) = GitDiff
 }
 
 func TestCurlBuildRawAndExecutePreserveCompleteUnredactedValues(t *testing.T) {
@@ -572,7 +573,7 @@ exit 1
 	t.Setenv("APIH_TEST_EXPECTED", expectedPath)
 	t.Setenv("APIH_TEST_ACTUAL", actualPath)
 
-	diff, exitCode, err := GitDiff(context.Background(), "old\n", "new\n")
+	diff, exitCode, err := GitDiff(context.Background(), t.TempDir(), "old\n", "new\n")
 	if err != nil {
 		t.Fatalf("GitDiff() error = %v", err)
 	}
@@ -597,7 +598,7 @@ exit 1
 func TestGitDiffNormalizesEqualAndFailedCommands(t *testing.T) {
 	t.Run("equal", func(t *testing.T) {
 		installCommand(t, "git", `exit 0`)
-		diff, exitCode, err := GitDiff(context.Background(), "same", "same")
+		diff, exitCode, err := GitDiff(context.Background(), t.TempDir(), "same", "same")
 		if err != nil || diff != "" || exitCode != 0 {
 			t.Fatalf("GitDiff() = (%q, %d, %v), want empty success", diff, exitCode, err)
 		}
@@ -608,7 +609,7 @@ func TestGitDiffNormalizesEqualAndFailedCommands(t *testing.T) {
 printf 'git failed' >&2
 exit 3
 `)
-		_, exitCode, err := GitDiff(context.Background(), "old", "new")
+		_, exitCode, err := GitDiff(context.Background(), t.TempDir(), "old", "new")
 		assertCommandError(t, err, ErrGitDiff)
 		if exitCode != 3 {
 			t.Fatalf("GitDiff() exit code = %d, want 3", exitCode)
@@ -623,7 +624,7 @@ exit 3
 printf 'binary files differ\n'
 exit 1
 `)
-		diff, exitCode, err := GitDiff(context.Background(), "old", "new")
+		diff, exitCode, err := GitDiff(context.Background(), t.TempDir(), "old", "new")
 		if err != nil || diff != "" || exitCode != 1 {
 			t.Fatalf("GitDiff() = (%q, %d, %v), want empty successful diff", diff, exitCode, err)
 		}
@@ -631,11 +632,79 @@ exit 1
 }
 
 func TestGitDiffReportsTemporaryDirectoryFailure(t *testing.T) {
-	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
-	_, exitCode, err := GitDiff(context.Background(), "old", "new")
+	runPath := filepath.Join(t.TempDir(), "run-file")
+	if err := os.WriteFile(runPath, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, exitCode, err := GitDiff(context.Background(), runPath, "old", "new")
 	assertCommandError(t, err, ErrGitDiff)
 	if exitCode != -1 {
 		t.Fatalf("GitDiff() exit code = %d, want -1", exitCode)
+	}
+}
+
+func TestGitDiffUsesDistinctRunScopedOperationsAndCleansThem(t *testing.T) {
+	installCommand(t, "git", `
+pwd >> "$APIH_TEST_GIT_DIRS"
+printf '%s\n' '@@ -1 +1 @@' '-actual' '+expected'
+exit 1
+`)
+	runDir := t.TempDir()
+	captured := filepath.Join(t.TempDir(), "git-dirs")
+	t.Setenv("APIH_TEST_GIT_DIRS", captured)
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "must-not-be-used"))
+
+	const operations = 16
+	var wait sync.WaitGroup
+	errorsSeen := make(chan error, operations)
+	for range operations {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, exitCode, err := GitDiff(context.Background(), runDir, "expected", "actual")
+			if err != nil {
+				errorsSeen <- err
+				return
+			}
+			if exitCode != 1 {
+				errorsSeen <- errors.New("unexpected GitDiff exit code")
+			}
+		}()
+	}
+	wait.Wait()
+	close(errorsSeen)
+	for err := range errorsSeen {
+		t.Fatal(err)
+	}
+
+	contents, err := os.ReadFile(captured)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directories := strings.Fields(string(contents))
+	if len(directories) != operations {
+		t.Fatalf("captured operation directories = %d, want %d: %q", len(directories), operations, contents)
+	}
+	unique := make(map[string]struct{}, operations)
+	wantParent := filepath.Join(runDir, "git-diff")
+	for _, directory := range directories {
+		if filepath.Dir(directory) != wantParent {
+			t.Fatalf("operation directory = %q, want child of %q", directory, wantParent)
+		}
+		unique[directory] = struct{}{}
+		if _, err := os.Stat(directory); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("operation directory cleanup error = %v for %q", err, directory)
+		}
+	}
+	if len(unique) != operations {
+		t.Fatalf("unique operation directories = %d, want %d", len(unique), operations)
+	}
+	entries, err := os.ReadDir(wantParent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("git-diff namespace retained operation artifacts: %v", entries)
 	}
 }
 

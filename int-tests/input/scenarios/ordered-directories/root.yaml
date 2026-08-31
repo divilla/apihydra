@@ -1,0 +1,6 @@
+app: apihydra
+kind: root
+metadata:
+  name: ordered-directories
+spec:
+  base_url: http://APIH_TEST_SERVER

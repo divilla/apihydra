@@ -17,12 +17,35 @@ and process exit remain in `cmd/cli`. The validation reporting methods mirror
 Validator's separate type, status, and body operations without taking ownership
 of validation itself.
 
+## Ordered stage transactions
+
+`NewReporter` receives the output writer and whether that writer is a terminal.
+Executor brackets every stage with `BeginStage` and `EndStage`.
+`BeginStage` receives directories in plan order; each directory's
+`StepsDefinitions` slice fixes file order, and each file's step events retain
+step order. Root and defaults documents contribute inherited configuration but
+are not executable output units.
+
+Reporter retains one output buffer per steps definition. On a terminal, every
+Success, validation, or Debug event clears and redraws only the active-stage
+region in canonical directory/file/step order. The working-directory heading
+and completed stages stay fixed. On non-terminal writers, no partial stage is
+written: `EndStage` emits the complete stage once in canonical order. A Debug
+dump is retained separately and appended after all accumulated file blocks so
+it is the final stdout block. After Debug is accepted, later reporting calls
+are no-ops.
+
+Before Executor returns a fatal error, active work is canceled and joined and
+`EndStage` performs the final ordered render. The CLI then writes the
+provenance-bearing fatal diagnostic to stderr. That diagnostic is the final
+application output.
+
 ## Terminal output contract
 
 Reporter uses terminal ANSI colors. In the examples below, `«color:text»`
 documents colored text; the notation itself is not printed.
 
-A successful definition file is printed once using its path relative to the
+A successful steps definition file is printed once using its path relative to the
 working directory with the YAML extension removed. The check uses terminal
 palette color 10, matching added body-diff values. Success is tracked per
 definition: when one file in a directory fails, every valid sibling file still
@@ -119,18 +142,21 @@ another directory.
 
 ## Deliberately unspecified
 
-The skeleton does not define precedence when concurrent directories reach
-different debug steps. Reporter does not perform validation itself. Canonical
-zero-value TODO bodies are not acceptable production implementations.
+The skeleton does not define precedence when concurrent directories or files
+reach different debug steps. Reporter does not perform validation itself.
+Canonical zero-value TODO bodies are not acceptable production implementations.
 
 ## Required implementation and tests
 
 - Production output: `internal/reporting/reporter.go` retains the complete
   working-directory implementation and replaces all remaining TODO bodies with
-  serialized writes to the injected writer.
+  serialized per-file buffering, terminal redraw, and non-terminal stage
+  commit behavior through the injected writer.
 - Test output: `internal/reporting/reporter_test.go` covers every method,
-  byte-exact working-directory and terminal output, grouped multi-validation
-  output, colored expected-type declarations, indented colored diffs,
+  byte-exact working-directory and terminal output, stage initialization,
+  deterministic per-file buffering, active-region clear/redraw controls,
+  one-shot non-terminal commits, grouped multi-validation output, colored
+  expected-type declarations, indented colored diffs,
   the exact Debug provenance/Curl/JSON layout, verbatim pre-rendered Curl
   content, complete unredacted sensitive values, structured valid JSON bodies
   with string fallback for invalid or empty bodies, omission of `RawCurl` and
@@ -143,32 +169,39 @@ zero-value TODO bodies are not acceptable production implementations.
 
 ## Acceptance criteria
 
-1. Public names, signatures, static errors, and writer injection match the
-   reference.
+1. Public names, signatures, static errors, writer injection, and explicit
+   terminal selection match the reference.
 2. Working-directory output is byte-exact and write failures preserve their
    causes.
 3. Reporter has no stderr or process-termination responsibility.
-4. Successful definition files and grouped validation failures follow the
+4. `BeginStage` and `EndStage` preserve canonical stage/directory/file/step
+   order. Terminal events clear and redraw only the active stage region without
+   modifying completed output; non-terminal stages are emitted once at their
+   barrier. Concurrent event arrival never changes final logical order.
+5. Successful definition files and grouped validation failures follow the
    terminal output contract above, including path derivation, indentation,
    palette-10 checks, one palette-210 cross per file and failing step, effective
    methods, one-based cyan step numbers, four/eight-space indentation, one
    trailing blank line per failing step, per-definition success in mixed-result
    directories, file/step deduplication, and palette-210 `actual_status` plus
    palette-10 `expected_status` mismatch values.
-5. `ValidationTypes` accepts the failed string returned by type validation and
+6. `ValidationTypes` accepts the failed string returned by type validation and
    renders the corresponding original `ExpectedTypes` entries with keys in
    terminal palette color 15 and complete values in palette color 210.
-6. `ValidationBody` prefixes every diff line with eight spaces and preserves its
+7. `ValidationBody` prefixes every diff line with eight spaces and preserves its
    calculated actual-to-expected colors. Its rendered body block contains only
    changed red and green values, with no diff metadata or unchanged context.
-7. `Debug` emits the byte-exact stage, directory-path, file-path,
+8. `Debug` emits the byte-exact stage, directory-path, file-path,
    `curl-command`, and Step JSON layout. It writes `Step.RawCurl` verbatim and
    complete, preserves every latest Step member and value while projecting
    valid request/expected/actual JSON bodies as structured values and retaining
    invalid or empty bodies as strings, normalizes the result through
    `runner.JQPretty`, emits jq-palette colored JSON with `index` and without
-   `RawCurl` or `Definition`, and atomically suppresses every later reporting
-   call after the block is successfully written. Reporter does not perform
-   validation, schedule debug steps, redact any value, or call `os.Exit`.
-8. No TODO or zero-value placeholder remains in a reporting method; package
+   `RawCurl` or `Definition`, places the dump after all accumulated file
+   buffers, and atomically suppresses every later reporting call after the
+   block is accepted. Reporter does not perform validation, schedule debug
+   steps, redact any value, or call `os.Exit`.
+9. A fatal stage receives its final ordered commit before the CLI-owned stderr
+   diagnostic, and no Reporter method writes anything afterward.
+10. No TODO or zero-value placeholder remains in a reporting method; package
    tests, race tests, the ownership test, and `git diff --check` pass.

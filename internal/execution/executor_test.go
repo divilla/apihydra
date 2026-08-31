@@ -19,11 +19,12 @@ import (
 
 func TestExecutorExportedContractAndConstructorState(t *testing.T) {
 	binder := NewBinder(NewKeyValueStore())
-	validator := NewValidator()
-	reporter := reporting.NewReporter(&bytes.Buffer{})
-	executor := NewExecutor(binder, validator, reporter)
+	validator := NewValidator(domain.Config{})
+	reporter := reporting.NewReporter(&bytes.Buffer{}, false)
+	config := domain.Config{Parallelism: 1}
+	executor := NewExecutor(binder, validator, reporter, config)
 
-	if executor.binder != binder || executor.val != validator || executor.report != reporter {
+	if executor.binder != binder || executor.val != validator || executor.report != reporter || executor.config != config {
 		t.Fatalf("NewExecutor() did not retain collaborators: %+v", executor)
 	}
 	if got, want := ErrInvalidDirectoryTree.Error(), "invalid directory tree"; got != want {
@@ -33,7 +34,7 @@ func TestExecutorExportedContractAndConstructorState(t *testing.T) {
 		t.Fatalf("ErrExecutionCanceled = %q, want %q", got, want)
 	}
 
-	var _ func(*Binder, *Validator, *reporting.Reporter) *Executor = NewExecutor
+	var _ func(*Binder, *Validator, *reporting.Reporter, domain.Config) *Executor = NewExecutor
 	var _ func(*Executor, *domain.Suite) (int, error) = (*Executor).ValidateDirectories
 	var _ func(*Executor, *domain.Suite) = (*Executor).Prepare
 	var _ func(*Executor, *domain.Suite) [][]*domain.Directory = (*Executor).PlanStages
@@ -66,7 +67,7 @@ func TestPrepareDeepCopiesAllMutableStepStateAcrossTree(t *testing.T) {
 	suite := &domain.Suite{Root: root}
 	binder := NewBinder(NewKeyValueStore())
 
-	NewExecutor(binder, nil, nil).Prepare(suite)
+	NewExecutor(binder, nil, nil, domain.Config{}).Prepare(suite)
 
 	if !reflect.DeepEqual(root.RuntimeSteps, root.ResolvedSteps) || !reflect.DeepEqual(child.RuntimeSteps, child.ResolvedSteps) {
 		t.Fatalf("Prepare() runtime steps differ from resolved values: root=%+v child=%+v", root.RuntimeSteps, child.RuntimeSteps)
@@ -115,13 +116,13 @@ func TestPrepareDeepCopiesAllMutableStepStateAcrossTree(t *testing.T) {
 
 func TestPreparePreservesNilResolvedSteps(t *testing.T) {
 	root := &domain.Directory{ResolvedSteps: [][]domain.Step{{{}}}}
-	NewExecutor(nil, nil, nil).Prepare(&domain.Suite{Root: root})
+	NewExecutor(nil, nil, nil, domain.Config{}).Prepare(&domain.Suite{Root: root})
 	if root.RuntimeSteps[0][0].Vars != nil || root.RuntimeSteps[0][0].Request.Defaults.Headers != nil || root.RuntimeSteps[0][0].Response.Capture != nil {
 		t.Fatalf("Prepare() changed nil maps: %+v", root.RuntimeSteps[0][0])
 	}
 
 	nilRoot := &domain.Directory{}
-	NewExecutor(nil, nil, nil).Prepare(&domain.Suite{Root: nilRoot})
+	NewExecutor(nil, nil, nil, domain.Config{}).Prepare(&domain.Suite{Root: nilRoot})
 	if nilRoot.RuntimeSteps != nil {
 		t.Fatalf("RuntimeSteps = %#v, want nil", nilRoot.RuntimeSteps)
 	}
@@ -141,7 +142,7 @@ func TestValidateDirectoriesAndPlanStagesSupportArbitraryValidDepth(t *testing.T
 	}
 
 	suite := &domain.Suite{Root: root}
-	executor := NewExecutor(nil, nil, nil)
+	executor := NewExecutor(nil, nil, nil, domain.Config{})
 	exitCode, err := executor.ValidateDirectories(suite)
 	if err != nil {
 		t.Fatalf("ValidateDirectories() error = %v", err)
@@ -166,7 +167,7 @@ func TestPlanStagesGroupsSiblingsAndPreservesTreeSliceOrder(t *testing.T) {
 	root.Children = []*domain.Directory{first, second}
 	first.Children = []*domain.Directory{grandchild}
 
-	got := NewExecutor(nil, nil, nil).PlanStages(&domain.Suite{Root: root})
+	got := NewExecutor(nil, nil, nil, domain.Config{}).PlanStages(&domain.Suite{Root: root})
 	want := [][]*domain.Directory{{root}, {first, second}, {grandchild}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("PlanStages() = %#v, want %#v", got, want)
@@ -229,7 +230,7 @@ func TestValidateDirectoriesRejectsInvalidTrees(t *testing.T) {
 
 	for name, suite := range tests {
 		t.Run(name, func(t *testing.T) {
-			executor := NewExecutor(nil, nil, nil)
+			executor := NewExecutor(nil, nil, nil, domain.Config{})
 			exitCode, err := executor.ValidateDirectories(suite())
 			if exitCode != errs.ExitConfiguration {
 				t.Fatalf("ValidateDirectories() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
@@ -253,7 +254,7 @@ func TestExecuteStagesUsesSameStageConcurrencyAndLaterStageBarrier(t *testing.T)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, _ = executeStages(context.Background(), [][]*domain.Directory{{first, second}, {later}}, func(_ context.Context, dir *domain.Directory) (int, error) {
+		_, _ = executeStages(context.Background(), [][]*domain.Directory{{first, second}, {later}}, 1, nil, func(_ context.Context, _ resultPublisher, dir *domain.Directory) (int, error) {
 			if dir == later {
 				laterSawActive.Store(active.Load())
 				return 0, nil
@@ -278,6 +279,291 @@ func TestExecuteStagesUsesSameStageConcurrencyAndLaterStageBarrier(t *testing.T)
 	}
 }
 
+func TestParallelismModesControlDirectoryAndFileOverlap(t *testing.T) {
+	first := &domain.Directory{Path: "/first", RuntimeSteps: make([][]domain.Step, 2)}
+	second := &domain.Directory{Path: "/second"}
+
+	t.Run("mode zero serializes directories", func(t *testing.T) {
+		var active atomic.Int32
+		var maximum atomic.Int32
+		visited := make([]string, 0, 2)
+		exitCode, err := executeStages(
+			context.Background(),
+			[][]*domain.Directory{{first, second}},
+			0,
+			nil,
+			func(_ context.Context, _ resultPublisher, directory *domain.Directory) (int, error) {
+				current := active.Add(1)
+				if current > maximum.Load() {
+					maximum.Store(current)
+				}
+				visited = append(visited, directory.Path)
+				active.Add(-1)
+				return 0, nil
+			},
+		)
+		if err != nil || exitCode != 0 || maximum.Load() != 1 || !reflect.DeepEqual(visited, []string{"/first", "/second"}) {
+			t.Fatalf("mode 0 = (%d, %v), maximum %d, visited %v", exitCode, err, maximum.Load(), visited)
+		}
+	})
+
+	for _, parallel := range []bool{false, true} {
+		t.Run("files parallel="+strconv.FormatBool(parallel), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			started := make(chan struct{}, 2)
+			release := make(chan struct{})
+			var active atomic.Int32
+			var maximum atomic.Int32
+			done := make(chan error, 1)
+			go func() {
+				_, err := executeFiles(ctx, cancel, first, parallel, func(context.Context, *domain.Directory, int) (int, error) {
+					current := active.Add(1)
+					if current > maximum.Load() {
+						maximum.Store(current)
+					}
+					started <- struct{}{}
+					if parallel {
+						<-release
+					}
+					active.Add(-1)
+					return 0, nil
+				})
+				done <- err
+			}()
+			<-started
+			if parallel {
+				<-started
+				close(release)
+			}
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+			want := int32(1)
+			if parallel {
+				want = 2
+			}
+			if maximum.Load() != want {
+				t.Fatalf("maximum active files = %d, want %d", maximum.Load(), want)
+			}
+		})
+	}
+}
+
+func TestExecuteFilesHasNoArtificialTaskLimit(t *testing.T) {
+	const files = 64
+	directory := &domain.Directory{RuntimeSteps: make([][]domain.Step, files)}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{}, files)
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := executeFiles(ctx, cancel, directory, true, func(context.Context, *domain.Directory, int) (int, error) {
+			started <- struct{}{}
+			<-release
+			return 0, nil
+		})
+		done <- err
+	}()
+	for range files {
+		<-started
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExecuteStageHasNoArtificialTaskLimit(t *testing.T) {
+	const directories = 64
+	stage := make([]*domain.Directory, directories)
+	for index := range stage {
+		stage[index] = &domain.Directory{Path: "/" + strconv.Itoa(index)}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{}, directories)
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := executeStage(ctx, cancel, stage, true, func(context.Context, resultPublisher, *domain.Directory) (int, error) {
+			started <- struct{}{}
+			<-release
+			return 0, nil
+		})
+		done <- err
+	}()
+	for range directories {
+		<-started
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSerialFilesCanShareOneWriteOnceStore(t *testing.T) {
+	directory := &domain.Directory{RuntimeSteps: make([][]domain.Step, 2)}
+	store := NewKeyValueStore()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	exitCode, err := executeFiles(ctx, cancel, directory, false, func(_ context.Context, _ *domain.Directory, fileIndex int) (int, error) {
+		if fileIndex == 0 {
+			return 0, store.Set("shared", "value")
+		}
+		value, err := store.Get("shared")
+		if err != nil || value != "value" {
+			return errs.ExitInternal, err
+		}
+		return 0, nil
+	})
+	if exitCode != 0 || err != nil {
+		t.Fatalf("serial shared store = (%d, %v)", exitCode, err)
+	}
+}
+
+func TestExecuteFilesCancelsAndJoinsSiblingsOnFatalError(t *testing.T) {
+	directory := &domain.Directory{RuntimeSteps: make([][]domain.Step, 2)}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	siblingStarted := make(chan struct{})
+	siblingReturned := make(chan struct{})
+	exitCode, err := executeFiles(ctx, cancel, directory, true, func(ctx context.Context, _ *domain.Directory, fileIndex int) (int, error) {
+		if fileIndex == 0 {
+			<-siblingStarted
+			return errs.ExitInternal, ErrStepExecution
+		}
+		close(siblingStarted)
+		<-ctx.Done()
+		close(siblingReturned)
+		return errs.ExitInternal, ctx.Err()
+	})
+	if exitCode != errs.ExitInternal || !errors.Is(err, ErrStepExecution) {
+		t.Fatalf("fatal files = (%d, %v)", exitCode, err)
+	}
+	select {
+	case <-siblingReturned:
+	default:
+		t.Fatal("executeFiles returned before canceled sibling joined")
+	}
+}
+
+func TestFileStopCancelsStageBeforeJoiningFileSiblingsAndPreservesResult(t *testing.T) {
+	wantErr := errors.New("originating file failure")
+	t.Run("fatal", func(t *testing.T) {
+		testFileStopCancelsStage(t, errs.ExitConfiguration, wantErr, errs.ExitConfiguration, wantErr)
+	})
+	t.Run("debug", func(t *testing.T) {
+		testFileStopCancelsStage(t, 0, errDebugStop, 0, nil)
+	})
+}
+
+func testFileStopCancelsStage(t *testing.T, fileCode int, fileErr error, wantCode int, wantErr error) {
+	t.Helper()
+	origin := &domain.Directory{Path: "/origin", RuntimeSteps: make([][]domain.Step, 2)}
+	peer := &domain.Directory{Path: "/peer"}
+	peerStarted := make(chan struct{})
+	peerCanceled := make(chan struct{})
+	fileSiblingStarted := make(chan struct{})
+	fileSiblingCanceled := make(chan struct{})
+	releaseFileSibling := make(chan struct{})
+	type executionResult struct {
+		code int
+		err  error
+	}
+	done := make(chan executionResult, 1)
+
+	go func() {
+		code, err := executeStages(
+			context.Background(),
+			[][]*domain.Directory{{origin, peer}},
+			2,
+			nil,
+			func(ctx context.Context, publish resultPublisher, dir *domain.Directory) (int, error) {
+				if dir == peer {
+					close(peerStarted)
+					<-ctx.Done()
+					close(peerCanceled)
+					return errs.ExitInternal, ctx.Err()
+				}
+				return executeDirectoryFiles(ctx, publish, dir, true, func(ctx context.Context, _ *domain.Directory, fileIndex int) (int, error) {
+					if fileIndex == 0 {
+						<-peerStarted
+						<-fileSiblingStarted
+						return fileCode, fileErr
+					}
+					close(fileSiblingStarted)
+					<-ctx.Done()
+					close(fileSiblingCanceled)
+					<-releaseFileSibling
+					return errs.ExitInternal, ctx.Err()
+				})
+			},
+		)
+		done <- executionResult{code: code, err: err}
+	}()
+
+	<-peerCanceled
+	<-fileSiblingCanceled
+	select {
+	case result := <-done:
+		t.Fatalf("executeStages returned before the local file sibling joined: (%d, %v)", result.code, result.err)
+	default:
+	}
+	close(releaseFileSibling)
+	result := <-done
+	if result.code != wantCode || (wantErr == nil && result.err != nil) || (wantErr != nil && !errors.Is(result.err, wantErr)) {
+		t.Fatalf("nested stop result = (%d, %v), want (%d, %v)", result.code, result.err, wantCode, wantErr)
+	}
+}
+
+func TestExecuteStagesRejectsInvalidModeAndBracketsReporter(t *testing.T) {
+	exitCode, err := executeStages(context.Background(), nil, 3, nil, nil)
+	if exitCode != errs.ExitConfiguration || !errors.Is(err, ErrInvalidParallelism) {
+		t.Fatalf("invalid mode = (%d, %v)", exitCode, err)
+	}
+
+	directory := &domain.Directory{StepsDefinitions: []*domain.StepsDefinition{{}}}
+	var output bytes.Buffer
+	report := reporting.NewReporter(&output, false)
+	exitCode, err = executeStages(
+		context.Background(),
+		[][]*domain.Directory{{directory}},
+		0,
+		report,
+		func(context.Context, resultPublisher, *domain.Directory) (int, error) {
+			return 0, nil
+		},
+	)
+	if exitCode != 0 || err != nil || output.Len() != 0 {
+		t.Fatalf("reported empty stage = (%d, %v, %q)", exitCode, err, output.String())
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	exitCode, err = executeStages(canceled, [][]*domain.Directory{{directory}}, 0, report, nil)
+	if exitCode != errs.ExitInternal || !errors.Is(err, ErrExecutionCanceled) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled execution before BeginStage = (%d, %v), want internal ErrExecutionCanceled", exitCode, err)
+	}
+}
+
+func TestExecuteStagesReturnsEndStageFailure(t *testing.T) {
+	wantErr := errors.New("end stage failed")
+	report := reporting.NewReporter(executorFailingWriter{err: wantErr}, false)
+	directory := &domain.Directory{}
+	exitCode, err := executeStages(
+		context.Background(),
+		[][]*domain.Directory{{directory}},
+		0,
+		report,
+		func(context.Context, resultPublisher, *domain.Directory) (int, error) { return 0, nil },
+	)
+	if exitCode != errs.ExitInternal || !errors.Is(err, wantErr) {
+		t.Fatalf("EndStage failure = (%d, %v)", exitCode, err)
+	}
+}
+
 func TestExecuteStagesCancelsAndJoinsActiveStageOnError(t *testing.T) {
 	wantErr := errors.New("fatal execution error")
 	wantExitCode := errs.ExitInternal
@@ -287,7 +573,7 @@ func TestExecuteStagesCancelsAndJoinsActiveStageOnError(t *testing.T) {
 
 	siblingReturned := make(chan struct{})
 	var laterStarted atomic.Bool
-	process := func(ctx context.Context, dir *domain.Directory) (int, error) {
+	process := func(ctx context.Context, _ resultPublisher, dir *domain.Directory) (int, error) {
 		switch dir {
 		case failing:
 			return wantExitCode, wantErr
@@ -304,6 +590,8 @@ func TestExecuteStagesCancelsAndJoinsActiveStageOnError(t *testing.T) {
 	exitCode, err := executeStages(
 		context.Background(),
 		[][]*domain.Directory{{failing, sibling}, {later}},
+		1,
+		nil,
 		process,
 	)
 	if exitCode != wantExitCode {
@@ -328,7 +616,9 @@ func TestExecuteStagesNeverReturnsSuccessWithError(t *testing.T) {
 	exitCode, err := executeStages(
 		context.Background(),
 		[][]*domain.Directory{{{Stage: 0, Path: "/"}}},
-		func(context.Context, *domain.Directory) (int, error) {
+		1,
+		nil,
+		func(context.Context, resultPublisher, *domain.Directory) (int, error) {
 			return 0, wantErr
 		},
 	)
@@ -354,7 +644,9 @@ func TestExecuteStagesPreservesInFlightCancellationResult(t *testing.T) {
 		exitCode, err := executeStages(
 			ctx,
 			[][]*domain.Directory{{{Stage: 0, Path: "/"}}},
-			func(ctx context.Context, _ *domain.Directory) (int, error) {
+			1,
+			nil,
+			func(ctx context.Context, _ resultPublisher, _ *domain.Directory) (int, error) {
 				close(started)
 				<-ctx.Done()
 				return wantExitCode, errs.Build(wantExitCode, runner.ErrJQSelector, ctx.Err())
@@ -438,7 +730,9 @@ func TestExecuteStagesContinuesAfterValidationStatus(t *testing.T) {
 			{{Stage: 0, Path: "/"}},
 			{{Stage: 1, Path: "/child"}},
 		},
-		func(_ context.Context, dir *domain.Directory) (int, error) {
+		1,
+		nil,
+		func(_ context.Context, _ resultPublisher, dir *domain.Directory) (int, error) {
 			processed.Add(1)
 			if dir.Stage == 0 {
 				return errs.ExitValidation, nil
@@ -465,7 +759,9 @@ func TestExecuteStagesFatalErrorTakesPrecedenceOverValidationStatus(t *testing.T
 			{{Stage: 0, Path: "/"}},
 			{{Stage: 1, Path: "/child"}},
 		},
-		func(_ context.Context, dir *domain.Directory) (int, error) {
+		1,
+		nil,
+		func(_ context.Context, _ resultPublisher, dir *domain.Directory) (int, error) {
 			if dir.Stage == 0 {
 				return errs.ExitValidation, nil
 			}
@@ -480,17 +776,18 @@ func TestExecuteStagesFatalErrorTakesPrecedenceOverValidationStatus(t *testing.T
 	}
 }
 
-func TestExecuteReturnsCanceledForCanceledContextWithoutStages(t *testing.T) {
+func TestExecuteWithReporterClassifiesCancellationBeforeStage(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	exitCode, err := NewExecutor(nil, nil, nil).Execute(ctx, [][]*domain.Directory{{}})
+	report := reporting.NewReporter(&bytes.Buffer{}, false)
+	exitCode, err := NewExecutor(nil, nil, report, domain.Config{}).Execute(ctx, [][]*domain.Directory{{}})
 	if exitCode != errs.ExitInternal || !errors.Is(err, ErrExecutionCanceled) || !errors.Is(err, context.Canceled) {
 		t.Fatalf("Execute(canceled) = (%d, %v), want internal ErrExecutionCanceled", exitCode, err)
 	}
 }
 
 func TestExecuteReturnsSuccessWithoutStages(t *testing.T) {
-	exitCode, err := NewExecutor(nil, nil, nil).Execute(context.Background(), nil)
+	exitCode, err := NewExecutor(nil, nil, nil, domain.Config{}).Execute(context.Background(), nil)
 	if exitCode != 0 || err != nil {
 		t.Fatalf("Execute(nil) = (%d, %v), want success", exitCode, err)
 	}
@@ -568,9 +865,10 @@ esac
 	dir := first.Definition.File.Directory
 	dir.RuntimeSteps = [][]domain.Step{{first, second, third}}
 	var output bytes.Buffer
-	executor := NewExecutor(NewBinder(NewKeyValueStore()), NewValidator(), reporting.NewReporter(&output))
+	config := domain.Config{TempRunDir: t.TempDir()}
+	executor := NewExecutor(NewBinder(NewKeyValueStore()), NewValidator(config), reporting.NewReporter(&output, false), config)
 
-	exitCode, err := executor.processDir(context.Background(), dir)
+	exitCode, err := executor.processDir(context.Background(), discardResult, dir)
 	if exitCode != 0 || !errors.Is(err, errDebugStop) {
 		t.Fatalf("processDir() = (%d, %v), want debug stop", exitCode, err)
 	}
@@ -634,7 +932,7 @@ func TestDebugTerminalCurlErrorReportsLatestUnredactedStateAndPreservesError(t *
 	var output bytes.Buffer
 	executor := executorForStep(t, NewBinder(NewKeyValueStore()), step, &output)
 
-	exitCode, err := executor.processDir(context.Background(), step.Definition.File.Directory)
+	exitCode, err := executor.processDir(context.Background(), discardResult, step.Definition.File.Directory)
 	if exitCode != 27 || !errors.Is(err, runner.ErrCurl) {
 		t.Fatalf("processDir() = (%d, %v), want original Curl exit 27", exitCode, err)
 	}
@@ -664,7 +962,7 @@ func TestDebugTerminalErrorReportsAfterExecutionContextCancellation(t *testing.T
 	step.Debug = true
 	step.RawCurl = "curl --url https://example.test"
 	var output bytes.Buffer
-	executor := NewExecutor(nil, nil, reporting.NewReporter(&output))
+	executor := NewExecutor(nil, nil, reporting.NewReporter(&output, false), domain.Config{})
 	wantErr := errors.New("terminal execution error")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -679,12 +977,44 @@ func TestDebugTerminalErrorReportsAfterExecutionContextCancellation(t *testing.T
 	}
 }
 
+func TestDebugPeerCancellationSuppressesDebugReport(t *testing.T) {
+	step := executorStep("steps.yaml", 0)
+	step.Debug = true
+	var output bytes.Buffer
+	executor := NewExecutor(nil, nil, reporting.NewReporter(&output, false), domain.Config{})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	exitCode, err := executor.finishStep(ctx, &step, 27, context.Canceled)
+	if exitCode != 27 || !errors.Is(err, context.Canceled) {
+		t.Fatalf("finishStep() = (%d, %v), want canceled terminal result", exitCode, err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("finishStep() output = %q, want no Debug report after peer cancellation", output.String())
+	}
+}
+
+func TestDebugReportingFailureIncludesStepProvenance(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	step := executorStep("debug/steps.yaml", 6)
+	step.Debug = true
+	executor := NewExecutor(nil, nil, reporting.NewReporter(&bytes.Buffer{}, false), domain.Config{})
+
+	exitCode, err := executor.finishStep(context.Background(), &step, 0, nil)
+	if exitCode != errs.ExitInternal || !errors.Is(err, reporting.ErrReporter) || !errors.Is(err, ErrStepExecution) {
+		t.Fatalf("finishStep() = (%d, %v), want internal reporting ErrStepExecution", exitCode, err)
+	}
+	if !strings.Contains(err.Error(), "file debug/steps.yaml") || !strings.Contains(err.Error(), "yaml path spec.steps[6]") {
+		t.Fatalf("Debug reporting provenance = %q", err)
+	}
+}
+
 func TestExecuteTreatsDebugStopAsCleanCompletionAndSkipsLaterStages(t *testing.T) {
 	debug := &domain.Directory{Path: "/debug"}
 	later := &domain.Directory{Path: "/later"}
 	visited := make([]string, 0, 1)
 
-	exitCode, err := executeStages(context.Background(), [][]*domain.Directory{{debug}, {later}}, func(_ context.Context, directory *domain.Directory) (int, error) {
+	exitCode, err := executeStages(context.Background(), [][]*domain.Directory{{debug}, {later}}, 1, nil, func(_ context.Context, _ resultPublisher, directory *domain.Directory) (int, error) {
 		visited = append(visited, directory.Path)
 		return 0, errDebugStop
 	})
@@ -757,7 +1087,8 @@ exit 1
 	var output bytes.Buffer
 	binder := NewBinder(NewKeyValueStore())
 
-	exitCode, err := NewExecutor(binder, NewValidator(), reporting.NewReporter(&output)).processDir(context.Background(), dir)
+	config := domain.Config{TempRunDir: t.TempDir()}
+	exitCode, err := NewExecutor(binder, NewValidator(config), reporting.NewReporter(&output, false), config).processDir(context.Background(), discardResult, dir)
 	if exitCode != errs.ExitValidation || err != nil {
 		t.Fatalf("processDir() = (%d, %v), want (%d, nil)", exitCode, err, errs.ExitValidation)
 	}
@@ -790,7 +1121,7 @@ func TestProcessDirReturnsFatalCollaboratorFailures(t *testing.T) {
 		}
 		step := executorStep("steps.yaml", 0)
 		step.Vars = map[string]domain.YAMLString{"duplicate": "second"}
-		exitCode, err := executorForStep(t, NewBinder(store), step, &bytes.Buffer{}).processDir(context.Background(), step.Definition.File.Directory)
+		exitCode, err := executorForStep(t, NewBinder(store), step, &bytes.Buffer{}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
 		if exitCode != errs.ExitInternal || !errors.Is(err, ErrKeyExists) {
 			t.Fatalf("processDir() = (%d, %v), want internal ErrKeyExists", exitCode, err)
 		}
@@ -799,7 +1130,7 @@ func TestProcessDirReturnsFatalCollaboratorFailures(t *testing.T) {
 	t.Run("request interpolation", func(t *testing.T) {
 		step := executorStep("steps.yaml", 0)
 		step.Request.Body = "$missing"
-		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), step.Definition.File.Directory)
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
 		if exitCode != errs.ExitInternal || !errors.Is(err, ErrNotFound) {
 			t.Fatalf("processDir() = (%d, %v), want internal ErrNotFound", exitCode, err)
 		}
@@ -808,7 +1139,7 @@ func TestProcessDirReturnsFatalCollaboratorFailures(t *testing.T) {
 	t.Run("expected interpolation", func(t *testing.T) {
 		step := executorStep("steps.yaml", 0)
 		step.Response.ExpectedBody = "$missing"
-		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), step.Definition.File.Directory)
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
 		if exitCode != errs.ExitInternal || !errors.Is(err, ErrNotFound) {
 			t.Fatalf("processDir() = (%d, %v), want internal ErrNotFound", exitCode, err)
 		}
@@ -817,11 +1148,14 @@ func TestProcessDirReturnsFatalCollaboratorFailures(t *testing.T) {
 	t.Run("curl", func(t *testing.T) {
 		commandDir := newExecutorCommandDir(t)
 		installExecutorCommand(t, commandDir, "curl", `/bin/cat >/dev/null; printf 'curl failed' >&2; exit 27`)
-		step := executorStep("steps.yaml", 0)
+		step := executorStep("dir/steps.yaml", 0)
 		step.Request.Method = "GET"
-		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), step.Definition.File.Directory)
-		if exitCode != 27 || !errors.Is(err, runner.ErrCurl) {
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
+		if exitCode != 27 || !errors.Is(err, runner.ErrCurl) || !errors.Is(err, ErrStepExecution) {
 			t.Fatalf("processDir() = (%d, %v), want curl code 27", exitCode, err)
+		}
+		if !strings.Contains(err.Error(), "file dir/steps.yaml") || !strings.Contains(err.Error(), "yaml path spec.steps[0]") {
+			t.Fatalf("terminal step provenance = %q", err)
 		}
 	})
 
@@ -832,7 +1166,7 @@ func TestProcessDirReturnsFatalCollaboratorFailures(t *testing.T) {
 		step := executorStep("steps.yaml", 0)
 		step.Request.Method = "GET"
 		step.Response.ExpectedBody = "same"
-		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), step.Definition.File.Directory)
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
 		if exitCode != 28 || !errors.Is(err, ErrValidatorFatal) {
 			t.Fatalf("processDir() = (%d, %v), want validator code 28", exitCode, err)
 		}
@@ -853,7 +1187,7 @@ esac
 		step := executorStep("steps.yaml", 0)
 		step.Request.Method = "GET"
 		step.Response.ExpectedBody = "same"
-		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), step.Definition.File.Directory)
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
 		if exitCode != 29 || !errors.Is(err, ErrValidatorFatal) {
 			t.Fatalf("processDir() = (%d, %v), want validator code 29", exitCode, err)
 		}
@@ -876,7 +1210,7 @@ esac
 		step.Request.Method = "GET"
 		step.Response.ExpectedBody = "same"
 		step.Response.Capture = map[string]domain.YAMLString{"captured": ".capture"}
-		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), step.Definition.File.Directory)
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
 		if exitCode != 30 || !errors.Is(err, runner.ErrJQSelector) {
 			t.Fatalf("processDir() = (%d, %v), want capture code 30", exitCode, err)
 		}
@@ -892,7 +1226,7 @@ func TestProcessDirReturnsReporterFailures(t *testing.T) {
 		step := executorStep("steps.yaml", 0)
 		step.Request.Method = "GET"
 		step.Response.ExpectedBody = "same"
-		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, executorFailingWriter{err: wantErr}).processDir(context.Background(), step.Definition.File.Directory)
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, executorFailingWriter{err: wantErr}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
 		if exitCode != errs.ExitInternal || !errors.Is(err, reporting.ErrReporter) || !errors.Is(err, wantErr) {
 			t.Fatalf("processDir() = (%d, %v), want reporting failure", exitCode, err)
 		}
@@ -906,7 +1240,7 @@ func TestProcessDirReturnsReporterFailures(t *testing.T) {
 		step.Request.Method = "GET"
 		step.Response.ExpectedStatus = 200
 		step.Response.ExpectedBody = "same"
-		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, executorFailingWriter{err: wantErr}).processDir(context.Background(), step.Definition.File.Directory)
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, executorFailingWriter{err: wantErr}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
 		if exitCode != errs.ExitInternal || !errors.Is(err, reporting.ErrReporter) {
 			t.Fatalf("processDir() = (%d, %v), want validation reporting failure", exitCode, err)
 		}
@@ -919,7 +1253,7 @@ func TestProcessDirReturnsReporterFailures(t *testing.T) {
 		step := executorStep("steps.yaml", 0)
 		step.Request.Method = "GET"
 		step.Response.ExpectedBody = "same"
-		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, executorFailingWriter{err: wantErr}).processDir(context.Background(), step.Definition.File.Directory)
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, executorFailingWriter{err: wantErr}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
 		if exitCode != errs.ExitInternal || !errors.Is(err, reporting.ErrReporter) {
 			t.Fatalf("processDir() = (%d, %v), want type reporting failure", exitCode, err)
 		}
@@ -944,7 +1278,7 @@ exit 1
 		step := executorStep("steps.yaml", 0)
 		step.Request.Method = "GET"
 		step.Response.ExpectedBody = "expected"
-		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, executorFailingWriter{err: wantErr}).processDir(context.Background(), step.Definition.File.Directory)
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, executorFailingWriter{err: wantErr}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
 		if exitCode != errs.ExitInternal || !errors.Is(err, reporting.ErrReporter) {
 			t.Fatalf("processDir() = (%d, %v), want body reporting failure", exitCode, err)
 		}
@@ -958,7 +1292,7 @@ exit 1
 		step.Request.Method = "GET"
 		step.Response.ExpectedBody = "same"
 		step.Debug = true
-		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, executorFailingWriter{err: wantErr}).processDir(context.Background(), step.Definition.File.Directory)
+		exitCode, err := executorForStep(t, NewBinder(NewKeyValueStore()), step, executorFailingWriter{err: wantErr}).processDir(context.Background(), discardResult, step.Definition.File.Directory)
 		if exitCode != errs.ExitInternal || !errors.Is(err, reporting.ErrReporter) {
 			t.Fatalf("processDir() = (%d, %v), want debug reporting failure", exitCode, err)
 		}
@@ -968,9 +1302,27 @@ exit 1
 func TestProcessDirRejectsCanceledContextBeforeWork(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	exitCode, err := NewExecutor(nil, nil, nil).processDir(ctx, &domain.Directory{})
+	exitCode, err := NewExecutor(nil, nil, nil, domain.Config{}).processDir(ctx, discardResult, &domain.Directory{})
 	if exitCode != errs.ExitInternal || !errors.Is(err, ErrExecutionCanceled) || !errors.Is(err, context.Canceled) {
 		t.Fatalf("processDir(canceled) = (%d, %v), want internal ErrExecutionCanceled", exitCode, err)
+	}
+}
+
+func TestProcessFileRejectsCanceledContextBeforeLoadingVariables(t *testing.T) {
+	store := NewKeyValueStore()
+	step := executorStep("steps.yaml", 0)
+	step.Vars = map[string]domain.YAMLString{"late": "value"}
+	step.Definition.File.Directory.RuntimeSteps = [][]domain.Step{{step}}
+	executor := NewExecutor(NewBinder(store), nil, reporting.NewReporter(&bytes.Buffer{}, false), domain.Config{})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	exitCode, err := executor.processFile(ctx, step.Definition.File.Directory, 0)
+	if exitCode != errs.ExitInternal || !errors.Is(err, context.Canceled) {
+		t.Fatalf("processFile() = (%d, %v), want canceled terminal result", exitCode, err)
+	}
+	if _, err := store.Get("late"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("canceled processFile stored variable: %v", err)
 	}
 }
 
@@ -1007,8 +1359,11 @@ func executorStep(path string, index int) domain.Step {
 func executorForStep(t *testing.T, binder *Binder, step domain.Step, output interface{ Write([]byte) (int, error) }) *Executor {
 	t.Helper()
 	step.Definition.File.Directory.RuntimeSteps = [][]domain.Step{{step}}
-	return NewExecutor(binder, NewValidator(), reporting.NewReporter(output))
+	config := domain.Config{TempRunDir: t.TempDir()}
+	return NewExecutor(binder, NewValidator(config), reporting.NewReporter(output, false), config)
 }
+
+func discardResult(int, error) {}
 
 func newExecutorCommandDir(t *testing.T) string {
 	t.Helper()

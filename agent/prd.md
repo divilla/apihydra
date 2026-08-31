@@ -133,6 +133,13 @@ contains:
 A `File` contains `Stage`, `Path`, `Kind`, `Bytes`, and its owning `Directory`.
 Directory paths are relative to `Suite.WorkDir`; the root path is `/`.
 
+One invocation also uses one `domain.Config`. `Parallelism` is the parsed
+execution mode, `Directory` is the optional positional suite directory, and
+`TempRunDir` is the private per-run directory created below
+`os.UserCacheDir()/apih`. CLI, Validator, Executor, and other runtime consumers
+receive this value by dependency injection; package globals and process-wide
+temporary-directory overrides are not used.
+
 ### Defaults and steps
 
 `Defaults` has exactly `BaseURL`, `BasePath`, `Headers`, `Timeout`, and
@@ -194,13 +201,30 @@ or empty values remain strings.
 
 ## Current reference CLI contract
 
-`skeleton/cmd/cli.run` starts with `os.Getwd()`. If a first positional argument
-exists, it joins that argument to the current directory and requires the result
+The reference CLI uses `pflag` with its native attached, equals, repeated,
+interspersed, and `--` parsing behavior. `-p` and `--parallelism` populate
+`domain.Config.Parallelism`; the last repeated value wins, the default is `1`,
+and values outside `0`, `1`, and `2` are rejected. At most one positional
+directory is accepted. Help prints pflag usage to stdout and exits successfully
+without starting a run. Other argument failures return configuration code
+`102`, write no application stdout, and end with the CLI-owned stderr
+diagnostic.
+
+`skeleton/cmd/cli.run` starts with `os.Getwd()`. If `Config.Directory` is
+non-empty, it joins that value to the current directory and requires the result
 to be a directory. Invalid input returns configuration code `102` and an error
 matching CLI-owned `ErrInvalidPath`.
 
-The reference CLI creates one Reporter for `os.Stdout`. `run` reports the
-selected working directory, creates
+For every valid run, CLI creates a private `run-*` directory below
+`os.UserCacheDir()/apih`, assigns it to `Config.TempRunDir`, and defers
+best-effort removal of the complete run directory. Cleanup failures are always
+suppressed. Operations that need temporary artifacts create namespaced children
+below that run directory and never fall back to the shared OS temporary
+directory. Abrupt process or machine termination may prevent cleanup.
+
+The reference CLI creates one Reporter for `os.Stdout`, explicitly identifying
+whether stdout is a terminal. `run` reports the selected working directory,
+creates
 `domain.Suite{WorkDir: workDir}`, and invokes:
 
 1. `Loader.LoadDirectoryStructure`
@@ -213,8 +237,9 @@ selected working directory, creates
 8. `Resolver.ResolveSteps`
 
 After definition resolution, `run` creates one `KeyValueStore`, `Binder`, and
-`Validator`, then creates an `Executor` with those
-collaborators and the same Reporter used for working-directory output. It then:
+Config-injected `Validator`, then creates a Config-injected `Executor` with
+those collaborators and the same Reporter used for working-directory output.
+It then:
 
 1. calls `Executor.ValidateDirectories(suite)` and returns its exit code and
    error if validation fails;
@@ -224,7 +249,31 @@ collaborators and the same Reporter used for working-directory output. It then:
 
 When `run` returns an error, `main` writes it to `os.Stderr` with the standard
 logger and then calls `os.Exit` with the exact code returned by `run`. Reporter
-does not own fatal diagnostics or process exit.
+does not own fatal diagnostics or process exit. Executor first finalizes the
+active ordered stage render; the provenance-bearing stderr diagnostic is the
+last application output, and no later reporting or cleanup diagnostic follows.
+
+## Parallel execution and ordered output
+
+Stages are always executed sequentially in plan order, with a complete barrier
+between stages. Mode `0` executes directories, steps files, and their steps
+serially. Mode `1` executes all directories in one stage concurrently while
+executing each directory's steps files and each file's steps serially. Mode `2`
+also executes a directory's steps files concurrently; steps within one file
+remain serial. Directory and file task sets are unbounded. All modes retain one
+shared, concurrent, write-once KeyValueStore, so mode `0` is the deterministic
+choice for cross-file or cross-directory producer/consumer dependencies.
+
+Canonical output order is always stage, directory, steps file, then step,
+using the existing plan and slice order. Reporter buffers each steps file
+independently. On a terminal, every reporting event clears and redraws only the
+active-stage region in canonical order; the working-directory heading and
+completed stages remain fixed. On non-terminal output, Reporter emits the
+complete stage once at its barrier. On a fatal error, all active work is
+canceled and joined, accumulated file output receives one final ordered render,
+and the CLI writes the provenance-bearing fatal stderr diagnostic last. Debug
+is likewise terminal: accumulated file blocks retain canonical order and the
+Debug dump is rendered as the final stdout block.
 
 ## Exit-code contract
 
@@ -296,7 +345,7 @@ The following are not product requirements:
   beyond the request-body placement and Debug Curl presentation rules above;
 - success or validation-failure layouts not implemented or tested in
   `skeleton/`;
-- selection precedence when concurrent directories reach debug steps;
+- selection precedence when concurrent directories or files reach debug steps;
 - name/label filters, preflight APIs, events, summaries, or additional CLI
   flags;
 - additional packages, services, models, fields, methods, static errors, or
@@ -329,3 +378,7 @@ updated to match.
    jq-prettified values while retaining other bodies as strings, uses the
    `CurlBuild`/`CurlRaw`/`CurlExecute` sequence for debug steps, and preserves
    terminal errors after reporting the latest available state.
+9. Native pflag parsing, `domain.Config` injection, private per-run cache
+   storage, the three parallelism modes, stage barriers, ordered terminal
+   redraws, ordered non-terminal stage commits, terminal error ordering, and
+   silent best-effort cleanup match the revised skeleton contract.

@@ -6,7 +6,7 @@ use Cwd qw(abs_path getcwd);
 use Errno qw(EINTR);
 use File::Basename qw(dirname);
 use File::Spec;
-use File::Temp qw(tempdir);
+use File::Temp qw(tempdir tempfile);
 use IO::Handle;
 use IO::Select;
 use POSIX qw(WIFEXITED WIFSIGNALED WEXITSTATUS WTERMSIG setpgid);
@@ -103,6 +103,7 @@ sub print_rendered_command {
 	}
 	my $separator = '-' x $separator_width;
 	print "$separator\n$command\n$separator\n";
+	return $separator;
 }
 
 sub print_command {
@@ -120,6 +121,29 @@ sub print_file_block {
 	print "\n$contents";
 	print "\n" if $contents !~ /\n\z/;
 	print "\n";
+}
+
+sub codex_session_id_from_output {
+	my ($contents, $events_dir) = @_;
+	my ($events, $events_path) = tempfile('codex-review-events.XXXXXX', DIR => $events_dir, UNLINK => 0);
+	print {$events} $contents or fail("cannot write $events_path: $!");
+	close $events or fail("cannot close $events_path: $!");
+	my ($session_ids, $status) = capture_command(
+		1,
+		'jq',
+		'--raw-input',
+		'--raw-output',
+		'fromjson? | select(type == "object" and .type == "thread.started") | .thread_id | strings',
+		$events_path,
+	);
+	unlink $events_path;
+	return undef if $status != 0;
+
+	for my $session_id (split /\r?\n/, $session_ids) {
+		next if $session_id !~ /\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i;
+		return $session_id;
+	}
+	return undef;
 }
 
 sub print_initial_context {
@@ -221,11 +245,12 @@ sub start_command {
 }
 
 sub monitor_command {
-	my ($progress, $input_file, $output_log, @command) = @_;
+	my ($progress, $input_file, $output_log, $output_handler, @command) = @_;
 	my ($pid, $reader) = start_command($input_file, @command);
 	$active_codex_pid = $pid;
 	my $selector = IO::Select->new($reader);
 	my $next_render_at = $progress->started_at();
+	my $pending_output = '';
 	$progress->render($next_render_at);
 
 	open my $log, '>:raw', $output_log or fail("cannot create $output_log: $!");
@@ -253,8 +278,15 @@ sub monitor_command {
 			next;
 		}
 		print {$log} $buffer or fail("cannot write $output_log: $!");
+		if (defined $output_handler) {
+			$pending_output .= $buffer;
+			while ($pending_output =~ s/\A(.*?\n)//s) {
+				$output_handler->($1);
+			}
+		}
 		$progress->record_output();
 	}
+	$output_handler->($pending_output) if defined $output_handler && $pending_output ne '';
 	close $log or fail("cannot close $output_log: $!");
 
 	waitpid $pid, 0;
@@ -265,21 +297,40 @@ sub monitor_command {
 
 sub run_codex {
 	my ($input_file, @command) = @_;
+	my $command_separator;
 	if (defined $input_file) {
-		print_command_with_input($input_file, @command);
+		$command_separator = print_command_with_input($input_file, @command);
 	} else {
-		print_command(@command);
+		$command_separator = print_command(@command);
 	}
 
-	my $progress = APIHydra::Progress->new(terminal => -t STDOUT, output => \*STDOUT);
+	my $terminal = -t STDOUT;
+	my $progress = APIHydra::Progress->new(terminal => $terminal, output => \*STDOUT);
+	my $is_review = @command >= 3 && $command[0] eq 'codex' && $command[1] eq 'exec' && $command[2] eq 'review';
+	my $session_id;
+	my $output_handler;
+	if ($is_review) {
+		$output_handler = sub {
+			return if defined $session_id;
+			$session_id = codex_session_id_from_output($_[0], $findings_dir);
+			return if !defined $session_id;
+			print "\r\033[2K" if $terminal;
+			print "codex-session-id: $session_id\n$command_separator\n";
+		};
+	}
 	$active_output_log = File::Spec->catfile($findings_dir, 'codex-output.log');
-	my $exit_code = monitor_command($progress, $input_file, $active_output_log, @command);
+	my $exit_code = monitor_command($progress, $input_file, $active_output_log, $output_handler, @command);
 	if ($requested_exit_code != 0) {
 		$progress->finish(0);
 		unlink $active_output_log;
 		$active_output_log = undef;
 		print STDERR "codex-review-loop: interrupted\n";
 		exit $requested_exit_code;
+	}
+
+	if ($is_review && !defined $session_id && $exit_code == 0) {
+		$progress->finish(0);
+		fail('Codex review output did not contain a thread.started session id');
 	}
 
 	$progress->finish($exit_code == 0);
@@ -353,6 +404,7 @@ sub main {
 	my (@arguments) = @_;
 	command_exists('codex') or fail('codex is not installed or is not on PATH');
 	command_exists('git') or fail('git is not installed or is not on PATH');
+	command_exists('jq') or fail('jq is not installed or is not on PATH');
 
 	my $script_dir = abs_path(dirname($0));
 	my ($repo_root, $repo_status) = capture_command(1, 'git', '-C', $script_dir, 'rev-parse', '--show-toplevel');

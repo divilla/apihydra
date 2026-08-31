@@ -1,6 +1,7 @@
 package main
 
 import (
+	"apih/skeleton/internal/domain"
 	"apih/skeleton/internal/reporting"
 	"apih/skeleton/pkg/errs"
 	"bytes"
@@ -10,6 +11,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/spf13/pflag"
 )
 
 type failingWriter struct {
@@ -23,7 +26,7 @@ func (w failingWriter) Write([]byte) (int, error) {
 func TestRunReturnsConfigurationExitCodeForInvalidPath(t *testing.T) {
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), []string{"apih", "path-that-does-not-exist"}, reporting.NewReporter(&output))
+	exitCode, err := run(context.Background(), domain.Config{Directory: "path-that-does-not-exist", Parallelism: 1}, reporting.NewReporter(&output, false))
 	if exitCode != errs.ExitConfiguration {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
 	}
@@ -37,8 +40,9 @@ func TestRunReturnsConfigurationExitCodeForInvalidPath(t *testing.T) {
 
 func TestRunReturnsSuccessAfterDefinitionPipeline(t *testing.T) {
 	var output bytes.Buffer
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	exitCode, err := run(context.Background(), []string{"apih"}, reporting.NewReporter(&output))
+	exitCode, err := run(context.Background(), domain.Config{Parallelism: 1}, reporting.NewReporter(&output, false))
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -52,13 +56,62 @@ func TestRunReturnsSuccessAfterDefinitionPipeline(t *testing.T) {
 
 func TestRunReturnsInternalExitCodeForOutputFailure(t *testing.T) {
 	wantErr := errors.New("output failed")
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
-	exitCode, err := run(context.Background(), []string{"apih"}, reporting.NewReporter(failingWriter{err: wantErr}))
+	exitCode, err := run(context.Background(), domain.Config{Parallelism: 1}, reporting.NewReporter(failingWriter{err: wantErr}, false))
 	if exitCode != errs.ExitInternal {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitInternal)
 	}
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("run() error = %v, want %v", err, wantErr)
+	}
+}
+
+func TestParseConfigUsesNativePflagFormsAndRejectsInvalidApplicationValues(t *testing.T) {
+	tests := map[string]struct {
+		args        []string
+		parallelism int
+		directory   string
+		wantErr     bool
+	}{
+		"defaults":               {args: []string{"apih"}, parallelism: 1},
+		"attached shorthand":     {args: []string{"apih", "-p0", "suite"}, parallelism: 0, directory: "suite"},
+		"equals long":            {args: []string{"apih", "--parallelism=2", "suite"}, parallelism: 2, directory: "suite"},
+		"interspersed":           {args: []string{"apih", "suite", "-p", "2"}, parallelism: 2, directory: "suite"},
+		"repeated last wins":     {args: []string{"apih", "-p", "0", "--parallelism", "2"}, parallelism: 2},
+		"too many directories":   {args: []string{"apih", "one", "two"}, wantErr: true},
+		"invalid parallelism":    {args: []string{"apih", "-p", "3"}, wantErr: true},
+		"nonnumeric parallelism": {args: []string{"apih", "-p", "many"}, wantErr: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			var usage bytes.Buffer
+			config, err := parseConfig(test.args, &usage)
+			if test.wantErr {
+				if err == nil || !errors.Is(err, ErrInvalidArguments) {
+					t.Fatalf("parseConfig() error = %v, want ErrInvalidArguments", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseConfig() error = %v", err)
+			}
+			if config.Parallelism != test.parallelism || config.Directory != test.directory || config.TempRunDir != "" {
+				t.Fatalf("parseConfig() = %#v, want parallelism %d, directory %q", config, test.parallelism, test.directory)
+			}
+		})
+	}
+}
+
+func TestParseConfigHelpUsesPflag(t *testing.T) {
+	var usage bytes.Buffer
+	_, err := parseConfig([]string{"apih", "--help"}, &usage)
+	if !errors.Is(err, pflag.ErrHelp) {
+		t.Fatalf("parseConfig(--help) error = %v, want pflag.ErrHelp", err)
+	}
+	if !strings.Contains(usage.String(), "--parallelism") {
+		t.Fatalf("parseConfig(--help) output = %q, want parallelism usage", usage.String())
 	}
 }
 
@@ -90,5 +143,6 @@ func TestMainHelperProcess(t *testing.T) {
 	if os.Getenv("APIH_TEST_MAIN_HELPER") != "1" {
 		return
 	}
+	os.Args = []string{"apih", "path-that-does-not-exist"}
 	main()
 }

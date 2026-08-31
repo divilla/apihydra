@@ -15,12 +15,15 @@ var ErrValidation = errors.New("validation error")
 // continuing.
 var ErrValidatorFatal = errors.New("fatal validator error")
 
-// Validator compares actual response values with a step's expectations.
-type Validator struct{}
+// Validator compares actual response values with a step's expectations. Its
+// Config supplies the private run directory used for body-diff artifacts.
+type Validator struct {
+	config domain.Config
+}
 
-// NewValidator returns a stateless Validator.
-func NewValidator() *Validator {
-	return &Validator{}
+// NewValidator retains config for validation operations.
+func NewValidator(config domain.Config) *Validator {
+	return &Validator{config: config}
 }
 
 // ValidateStatus validates ActualStatus against ExpectedStatus.
@@ -36,8 +39,8 @@ func (v *Validator) ValidateStatus(
 
 // ValidateBody validates ActualBody against ExpectedBody. ActualBody parsed
 // with runner.JQProject must equal ExpectedBody parsed with runner.JQPretty.
-// If they differ, it returns the diff calculated by runner.GitDiff. If they are
-// equal, it returns "", nil.
+// If they differ, it returns the diff calculated by runner.GitDiff using
+// Config.TempRunDir. If they are equal, it returns "", nil.
 func (v *Validator) ValidateBody(
 	ctx context.Context,
 	step *domain.Step,

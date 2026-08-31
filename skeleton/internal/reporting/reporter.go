@@ -27,13 +27,16 @@ var ErrBodyValidation = errors.New("response body does not match expected")
 // Reporter never writes fatal diagnostics to standard error; reporting
 // failures are returned to the caller.
 type Reporter struct {
-	output io.Writer
-	mu     sync.Mutex
+	output   io.Writer
+	terminal bool
+	mu       sync.Mutex
 }
 
-// NewReporter returns a Reporter that serializes writes to output.
-func NewReporter(output io.Writer) *Reporter {
-	return &Reporter{output: output}
+// NewReporter returns a Reporter that serializes writes to output. terminal
+// selects live ANSI redraws; non-terminal output is buffered by stage and
+// written once at the stage barrier.
+func NewReporter(output io.Writer, terminal bool) *Reporter {
+	return &Reporter{output: output, terminal: terminal}
 }
 
 // WorkingDirectory writes the selected working directory to the injected
@@ -50,10 +53,34 @@ func (r *Reporter) WorkingDirectory(workDir string) error {
 	return nil
 }
 
-// Success reports a directory whose execution completed without validation
-// failures to the injected standard-output writer. It returns a reporting
-// error without terminating execution.
-func (r *Reporter) Success(ctx context.Context, directory *domain.Directory) error {
+// BeginStage starts one ordered reporting transaction. directories are in
+// PlanStages order, and each directory's StepsDefinitions order defines file
+// order. Reporter retains one buffer per steps definition. On a terminal, each
+// later reporting event clears and redraws only the active stage region in
+// directory/file/step order; the working-directory heading and completed
+// stages remain fixed. BeginStage itself produces no stage output.
+func (r *Reporter) BeginStage(
+	ctx context.Context,
+	directories []*domain.Directory,
+) error {
+	// TODO: implement
+	return nil
+}
+
+// EndStage commits the active stage. On non-terminal output it writes the
+// complete stage exactly once in directory/file/step order. On a terminal it
+// leaves the final redraw in place without duplicating it. After EndStage,
+// Reporter never rewrites output belonging to that completed stage.
+func (r *Reporter) EndStage(ctx context.Context) error {
+	// TODO: implement
+	return nil
+}
+
+// Success records one steps definition whose execution completed without
+// validation failures. Its file buffer is redrawn immediately on terminals or
+// retained until EndStage on non-terminals. It returns a reporting error
+// without terminating execution.
+func (r *Reporter) Success(ctx context.Context, definition *domain.StepsDefinition) error {
 	// TODO: implement
 	return nil
 }
@@ -83,8 +110,8 @@ func (r *Reporter) ValidationBody(ctx context.Context, step *domain.Step, diff s
 	return nil
 }
 
-// Debug reports the latest runtime state of a selected debug step to the
-// injected standard-output writer with exactly these fields and blank lines:
+// Debug records the latest runtime state of a selected debug step with exactly
+// these fields and blank lines:
 //
 //	stage: <Step.DirectoryStage()>
 //	dir-path: <Step.DirectoryPath()>
@@ -99,10 +126,13 @@ func (r *Reporter) ValidationBody(ctx context.Context, step *domain.Step, diff s
 // JSON tags. Debug preserves every other Step member and value, projecting only
 // Request.Body, Response.ExpectedBody, and Response.ActualBody for display:
 // valid JSON strings are embedded as JSON values, while empty or invalid JSON
-// remains encoded as a string. It neither redacts nor omits data. Debug
-// atomically suppresses all later reporting calls after successfully writing
-// the complete block. It returns a reporting error without terminating
-// execution.
+// remains encoded as a string. It neither redacts nor omits data. Debug is kept
+// outside the per-file buffers and rendered after every previously accumulated
+// file block, so it is the final stdout block even when its file is not last in
+// plan order. It atomically suppresses all later reporting calls after
+// successfully recording and, on a terminal, redrawing the complete block. On
+// non-terminals EndStage performs the single final write. It returns a
+// reporting error without terminating execution.
 func (r *Reporter) Debug(ctx context.Context, step *domain.Step) error {
 	// TODO: implement
 	return nil

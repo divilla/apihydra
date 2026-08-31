@@ -12,7 +12,7 @@ contracts. This document describes package relationships only.
 
 ```text
 cmd/cli/                    process composition and exit
-internal/domain/            shared Suite/Directory/File/definition/step models
+internal/domain/            shared Config/Suite/Directory/File/definition/step models
 internal/definition/        Loader, Decoder, Resolver
 internal/execution/         KeyValueStore, Binder, Validator, Executor
 internal/reporting/         human-readable terminal output
@@ -35,6 +35,11 @@ package dependencies acyclic and enforces four production boundaries:
 
 `cmd/cli` is the composition root and the only reference package that calls
 `os.Exit`. `bat` and `BatDiff` are absent.
+
+`cmd/cli` parses one `domain.Config`, creates its private per-run cache
+directory, and injects the resulting value into runtime consumers. The cache
+path and parallelism mode are not communicated through package globals or
+process-wide environment mutation.
 
 ## Domain lifecycle
 
@@ -90,19 +95,22 @@ The current CLI composition order is owned by the PRD.
 - [`Executor`](specs/010-executor-service.md)
 
 The Executor skeleton contract defines preparation scope, execution phase
-order, tree validation, and stage scheduling. The execution guides do not
-duplicate those orchestration rules.
+order, tree validation, sequential stage barriers, and mode-dependent
+directory/file scheduling. Steps remain serial within one steps file. The
+execution guides do not duplicate those orchestration rules.
 
 ## Reporter and commands
 
 The [`Reporter`](specs/009-reporter-service.md) skeleton contract defines the
-execution-output API and exact working-directory behavior. Reporter never owns
-fatal standard-error diagnostics; `cmd/cli` logs those before process exit.
+execution-output API, exact working-directory behavior, per-file stage buffers,
+live ordered terminal redraws, and ordered non-terminal stage commits. Reporter
+never owns fatal standard-error diagnostics; `cmd/cli` logs the final
+provenance-bearing diagnostic before process exit.
 
 The [`pkg/runner`](specs/001-runner-pkg.md) skeleton contract defines Curl,
-JQProject, JQExtract, JQFilter, JQPretty, and GitDiff. Command-line construction
-and result-normalization details absent from that contract are not
-architectural requirements.
+JQProject, JQExtract, JQFilter, JQPretty, and run-directory-scoped GitDiff.
+Command-line construction and result-normalization details absent from that
+contract are not architectural requirements.
 
 The [`cmd/cli` guide](specs/011-main-app.md) completes the production
 composition root. The separate [`integration-test guide`](specs/012-integration-tests.md)

@@ -10,7 +10,7 @@ import (
 
 func TestWorkingDirectoryUsesInjectedWriter(t *testing.T) {
 	var output bytes.Buffer
-	report := NewReporter(&output)
+	report := NewReporter(&output, false)
 
 	if err := report.WorkingDirectory("/work"); err != nil {
 		t.Fatalf("WorkingDirectory() error = %v", err)
@@ -22,7 +22,7 @@ func TestWorkingDirectoryUsesInjectedWriter(t *testing.T) {
 
 func TestValidationMethodsUseNonfatalReportingContract(t *testing.T) {
 	var output bytes.Buffer
-	report := NewReporter(&output)
+	report := NewReporter(&output, false)
 
 	if err := report.ValidationTypes(context.Background(), &domain.Step{}, `{"type":"string"}`); err != nil {
 		t.Fatalf("ValidationTypes() error = %v", err)
@@ -33,6 +33,12 @@ func TestValidationMethodsUseNonfatalReportingContract(t *testing.T) {
 	if err := report.ValidationBody(context.Background(), &domain.Step{}, "body diff"); err != nil {
 		t.Fatalf("ValidationBody() error = %v", err)
 	}
+}
+
+func TestReporterStageAndSuccessSignatures(t *testing.T) {
+	var _ func(*Reporter, context.Context, []*domain.Directory) error = (*Reporter).BeginStage
+	var _ func(*Reporter, context.Context) error = (*Reporter).EndStage
+	var _ func(*Reporter, context.Context, *domain.StepsDefinition) error = (*Reporter).Success
 }
 
 func TestValidationErrorLabelsMatchSplitResponseContract(t *testing.T) {

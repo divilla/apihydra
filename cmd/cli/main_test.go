@@ -1,6 +1,7 @@
 package main
 
 import (
+	"apih/internal/domain"
 	"apih/internal/reporting"
 	"apih/pkg/errs"
 	"bytes"
@@ -15,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/spf13/pflag"
 )
 
 type failingWriter struct {
@@ -23,6 +26,43 @@ type failingWriter struct {
 
 func (w failingWriter) Write([]byte) (int, error) {
 	return 0, w.err
+}
+
+func setTestUserCacheDir(t *testing.T, root string) string {
+	t.Helper()
+	for _, value := range testUserCacheEnvironment(root) {
+		key, setting, _ := strings.Cut(value, "=")
+		t.Setenv(key, setting)
+	}
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatalf("resolve test user cache directory: %v", err)
+	}
+	return cacheDir
+}
+
+func clearTestUserCacheDir(t *testing.T) {
+	t.Helper()
+	switch runtime.GOOS {
+	case "darwin":
+		t.Setenv("HOME", "")
+	case "windows":
+		t.Setenv("LocalAppData", "")
+	default:
+		t.Setenv("XDG_CACHE_HOME", "")
+		t.Setenv("HOME", "")
+	}
+}
+
+func testUserCacheEnvironment(root string) []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{"HOME=" + root}
+	case "windows":
+		return []string{"LocalAppData=" + root}
+	default:
+		return []string{"XDG_CACHE_HOME=" + root}
+	}
 }
 
 func TestMainSourceMatchesSkeletonContract(t *testing.T) {
@@ -44,7 +84,7 @@ func TestRunReturnsConfigurationExitCodeForInvalidPath(t *testing.T) {
 	t.Chdir(t.TempDir())
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), []string{"apih", "path-that-does-not-exist"}, reporting.NewReporter(&output))
+	exitCode, err := run(context.Background(), domain.Config{Directory: "path-that-does-not-exist", Parallelism: 1}, reporting.NewReporter(&output, false))
 	if exitCode != errs.ExitConfiguration {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
 	}
@@ -64,7 +104,7 @@ func TestRunRejectsSelectedFile(t *testing.T) {
 	}
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), []string{"apih", "suite.yaml"}, reporting.NewReporter(&output))
+	exitCode, err := run(context.Background(), domain.Config{Directory: "suite.yaml", Parallelism: 1}, reporting.NewReporter(&output, false))
 	if exitCode != errs.ExitConfiguration {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
 	}
@@ -77,6 +117,7 @@ func TestRunRejectsSelectedFile(t *testing.T) {
 }
 
 func TestRunSelectsDirectoryAndCompletesDefinitionPipeline(t *testing.T) {
+	setTestUserCacheDir(t, t.TempDir())
 	workDir := t.TempDir()
 	selected := filepath.Join(workDir, "suite")
 	if err := os.Mkdir(selected, 0o700); err != nil {
@@ -85,7 +126,7 @@ func TestRunSelectsDirectoryAndCompletesDefinitionPipeline(t *testing.T) {
 	t.Chdir(workDir)
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), []string{"apih", "suite"}, reporting.NewReporter(&output))
+	exitCode, err := run(context.Background(), domain.Config{Directory: "suite", Parallelism: 1}, reporting.NewReporter(&output, false))
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -123,7 +164,7 @@ func TestRunReturnsInternalExitCodeWhenWorkingDirectoryIsUnavailable(t *testing.
 		t.Fatal(err)
 	}
 
-	exitCode, err := run(context.Background(), []string{"apih"}, reporting.NewReporter(&bytes.Buffer{}))
+	exitCode, err := run(context.Background(), domain.Config{Parallelism: 1}, reporting.NewReporter(&bytes.Buffer{}, false))
 	if exitCode != errs.ExitInternal {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitInternal)
 	}
@@ -133,10 +174,11 @@ func TestRunReturnsInternalExitCodeWhenWorkingDirectoryIsUnavailable(t *testing.
 }
 
 func TestRunReturnsInternalExitCodeForOutputFailure(t *testing.T) {
+	setTestUserCacheDir(t, t.TempDir())
 	t.Chdir(t.TempDir())
 	wantErr := errors.New("output failed")
 
-	exitCode, err := run(context.Background(), []string{"apih"}, reporting.NewReporter(failingWriter{err: wantErr}))
+	exitCode, err := run(context.Background(), domain.Config{Parallelism: 1}, reporting.NewReporter(failingWriter{err: wantErr}, false))
 	if exitCode != errs.ExitInternal {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitInternal)
 	}
@@ -146,12 +188,13 @@ func TestRunReturnsInternalExitCodeForOutputFailure(t *testing.T) {
 }
 
 func TestRunReturnsConfigurationExitCodeForCanceledDefinitionPipeline(t *testing.T) {
+	setTestUserCacheDir(t, t.TempDir())
 	t.Chdir(t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	var output bytes.Buffer
 
-	exitCode, err := run(ctx, []string{"apih"}, reporting.NewReporter(&output))
+	exitCode, err := run(ctx, domain.Config{Parallelism: 1}, reporting.NewReporter(&output, false))
 	if exitCode != errs.ExitConfiguration {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
 	}
@@ -171,6 +214,7 @@ func TestRunReturnsConfigurationExitCodeForDefinitionFailures(t *testing.T) {
 
 	for name, contents := range tests {
 		t.Run(name, func(t *testing.T) {
+			setTestUserCacheDir(t, t.TempDir())
 			workDir := t.TempDir()
 			if err := os.WriteFile(filepath.Join(workDir, "definition.yaml"), []byte(contents), 0o600); err != nil {
 				t.Fatal(err)
@@ -189,7 +233,7 @@ func TestRunReturnsConfigurationExitCodeForDefinitionFailures(t *testing.T) {
 			})
 			var output bytes.Buffer
 
-			exitCode, err := run(context.Background(), []string{"apih"}, reporting.NewReporter(&output))
+			exitCode, err := run(context.Background(), domain.Config{Parallelism: 1}, reporting.NewReporter(&output, false))
 			if exitCode != errs.ExitConfiguration {
 				t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
 			}
@@ -204,6 +248,7 @@ func TestRunReturnsConfigurationExitCodeForDefinitionFailures(t *testing.T) {
 }
 
 func TestRunPropagatesCancellationFromLongDefinitionPhases(t *testing.T) {
+	setTestUserCacheDir(t, t.TempDir())
 	workDir := t.TempDir()
 	var rootDefaults strings.Builder
 	rootDefaults.WriteString("app: apihydra\nkind: root\nspec:\n  headers:\n")
@@ -250,6 +295,7 @@ func TestRunCoversCancellationFromStepsValidation(t *testing.T) {
 	if testing.CoverMode() == "" {
 		t.Skip("short phase observation is only required for statement coverage")
 	}
+	setTestUserCacheDir(t, t.TempDir())
 
 	workDir := t.TempDir()
 	contents := []byte("app: apihydra\nkind: steps\nspec:\n  steps: []\n")
@@ -347,7 +393,7 @@ func runUntilPhase(t *testing.T, phase string) (runResult, bool) {
 		observers.Wait()
 	}()
 	go func() {
-		exitCode, err := run(ctx, []string{"apih"}, reporting.NewReporter(&bytes.Buffer{}))
+		exitCode, err := run(ctx, domain.Config{Parallelism: 1}, reporting.NewReporter(&bytes.Buffer{}, false))
 		finished <- runResult{exitCode: exitCode, err: err}
 	}()
 
@@ -389,9 +435,183 @@ func goroutineProfileContains(function string) bool {
 	return false
 }
 
+func TestParseConfigUsesNativePflagBehavior(t *testing.T) {
+	tests := map[string]struct {
+		args        []string
+		parallelism int
+		directory   string
+		wantErr     bool
+	}{
+		"defaults":             {args: []string{"apih"}, parallelism: 1},
+		"attached shorthand":   {args: []string{"apih", "-p0", "suite"}, parallelism: 0, directory: "suite"},
+		"equals long":          {args: []string{"apih", "--parallelism=2", "suite"}, parallelism: 2, directory: "suite"},
+		"interspersed":         {args: []string{"apih", "suite", "-p", "2"}, parallelism: 2, directory: "suite"},
+		"repeated last wins":   {args: []string{"apih", "-p", "0", "--parallelism", "2"}, parallelism: 2},
+		"terminator":           {args: []string{"apih", "--", "-p2"}, parallelism: 1, directory: "-p2"},
+		"empty argv":           {args: nil, parallelism: 1},
+		"too many directories": {args: []string{"apih", "one", "two"}, wantErr: true},
+		"invalid parallelism":  {args: []string{"apih", "-p", "3"}, wantErr: true},
+		"negative parallelism": {args: []string{"apih", "-p=-1"}, wantErr: true},
+		"malformed value":      {args: []string{"apih", "-p", "many"}, wantErr: true},
+		"unknown flag":         {args: []string{"apih", "--unknown"}, wantErr: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			var usage bytes.Buffer
+			config, err := parseConfig(test.args, &usage)
+			if test.wantErr {
+				if !errors.Is(err, ErrInvalidArguments) || errs.Code(err, 0) != errs.ExitConfiguration {
+					t.Fatalf("parseConfig() error = %v, want configuration ErrInvalidArguments", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if config != (domain.Config{Parallelism: test.parallelism, Directory: test.directory}) {
+				t.Fatalf("parseConfig() = %#v", config)
+			}
+		})
+	}
+}
+
+func TestParseConfigHelpUsesPflagOutput(t *testing.T) {
+	for _, help := range []string{"-h", "--help"} {
+		var output bytes.Buffer
+		config, err := parseConfig([]string{"apih", help}, &output)
+		if !errors.Is(err, pflag.ErrHelp) || config != (domain.Config{}) {
+			t.Fatalf("parseConfig(%s) = (%#v, %v)", help, config, err)
+		}
+		if !strings.Contains(output.String(), "--parallelism") {
+			t.Fatalf("help output = %q", output.String())
+		}
+	}
+}
+
+func TestRunDirectoryIsUniqueRunScopedAndCleaned(t *testing.T) {
+	cacheRoot := setTestUserCacheDir(t, t.TempDir())
+	t.Chdir(t.TempDir())
+	cacheDir := filepath.Join(cacheRoot, "apih")
+	if err := os.Mkdir(cacheDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cacheDir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := createTempRunDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := createTempRunDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second || filepath.Dir(first) != filepath.Join(cacheRoot, "apih") || filepath.Dir(second) != filepath.Join(cacheRoot, "apih") {
+		t.Fatalf("run directories = %q and %q", first, second)
+	}
+	cacheInfo, err := os.Stat(cacheDir)
+	if err != nil || cacheInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("cache directory info = (%v, %v), want mode 0700", cacheInfo, err)
+	}
+	for _, path := range []string{first, second} {
+		info, statErr := os.Stat(path)
+		if statErr != nil || !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
+			t.Fatalf("run directory %q info = (%v, %v)", path, info, statErr)
+		}
+		if err := os.RemoveAll(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var output bytes.Buffer
+	exitCode, err := run(context.Background(), domain.Config{Parallelism: 1}, reporting.NewReporter(&output, false))
+	if exitCode != 0 || err != nil {
+		t.Fatalf("run() = (%d, %v)", exitCode, err)
+	}
+	entries, err := os.ReadDir(filepath.Join(cacheRoot, "apih"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("run cleanup retained entries: %v", entries)
+	}
+}
+
+func TestCreateTempRunDirectoryClassifiesCacheFailures(t *testing.T) {
+	t.Run("user cache unavailable", func(t *testing.T) {
+		clearTestUserCacheDir(t)
+		_, err := createTempRunDirectory()
+		if !errors.Is(err, ErrUserCacheDirectory) {
+			t.Fatalf("createTempRunDirectory() error = %v", err)
+		}
+	})
+
+	t.Run("cache path is a file", func(t *testing.T) {
+		cachePath := setTestUserCacheDir(t, filepath.Join(t.TempDir(), "cache-file"))
+		if err := os.MkdirAll(filepath.Dir(cachePath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(cachePath, []byte("file"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := createTempRunDirectory()
+		if !errors.Is(err, ErrUserCacheDirectory) {
+			t.Fatalf("createTempRunDirectory() error = %v", err)
+		}
+	})
+
+	t.Run("existing cache permissions cannot be secured", func(t *testing.T) {
+		if runtime.GOOS != "linux" {
+			t.Skip("uses Linux procfs as an unchmodable directory")
+		}
+		cacheRoot := setTestUserCacheDir(t, t.TempDir())
+		if err := os.Symlink("/proc", filepath.Join(cacheRoot, "apih")); err != nil {
+			t.Fatal(err)
+		}
+		_, err := createTempRunDirectory()
+		if !errors.Is(err, ErrUserCacheDirectory) {
+			t.Fatalf("createTempRunDirectory() error = %v, want ErrUserCacheDirectory", err)
+		}
+	})
+}
+
+func TestRunReturnsInternalWhenRunDirectoryCannotBeCreated(t *testing.T) {
+	t.Chdir(t.TempDir())
+	clearTestUserCacheDir(t)
+	var output bytes.Buffer
+	exitCode, err := run(context.Background(), domain.Config{Parallelism: 1}, reporting.NewReporter(&output, false))
+	if exitCode != errs.ExitInternal || !errors.Is(err, ErrUserCacheDirectory) {
+		t.Fatalf("run() = (%d, %v), want internal user-cache error", exitCode, err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("run() output = %q, want empty", output.String())
+	}
+}
+
+func TestIsTerminalUsesCharacterDeviceMode(t *testing.T) {
+	regular, err := os.CreateTemp(t.TempDir(), "regular-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer regular.Close()
+	if isTerminal(regular) {
+		t.Fatal("regular file detected as terminal")
+	}
+	device, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer device.Close()
+	if !isTerminal(device) {
+		t.Fatal("character device was not detected")
+	}
+}
+
 func TestMainLogsFatalErrorAndPreservesProductExitCode(t *testing.T) {
 	cmd := exec.Command(os.Args[0], "-test.run=TestMainHelperProcess")
-	cmd.Env = append(os.Environ(), "APIH_TEST_MAIN_HELPER=1")
+	cmd.Env = append(os.Environ(), "APIH_TEST_MAIN_HELPER=invalid-path")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -413,8 +633,86 @@ func TestMainLogsFatalErrorAndPreservesProductExitCode(t *testing.T) {
 	}
 }
 
+func TestMainHandlesHelpInvalidArgumentsSuccessAndHelpWriteFailure(t *testing.T) {
+	tests := map[string]struct {
+		mode       string
+		wantExit   int
+		wantStdout string
+		wantStderr string
+	}{
+		"help": {
+			mode:       "help",
+			wantStdout: "--parallelism",
+		},
+		"invalid arguments": {
+			mode:       "invalid-arguments",
+			wantExit:   errs.ExitConfiguration,
+			wantStderr: ErrInvalidArguments.Error(),
+		},
+		"success": {
+			mode:       "success",
+			wantStdout: "Working Directory:",
+		},
+		"help write failure": {
+			mode:       "help-write-failure",
+			wantExit:   errs.ExitInternal,
+			wantStderr: "file already closed",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			workDir := t.TempDir()
+			cacheDir := t.TempDir()
+			cmd := exec.Command(os.Args[0], "-test.run=TestMainHelperProcess")
+			cmd.Dir = workDir
+			cmd.Env = append(os.Environ(), "APIH_TEST_MAIN_HELPER="+test.mode)
+			cmd.Env = append(cmd.Env, testUserCacheEnvironment(cacheDir)...)
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			gotExit := 0
+			if err != nil {
+				var exitErr *exec.ExitError
+				if !errors.As(err, &exitErr) {
+					t.Fatal(err)
+				}
+				gotExit = exitErr.ExitCode()
+			}
+			if gotExit != test.wantExit {
+				t.Fatalf("exit code = %d, want %d; stderr = %q", gotExit, test.wantExit, stderr.String())
+			}
+			if test.wantStdout != "" && !strings.Contains(stdout.String(), test.wantStdout) {
+				t.Fatalf("stdout = %q, want %q", stdout.String(), test.wantStdout)
+			}
+			if test.wantStderr != "" && !strings.Contains(stderr.String(), test.wantStderr) {
+				t.Fatalf("stderr = %q, want %q", stderr.String(), test.wantStderr)
+			}
+			if test.mode == "invalid-arguments" && stdout.Len() != 0 {
+				t.Fatalf("invalid stdout = %q, want empty", stdout.String())
+			}
+		})
+	}
+}
+
 func TestMainHelperProcess(t *testing.T) {
-	if os.Getenv("APIH_TEST_MAIN_HELPER") != "1" {
+	switch os.Getenv("APIH_TEST_MAIN_HELPER") {
+	case "invalid-path":
+		os.Args = []string{"apih", "path-that-does-not-exist"}
+	case "invalid-arguments":
+		os.Args = []string{"apih", "--parallelism=invalid"}
+	case "help":
+		os.Args = []string{"apih", "--help"}
+	case "help-write-failure":
+		os.Args = []string{"apih", "--help"}
+		if err := os.Stdout.Close(); err != nil {
+			os.Exit(99)
+		}
+	case "success":
+		os.Args = []string{"apih"}
+	default:
 		return
 	}
 	main()
