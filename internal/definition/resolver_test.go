@@ -142,6 +142,59 @@ func TestResolveDefaultsAppliesProductTimeoutAndRetryFallbacks(t *testing.T) {
 	}
 }
 
+func TestResolveDefaultsAndStepsOverlayDisableCookiesByPresence(t *testing.T) {
+	root := &domain.Directory{Path: "/"}
+	child := &domain.Directory{Path: "/child", Parent: root}
+	grandchild := &domain.Directory{Path: "/child/grandchild", Parent: child}
+	root.Children = []*domain.Directory{child}
+	child.Children = []*domain.Directory{grandchild}
+	root.DefaultsDefinition = defaultsDefinition(root, domain.Defaults{DisableCookies: boolPointer(true)})
+	child.DefaultsDefinition = defaultsDefinition(child, domain.Defaults{DisableCookies: boolPointer(false)})
+
+	resolver := NewResolver()
+	if err := resolver.ResolveDefaults(context.Background(), &domain.Suite{Root: root}); err != nil {
+		t.Fatalf("ResolveDefaults() error = %v", err)
+	}
+	assertDisableCookies(t, root.ResolvedDefaults.DisableCookies, true)
+	assertDisableCookies(t, child.ResolvedDefaults.DisableCookies, false)
+	assertDisableCookies(t, grandchild.ResolvedDefaults.DisableCookies, false)
+	if root.ResolvedDefaults.DisableCookies == root.DefaultsDefinition.Spec.DisableCookies ||
+		child.ResolvedDefaults.DisableCookies == child.DefaultsDefinition.Spec.DisableCookies {
+		t.Fatal("resolved DisableCookies pointers alias a decoded scope")
+	}
+	if grandchild.ResolvedDefaults.DisableCookies == child.ResolvedDefaults.DisableCookies {
+		t.Fatal("inherited DisableCookies pointer aliases its parent")
+	}
+	*grandchild.ResolvedDefaults.DisableCookies = true
+	assertDisableCookies(t, child.ResolvedDefaults.DisableCookies, false)
+
+	definition := stepsDefinition(child, "steps.yaml", 3)
+	definition.Spec.Defaults.DisableCookies = boolPointer(true)
+	definition.Spec.Steps[0].Request.Defaults.DisableCookies = nil
+	definition.Spec.Steps[1].Request.Defaults.DisableCookies = boolPointer(false)
+	definition.Spec.Steps[2].Request.Defaults.DisableCookies = boolPointer(true)
+	child.StepsDefinitions = []*domain.StepsDefinition{definition}
+	if err := resolver.ResolveSteps(context.Background(), &domain.Suite{Root: root}); err != nil {
+		t.Fatalf("ResolveSteps() error = %v", err)
+	}
+	assertDisableCookies(t, child.ResolvedSteps[0][0].Request.Defaults.DisableCookies, true)
+	assertDisableCookies(t, child.ResolvedSteps[0][1].Request.Defaults.DisableCookies, false)
+	assertDisableCookies(t, child.ResolvedSteps[0][2].Request.Defaults.DisableCookies, true)
+
+	plain := &domain.Directory{Path: "/"}
+	plainDefinition := stepsDefinition(plain, "plain.yaml", 1)
+	plain.StepsDefinitions = []*domain.StepsDefinition{plainDefinition}
+	if err := resolver.ResolveDefaults(context.Background(), &domain.Suite{Root: plain}); err != nil {
+		t.Fatal(err)
+	}
+	if err := resolver.ResolveSteps(context.Background(), &domain.Suite{Root: plain}); err != nil {
+		t.Fatal(err)
+	}
+	if plain.ResolvedDefaults.DisableCookies != nil || plain.ResolvedSteps[0][0].Request.Defaults.DisableCookies != nil {
+		t.Fatal("all-nil DisableCookies chain did not remain nil")
+	}
+}
+
 func TestResolveDefaultsReturnsCancellationWithoutPartialMutation(t *testing.T) {
 	root := &domain.Directory{Path: "/", ResolvedDefaults: domain.Defaults{BaseURL: "old-root"}}
 	child := &domain.Directory{Path: "/child", Parent: root, ResolvedDefaults: domain.Defaults{BaseURL: "old-child"}}
@@ -404,7 +457,18 @@ func stepsDefinition(directory *domain.Directory, path string, count int) *domai
 
 func assertDefaults(t *testing.T, got, want domain.Defaults) {
 	t.Helper()
-	if got.BaseURL != want.BaseURL || got.BasePath != want.BasePath || got.Timeout != want.Timeout || got.Retries != want.Retries || !reflect.DeepEqual(got.Headers, want.Headers) {
+	if got.BaseURL != want.BaseURL || got.BasePath != want.BasePath || got.Timeout != want.Timeout || got.Retries != want.Retries || !reflect.DeepEqual(got.Headers, want.Headers) || !reflect.DeepEqual(got.DisableCookies, want.DisableCookies) {
 		t.Fatalf("defaults = %+v, want %+v", got, want)
 	}
+}
+
+func assertDisableCookies(t *testing.T, got *bool, want bool) {
+	t.Helper()
+	if got == nil || *got != want {
+		t.Fatalf("DisableCookies = %v, want %t", got, want)
+	}
+}
+
+func boolPointer(value bool) *bool {
+	return &value
 }

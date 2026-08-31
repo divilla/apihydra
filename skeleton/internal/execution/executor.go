@@ -91,18 +91,45 @@ func (e *Executor) Prepare(
 // concurrently. Directory and file task sets are unbounded. Steps within one
 // file are always serial. All modes retain plan, file-slice, and step-slice
 // order as the canonical reporting order and use the same shared Binder store.
+//
+// Execute creates every cookie jar below Config.TempRunDir before its owning
+// work executes, even when that work currently has cookies disabled. A request
+// whose effective DisableCookies is true passes an empty cookieJar to Runner
+// and leaves its owning jar unchanged; every other request passes its owning
+// jar. All jars inherit Config.TempRunDir's lifecycle and are never reused by
+// another run. Missing run storage and jar create, initialize, or copy failures
+// are internal failures and never silently disable cookies.
+//
+// Config.Parallelism also selects cookie-jar ownership. Mode 0 creates one jar
+// for the run and creates no stage-transition copies. Mode 1 creates one jar
+// per directory; after a stage joins and before the next starts, every direct
+// child receives a distinct byte-for-byte copy of its parent's final jar.
+// Mode 2 creates one jar per steps file. Root file jars start empty. After each
+// step finishes, including a cookie-disabled step, the owning file's jar is
+// recorded as that directory's latest completed jar. After the stage joins,
+// every file in each direct child receives a distinct copy of the parent jar
+// whose step completion was observed last. Runtime completion order and Go
+// scheduling intentionally select that source; filesystem modification times
+// are not used and jars are never merged. A directory with no executed steps
+// preserves its incoming state. A root with no steps-file jars creates one
+// additional empty inheritance jar. At every stage transition copies flow only
+// from each parent to its direct children, and no writable jar is shared by
+// concurrent work.
+//
 // Before and after each stage, Execute calls Reporter.BeginStage and
 // Reporter.EndStage so concurrent output is redrawn or committed in canonical
 // directory/file/step order.
 //
 // For every non-debug runtime step, it calls
 // Binder.LoadVariables, Binder.InterpolateRequestBody,
-// Binder.InterpolateResponseExpectedBody, runner.Curl,
+// Binder.InterpolateResponseExpectedBody, runner.Curl with the selected cookie
+// jar path or an empty path when cookies are disabled,
 // Validator.ValidateTypes, Validator.ValidateStatus, Validator.ValidateBody,
 // and Binder.CaptureResponseVariables in that order. A debug step replaces the
-// runner.Curl phase with runner.CurlBuild, runner.CurlRaw, assignment of the
-// raw statement to Step.RawCurl, and runner.CurlExecute using the unchanged
-// executable, arguments, and request body. Before a debug step finishes or a
+// runner.Curl phase with runner.CurlBuild using that same cookie selection,
+// runner.CurlRaw, assignment of the raw statement to Step.RawCurl, and
+// runner.CurlExecute using the unchanged executable, arguments, and request
+// body. Before a debug step finishes or a
 // terminal error is returned, Reporter.Debug receives the latest mutated Step.
 // A successful debug report stops later execution as a clean breakpoint; a
 // terminal execution error retains its original exit code and error after the
@@ -409,12 +436,13 @@ func (e *Executor) processDir(ctx context.Context, publish resultPublisher, dir 
 }
 
 // processFile executes one RuntimeSteps group serially. It retains the existing
-// per-step phase, validation, capture, and Debug contracts; reports successful
-// completion for the corresponding StepsDefinitions entry; and returns
-// validation status when any step in the file mismatched. Before returning a
-// terminal error it wraps that error with ErrStepExecution and
-// spec.steps[index] provenance through errs.StepExecutionError. A successful
-// Debug report returns errDebugStop.
+// per-step phase, validation, capture, Debug, and cookie-selection contracts;
+// after each finished step it records this file's jar as the directory's latest
+// completed jar; reports successful completion for the corresponding
+// StepsDefinitions entry; and returns validation status when any step in the
+// file mismatched. Before returning a terminal error it wraps that error with
+// ErrStepExecution and spec.steps[index] provenance through
+// errs.StepExecutionError. A successful Debug report returns errDebugStop.
 func (e *Executor) processFile(ctx context.Context, dir *domain.Directory, fileIndex int) (int, error) {
 	// TODO: implement
 	_ = e

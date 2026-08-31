@@ -23,6 +23,11 @@ possible and shell-quoting and escaping header and data values; and
 the request body on standard input. This split exposes data, not `exec.Cmd`;
 command construction and execution internals remain encapsulated by Runner.
 
+`Curl` and `CurlBuild` receive the cookie jar selected by Executor. A non-empty
+path adds `--cookie <path>` and `--cookie-jar <path>` with the same value; an
+empty path adds neither option. Runner does not select, create, copy, persist,
+or clean up jars and does not interpret `disable_cookies`.
+
 `JQProject` and `JQExtract` are distinct operations: projection preserves a
 selected object shape for document comparison, while extraction returns the
 selected value for capture. `JQFilter` is the generic filtering boundary used
@@ -34,7 +39,7 @@ receives the CLI-created run directory explicitly.
 The reference functions use canonical TODO bodies beneath their signatures and
 comments. Those bodies must be replaced by working command implementations;
 their empty results are not production behavior. Except for the binding Curl
-body-placement and raw-rendering rules, the reference does not fix:
+cookie, body-placement, and raw-rendering rules, the reference does not fix:
 
 - the executable and remaining argument-list choices made for Curl, jq, and Git
   operations;
@@ -58,6 +63,10 @@ contract:
 - `Curl` omits `--request` when the resolved method is empty. Curl therefore
   selects `GET` when no request body is supplied and `POST` when body data is
   supplied.
+- `CurlBuild` places both automatic-cookie options in the complete argument
+  list when its cookie-jar path is non-empty, using the exact same path for
+  `--cookie` and `--cookie-jar`. It omits both when the path is empty and never
+  removes an explicit user-supplied `Cookie` header.
 - `Curl` delegates to `CurlBuild` and then `CurlExecute`. `CurlRaw` renders the
   executable and every argument in order, separated by one ASCII space with no
   trailing newline. Values following `--header` and `--data-binary` are wrapped
@@ -99,8 +108,10 @@ contract:
   proves `Curl` is
   equivalent to `CurlBuild` plus `CurlExecute`, the executable and arguments
   reach execution unchanged, the request body reaches standard input, and
-  `CurlBuild` uses the inclusive 1,024-Unicode-character threshold and final
-  data-value position. `CurlRaw` coverage proves valid final data compaction,
+  `CurlBuild` covers empty/non-empty cookie-jar paths, uses one selected path
+  for both cookie options, preserves explicit Cookie headers, and uses the
+  inclusive 1,024-Unicode-character threshold and final data-value position.
+  `CurlRaw` coverage proves valid final data compaction,
   invalid/jq-failure/`@-` fallback, header/data quoting, embedded-single-quote
   encoding, preservation of every other argument, and complete unredacted
   values. Tests also cover implicit curl methods and actual-to-expected
@@ -127,11 +138,15 @@ contract:
 6. `CurlBuild` omits data arguments for an empty body; otherwise it places
    `--data-binary` and its value last, using the complete body through 1,024
    Unicode characters inclusive and `@-` above that boundary.
-7. `CurlRaw` preserves all argument members and values, including
+7. A non-empty cookie-jar parameter produces `--cookie` and `--cookie-jar`
+   arguments with that same path; an empty parameter produces neither. The
+   cookie selection never alters an explicit `Cookie` header, and `Curl`
+   remains equivalent to the corresponding `CurlBuild` plus `CurlExecute`.
+8. `CurlRaw` preserves all argument members and values, including
    security-sensitive header values, in the exact format fixed by the
    skeleton. It compacts only a valid final data value, retains the original on
    invalid JSON or jq failure, leaves `@-` unchanged, POSIX-quotes only header
    and data values, encodes embedded single quotes as `'\''`, and performs no
    filtering or masking.
-8. No reference TODO body remains in production, and the package's tests and
+9. No reference TODO body remains in production, and the package's tests and
    repository ownership test pass.

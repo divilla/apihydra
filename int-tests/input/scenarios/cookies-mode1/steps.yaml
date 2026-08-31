@@ -1,0 +1,9 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        path: /cookies?want=&set=parent-state
+      response:
+        expected_status: 200
+        expected_body: '{"ok":true}'

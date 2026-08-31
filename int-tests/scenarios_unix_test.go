@@ -44,6 +44,55 @@ func runUnixSpecificScenarios(t *testing.T, ctx context.Context, binary, runRoot
 			t.Fatalf("curl %s result = code %d, stderr %q, want fatal diagnostic", name, malformedCurl.exitCode, malformedCurl.stderr)
 		}
 	}
+	realCurl, err := exec.LookPath("curl")
+	if err != nil {
+		t.Fatalf("locate curl: %v", err)
+	}
+	for name, mutation := range map[string]string{
+		"missing source":   `/bin/rm -f "$jar"`,
+		"directory source": `/bin/rm -f "$jar"; /bin/mkdir "$jar"`,
+	} {
+		curlProxy := fmt.Sprintf(`#!/bin/sh
+jar=
+previous=
+for argument do
+  if [ "$previous" = jar ]; then jar=$argument; fi
+  previous=
+  if [ "$argument" = --cookie-jar ]; then previous=jar; fi
+done
+%q "$@"
+status=$?
+%s
+exit "$status"
+`, realCurl, mutation)
+		tools := createToolDirectory(t, map[string]string{"curl": curlProxy}, []string{"jq", "git"})
+		result := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "cookies-mode1"), "PATH="+tools)
+		if result.exitCode != 103 || result.stderr == "" {
+			t.Fatalf("cookie copy %s = code %d, stdout %q, stderr %q", name, result.exitCode, result.stdout, result.stderr)
+		}
+	}
+	cookieCreateCacheRoot := filepath.Join(tempRoot, "cookie-create-denied")
+	cookieCreateCache := userCacheDirectory(cookieCreateCacheRoot)
+	curlProxy := fmt.Sprintf(`#!/bin/sh
+jar=
+previous=
+for argument do
+  if [ "$previous" = jar ]; then jar=$argument; fi
+  previous=
+  if [ "$argument" = --cookie-jar ]; then previous=jar; fi
+done
+%q "$@"
+status=$?
+/bin/chmod 500 "$(/usr/bin/dirname "$jar")"
+exit "$status"
+`, realCurl)
+	tools := createToolDirectory(t, map[string]string{"curl": curlProxy}, []string{"jq", "git"})
+	environment := append([]string{"PATH=" + tools}, userCacheEnvironment(cookieCreateCacheRoot)...)
+	cookieCreateFailure := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "cookies-mode1"), environment...)
+	if cookieCreateFailure.exitCode != 103 || cookieCreateFailure.stderr == "" {
+		t.Fatalf("cookie create failure = code %d, stdout %q, stderr %q", cookieCreateFailure.exitCode, cookieCreateFailure.stdout, cookieCreateFailure.stderr)
+	}
+	restoreRunDirectoryPermissions(t, filepath.Join(cookieCreateCache, "apih"))
 
 	unavailableTemp := runCLIWithEnv(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "curl-failure"), "TMPDIR="+filepath.Join(tempRoot, "missing-temp"))
 	if unavailableTemp.exitCode != 0 || unavailableTemp.stderr != "" {
@@ -123,6 +172,7 @@ func runUnixSpecificScenarios(t *testing.T, ctx context.Context, binary, runRoot
 		if gitTempFailure.exitCode == 0 || gitTempFailure.exitCode == 101 || gitTempFailure.stderr == "" {
 			t.Fatalf("Git temp failure result = code %d, stderr %q, want fatal diagnostic", gitTempFailure.exitCode, gitTempFailure.stderr)
 		}
+		restoreRunDirectoryPermissions(t, filepath.Join(gitCache, "apih"))
 
 		umaskCacheRoot := filepath.Join(tempRoot, "umask-cache")
 		if err := os.Mkdir(umaskCacheRoot, 0o777); err != nil {
@@ -198,6 +248,30 @@ func runUnixSpecificScenarios(t *testing.T, ctx context.Context, binary, runRoot
 	_ = readOnlyOutput.Close()
 	if readOnlyOutputFailure.exitCode != 103 || readOnlyOutputFailure.stderr == "" {
 		t.Fatalf("read-only output-failure result = code %d, stderr %q, want code 103 and diagnostic", readOnlyOutputFailure.exitCode, readOnlyOutputFailure.stderr)
+	}
+}
+
+func restoreRunDirectoryPermissions(t *testing.T, appCache string) {
+	t.Helper()
+	runDirs, err := filepath.Glob(filepath.Join(appCache, "run-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, runDir := range runDirs {
+		if err := os.Chmod(runDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := filepath.WalkDir(runDir, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				return os.Chmod(path, 0o700)
+			}
+			return os.Chmod(path, 0o600)
+		}); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

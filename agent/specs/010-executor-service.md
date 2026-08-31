@@ -24,11 +24,50 @@ Executor coordinates its collaborators. It does not own variable syntax,
 validation algorithms, command implementation, output layout, or contextual
 error formatting. Those contracts remain with their owning skeleton packages.
 
+Executor does own selection, creation, inheritance, and completion tracking of
+cookie jars. Runner owns only translation of the selected non-empty path into
+curl arguments and omission of those arguments for an empty path.
+
+## Cookie-jar lifecycle
+
+Every jar is created in a cookie-specific namespace below
+`Config.TempRunDir`, exists before it can be passed to Runner, and shares the
+run directory's cleanup lifecycle. Executor eagerly creates mode-owned jars
+even when all currently assigned steps have cookies disabled. A step with
+effective `DisableCookies == true` passes an empty cookie-jar parameter and
+leaves its owning jar unchanged. Nil or false enables cookies and passes the
+owning jar. Explicit `Cookie` headers remain ordinary headers.
+
+Parallelism strictly selects ownership and inheritance:
+
+- Mode `0` creates one jar for the run, uses it for every enabled request, and
+  creates no transition copies.
+- Mode `1` creates one jar per directory. The root jar starts empty. After a
+  stage joins, each direct child directory receives a distinct byte-for-byte
+  copy of its parent's final jar before the next stage begins.
+- Mode `2` creates one jar per steps file. Root file jars start empty. After
+  every step finishes, including a cookie-disabled step, Executor records that
+  file's jar as the directory's latest completed jar. After the stage joins,
+  each steps file in every direct child receives a distinct copy of the parent
+  jar whose step completion was observed last. Actual completion order and Go
+  scheduling intentionally choose the source; file modification timestamps
+  are not used.
+
+In mode `2`, a directory with no executed steps preserves its incoming state.
+Empty steps-file jars are unchanged copies of that state and may be copy
+sources. A root with no steps-file jars creates one additional empty
+inheritance jar. Copies flow only from parent to direct child; sibling state is
+never exchanged, jars are never merged, and concurrent work never shares a
+writable jar. Another run's jars are never discovered or reused. Required
+run-directory, jar initialization, and copy failures return internal failure
+without executing an enabled request cookie-less.
+
 ## Deliberately unspecified
 
 The skeleton does not define preparation traversal order or transactionality,
-goroutine start/completion order within a parallel task set, sorting beyond the
-existing plan and slice structure, a concurrency limit, URL construction,
+goroutine start/completion order within a parallel task set beyond observing
+the last completion for mode-2 cookie inheritance, sorting beyond the existing
+plan and slice structure, a concurrency limit, URL construction,
 concurrent debug-winner selection, or precedence between multiple nonfatal
 validation failures. Steps within a file are explicitly serial; no step-level
 goroutines are permitted.
@@ -39,11 +78,15 @@ goroutines are permitted.
   tree validation and mode-aware directory/file schedulers and replaces the
   `Prepare` and `processFile` TODO bodies with the binding deep-copy and
   execution behavior, including the Debug-specific
-  `CurlBuild`/`CurlRaw`/`CurlExecute` branch.
+  `CurlBuild`/`CurlRaw`/`CurlExecute` branch and the Config-scoped cookie-jar
+  ownership, inheritance, and completion tracking above.
 - Test output: `internal/execution/executor_test.go` retains the reference tests
   and adds coverage for deep-copy isolation, every phase and mutation, all
   validation-reporting paths, collaborator failures, success/debug reporting
-  chosen within the contract, and context cancellation.
+  chosen within the contract, context cancellation, cookie enable/disable and
+  re-enable behavior, all three jar-ownership modes, controlled reverse file
+  completion, empty directories and roots, run isolation, and jar filesystem
+  failures.
 - Each acceptance criterion is traced to at least one meaningful unit test, and
   Executor unit-test statement coverage remains greater than 95% under the
   race detector.
@@ -77,7 +120,9 @@ goroutines are permitted.
    `ErrStepExecution`, definition-file, and `spec.steps[index]` provenance; the
    later CLI stderr diagnostic is the final application output.
 7. Non-debug per-step execution uses the eight phases in the reference order.
-   A debug step replaces `runner.Curl` with `runner.CurlBuild`,
+   It passes the selected owning jar to `runner.Curl`, or an empty path when
+   cookies are disabled. A debug step replaces `runner.Curl` with
+   cookie-aware `runner.CurlBuild`,
    `runner.CurlRaw`, assignment to `Step.RawCurl`, and `runner.CurlExecute`
    using the unchanged executable, arguments, and request body. `CurlRaw` alone
    owns its final-data compaction/fallback and POSIX header/data presentation;
@@ -103,3 +148,11 @@ goroutines are permitted.
    owning packages.
 12. No TODO or zero-value placeholder remains in `Prepare` or `processFile`;
    package tests, race tests, and `git diff --check` pass.
+13. Every cookie jar exists below the current `Config.TempRunDir` and is
+    created even for disabled work. Modes `0`, `1`, and `2` use respectively
+    one run jar, one jar per directory, and one jar per steps file; transition
+    copies follow only parent-child lineage, mode-2 source selection follows
+    the last observed completed step, directories without executed steps
+    preserve incoming state, and concurrent workers never share or merge
+    writable jars. Separate runs never exchange state, and storage failures
+    return internal failure without silently omitting enabled cookies.

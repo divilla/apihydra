@@ -124,7 +124,8 @@ curl-command:
 `Step.RawCurl` is written verbatim. Reporter does not hide, mask, filter,
 project, quote, escape, stringify, destringify, or otherwise transform it.
 Security-sensitive values, including complete authorization headers and
-cookie-jar contents when present, remain visible. Runner has already applied
+cookie-jar paths in `--cookie` and `--cookie-jar` when present, remain visible.
+Runner has already applied
 the binding final-data jq compaction/fallback and POSIX header/data quoting to
 `Step.RawCurl`; Reporter neither repeats nor reverses those transformations.
 
@@ -159,9 +160,9 @@ Canonical zero-value TODO bodies are not acceptable production implementations.
   expected-type declarations, indented colored diffs,
   the exact Debug provenance/Curl/JSON layout, verbatim pre-rendered Curl
   content, complete unredacted sensitive values, structured valid JSON bodies
-  with string fallback for invalid or empty bodies, omission of `RawCurl` and
-  `Definition`, nil/failing writers, cancellation policy, and concurrent writes
-  under the race detector.
+  with string fallback for invalid or empty bodies, exact run-local cookie-jar
+  arguments, omission of `RawCurl` and `Definition`, nil/failing writers,
+  cancellation policy, and concurrent writes under the race detector.
 - Root `architecture_test.go` proves that production execution output remains
   in this package and fatal diagnostics remain in `cmd/cli`.
 - Each acceptance criterion is traced to a meaningful unit or architecture
@@ -200,7 +201,7 @@ Canonical zero-value TODO bodies are not acceptable production implementations.
    `RawCurl` or `Definition`, places the dump after all accumulated file
    buffers, and atomically suppresses every later reporting call after the
    block is accepted. Reporter does not perform validation, schedule debug
-   steps, redact any value, or call `os.Exit`.
+   steps, select or manage cookie jars, redact any value, or call `os.Exit`.
 9. A fatal stage receives its final ordered commit before the CLI-owned stderr
    diagnostic, and no Reporter method writes anything afterward.
 10. No TODO or zero-value placeholder remains in a reporting method; package

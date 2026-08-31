@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"slices"
 	"testing"
@@ -110,4 +111,66 @@ spec:
 	if err := yaml.Unmarshal(definitionYAML, &definition); err == nil {
 		t.Fatal("Unmarshal() error = nil, want multiple expected statuses rejected")
 	}
+}
+
+func TestDefaultsDisableCookiesPreservesPresence(t *testing.T) {
+	tests := map[string]struct {
+		yaml string
+		want *bool
+	}{
+		"absent inherits": {yaml: "{}", want: nil},
+		"true disables":   {yaml: "disable_cookies: true", want: boolPointer(true)},
+		"false enables":   {yaml: "disable_cookies: false", want: boolPointer(false)},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			var defaults Defaults
+			if err := yaml.Unmarshal([]byte(test.yaml), &defaults); err != nil {
+				t.Fatalf("Unmarshal() error = %v", err)
+			}
+			if test.want == nil {
+				if defaults.DisableCookies != nil {
+					t.Fatalf("DisableCookies = %v, want nil", *defaults.DisableCookies)
+				}
+				return
+			}
+			if defaults.DisableCookies == nil || *defaults.DisableCookies != *test.want {
+				t.Fatalf("DisableCookies = %v, want %v", defaults.DisableCookies, *test.want)
+			}
+		})
+	}
+}
+
+func TestDefaultsDisableCookiesJSONPreservesPresence(t *testing.T) {
+	tests := map[string]struct {
+		value string
+		want  *bool
+	}{
+		"absent inherits": {value: `{}`, want: nil},
+		"true disables":   {value: `{"disable_cookies":true}`, want: boolPointer(true)},
+		"false enables":   {value: `{"disable_cookies":false}`, want: boolPointer(false)},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			var defaults Defaults
+			if err := json.Unmarshal([]byte(test.value), &defaults); err != nil {
+				t.Fatalf("Unmarshal() error = %v", err)
+			}
+			if test.want == nil {
+				if defaults.DisableCookies != nil {
+					t.Fatalf("DisableCookies = %v, want nil", *defaults.DisableCookies)
+				}
+				return
+			}
+			if defaults.DisableCookies == nil || *defaults.DisableCookies != *test.want {
+				t.Fatalf("DisableCookies = %v, want %v", defaults.DisableCookies, *test.want)
+			}
+		})
+	}
+}
+
+func boolPointer(value bool) *bool {
+	return &value
 }

@@ -28,6 +28,12 @@ When no directory, steps file, or individual step supplies them, request
 resolution uses a 10-second timeout and 3 retries. Nonzero values at each
 narrower scope override the inherited value.
 
+Automatic cookies are enabled when `disable_cookies` is absent. That default
+is presence-sensitive at directory, steps-file, and individual-step scope:
+`nil` inherits, `true` disables automatic cookie handling, and `false`
+explicitly enables or re-enables it. This setting controls curl's automatic
+cookie engine only and never removes an explicit user-supplied `Cookie` header.
+
 The current reference CLI composes the complete flow: definition loading,
 decoding, validation, and resolution; directory-tree validation; runtime-step
 preparation and stage planning; and staged execution with response validation
@@ -74,6 +80,12 @@ as `'\''`. Every other argument remains untransformed. These presentation
 rules never redact header or body data and do not change the request executed
 by `CurlExecute`.
 
+The cookie jar selected by Executor is an input to both `Curl` and `CurlBuild`.
+A non-empty jar path adds `--cookie <path>` and `--cookie-jar <path>` using the
+same run-local path. An empty path adds neither option. Consequently, Debug
+shows the exact complete cookie arguments used by the executed request without
+changing them.
+
 ## Package ownership
 
 The repository has these reference packages and no parallel service or model
@@ -84,10 +96,10 @@ hierarchy:
 | `cmd/cli` | Working-directory selection, service composition, fatal-diagnostic logging, and process exit. |
 | `internal/domain` | Shared suite, directory, file, definition, defaults, and step values. |
 | `internal/definition` | Directory/file loading, document classification, definition decoding and validation, and resolution. |
-| `internal/execution` | The key-value store, variable phases, response validation, step preparation, and staged execution. |
+| `internal/execution` | The key-value store, variable phases, response validation, step preparation, staged execution, and run-local cookie-jar ownership and inheritance. |
 | `internal/reporting` | Human-readable execution output through an injected standard-output writer. |
 | `pkg/errs` | Contextual error construction and exit-code metadata. |
-| `pkg/runner` | External-command construction, unredacted Curl rendering, and execution operations. |
+| `pkg/runner` | External-command construction, cookie-aware Curl arguments, unredacted Curl rendering, and execution operations. |
 
 The architecture test makes four ownership rules enforceable:
 
@@ -142,8 +154,10 @@ temporary-directory overrides are not used.
 
 ### Defaults and steps
 
-`Defaults` has exactly `BaseURL`, `BasePath`, `Headers`, `Timeout`, and
-`Retries` with the YAML names defined in `skeleton/internal/domain/suite.go`.
+`Defaults` has exactly `BaseURL`, `BasePath`, `Headers`, `DisableCookies`,
+`Timeout`, and `Retries` with the YAML names defined in
+`skeleton/internal/domain/suite.go`. `DisableCookies` is a `*bool` with YAML
+and JSON name `disable_cookies`; nil is distinct from explicit false.
 `DefaultsDefinition.Spec`, `Directory.ResolvedDefaults`,
 `StepsDefinition.Spec.Defaults`, and `Step.Request.Defaults` all use this same
 `domain.Defaults` type and structure. The steps-file and step forms do not
@@ -158,6 +172,11 @@ directory defaults -> steps-file defaults -> individual-step defaults
 Each narrower level overlays the effective defaults inherited from the level
 before it. Defaults remain values throughout resolution; the shared domain and
 Resolver contracts do not use `*domain.Defaults` pointers.
+
+String and numeric defaults retain their existing overlay rules.
+`DisableCookies` alone is pointer-presence-sensitive: nil retains the inherited
+pointer value, true replaces it with disabled, and false replaces it with
+enabled. When every scope remains nil, automatic cookies are enabled.
 
 `Step` has exactly the reference fields under `Vars`, `Request`, `Response`,
 and `Debug`, plus `Index`, runtime-only `RawCurl`, and source `Definition`.
@@ -221,6 +240,10 @@ best-effort removal of the complete run directory. Cleanup failures are always
 suppressed. Operations that need temporary artifacts create namespaced children
 below that run directory and never fall back to the shared OS temporary
 directory. Abrupt process or machine termination may prevent cleanup.
+Cookie jars use a cookie-specific namespace below `Config.TempRunDir`, have no
+independent persistence or cleanup lifecycle, and are never discovered, read,
+reused, or copied by another invocation, including when abrupt termination
+leaves an older run directory behind.
 
 The reference CLI creates one Reporter for `os.Stdout`, explicitly identifying
 whether stdout is a terminal. `run` reports the selected working directory,
@@ -274,6 +297,41 @@ canceled and joined, accumulated file output receives one final ordered render,
 and the CLI writes the provenance-bearing fatal stderr diagnostic last. Debug
 is likewise terminal: accumulated file blocks retain canonical order and the
 Debug dump is rendered as the final stdout block.
+
+### Cookie execution state
+
+Every mode-owned jar is created before its owning work executes, even when all
+currently assigned steps have cookies disabled, because the unchanged jar may
+carry inherited state. Every jar exists below the current `Config.TempRunDir`;
+a fresh jar may be a pre-created zero-length file. Enabled requests pass their
+owning jar to Runner, while disabled requests pass an empty jar argument and
+leave the owning jar unchanged for later re-enabling.
+
+Parallelism selects jar ownership and stage-transition inheritance:
+
+- Mode `0` creates exactly one jar for the run. All requests use it serially,
+  and stage transitions create no copies.
+- Mode `1` creates exactly one jar per directory. The root starts empty. After
+  a stage fully joins and before the next stage starts, each direct child
+  receives its own byte-for-byte copy of its parent's final jar. Files within
+  one directory use that directory jar serially.
+- Mode `2` creates exactly one jar per steps file. Root file jars start empty,
+  and steps within a file use its jar serially. After every step finishes,
+  including a cookie-disabled step, Executor records that file's jar as the
+  directory's latest completed jar. After the stage joins, every steps file in
+  each direct child receives its own copy of the parent jar whose step
+  completion was observed last. Go scheduling and actual runtime completion
+  order intentionally select that source; jar modification timestamps are not
+  used.
+
+Directories with no executed steps preserve their incoming state through any
+number of later stage transitions. Empty steps-file jars are unchanged copies
+of that state and may be used as copy sources. A root with no steps-file jars
+creates one additional empty inheritance jar. Copies flow only from a parent
+to its direct children; concurrent work never shares a writable jar, sibling
+state is never exchanged, and multiple jars are never merged. Run-directory or
+required jar create, initialize, and copy failures are internal failures and
+never silently downgrade an enabled request to cookie-less execution.
 
 ## Exit-code contract
 
@@ -331,7 +389,8 @@ The following are not product requirements:
 - definition placement/cardinality rules beyond the reference fields and
   service comments;
 - deterministic file ordering or symlink/hidden-directory policy;
-- presence-sensitive default merging beyond the timeout/retry fallbacks,
+- presence-sensitive default merging beyond the defined `DisableCookies`
+  overlay and the timeout/retry fallbacks,
   implicit HTTP methods, URL
   normalization, or header canonicalization;
 - variable-name grammar within the documented `$var` and `${var}` forms,
@@ -342,7 +401,8 @@ The following are not product requirements:
   comparison, or body-validation rules beyond the documented normalized
   expected-response comparison;
 - curl, jq, or Git argument-vector choices and command-result normalization
-  beyond the request-body placement and Debug Curl presentation rules above;
+  beyond the cookie arguments, request-body placement, and Debug Curl
+  presentation rules above;
 - success or validation-failure layouts not implemented or tested in
   `skeleton/`;
 - selection precedence when concurrent directories or files reach debug steps;
@@ -382,3 +442,12 @@ updated to match.
    storage, the three parallelism modes, stage barriers, ordered terminal
    redraws, ordered non-terminal stage commits, terminal error ordering, and
    silent best-effort cleanup match the revised skeleton contract.
+10. `disable_cookies` retains nil/true/false presence through decoding and
+    resolution. Enabled requests use the same selected run-local path for
+    `--cookie` and `--cookie-jar`; disabled requests use neither and leave their
+    eagerly created owning jar unchanged.
+11. Modes `0`, `1`, and `2` respectively use one run jar, one jar per directory,
+    and one jar per steps file. Stage transitions copy only the state selected
+    by the mode, mode-2 selection follows the last observed step completion,
+    empty directories preserve incoming state, no writable jar is shared or
+    merged, and separate invocations never exchange jars.

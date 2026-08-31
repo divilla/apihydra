@@ -28,8 +28,10 @@ carrier or replace it with global flags or temporary-directory state.
 `DefaultsDefinition.Spec`, `Directory.ResolvedDefaults`,
 `StepsDefinition.Spec.Defaults`, and `Step.Request.Defaults` are all
 value-typed `domain.Defaults`. Steps do not redeclare `BaseURL`, `BasePath`,
-`Headers`, `Timeout`, or `Retries` directly, and none of these defaults
-positions uses `*domain.Defaults`.
+`Headers`, `DisableCookies`, `Timeout`, or `Retries` directly, and none of these
+defaults positions uses `*domain.Defaults`. The `DisableCookies *bool` member
+uses `disable_cookies` in YAML and JSON so absent, true, and false remain
+distinct at every defaults scope.
 
 `Step.Response.ExpectedBody` and `Step.Response.ActualBody` both use
 `domain.YAMLString`, retaining its marshaling and unmarshaling behavior for the
@@ -58,7 +60,8 @@ with the packages named in the PRD.
 - Test outputs: `internal/domain/suite_test.go` covers YAML and JSON schema,
   including steps-file and request `defaults` nesting, zero values, rejected
   incompatible shapes, the absence of the former direct default-related
-  request fields, value rather than pointer defaults fields, `YAMLString`
+  request fields, value rather than pointer defaults carriers,
+  presence-sensitive `DisableCookies` nil/true/false values, `YAMLString`
   expected/actual body round trips, the step index schema, and every provenance
   helper, plus `RawCurl` exclusion from YAML and JSON;
   root `architecture_test.go` enforces the package boundaries against
@@ -90,7 +93,8 @@ Such behavior belongs to an owning service or requires a prior skeleton change.
 4. Shared workflow state is carried only by `internal/domain` values.
    Directory, steps-file, and step request defaults all use the same
    `domain.Defaults` value type; no parallel fields or `*domain.Defaults`
-   carriers are introduced.
+   carriers are introduced. `DisableCookies` alone remains a `*bool` member of
+   that value so decoding preserves absence separately from explicit false.
 5. The root architecture test enforces command, contextual-error,
    execution-output, fatal-diagnostic, and no-`bat` ownership rules across
    production code.

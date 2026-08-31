@@ -40,6 +40,7 @@ spec:
   base_path: /v1
   headers:
     Accept: application/json
+  disable_cookies: true
   timeout: 8
   retries: 2
 `)
@@ -54,6 +55,7 @@ spec:
     base_path: /steps
     headers:
       X-Definition: yes
+    disable_cookies: false
     timeout: 6
     retries: 2
   steps:
@@ -67,6 +69,7 @@ spec:
           base_url: https://step.example
           headers:
             X-Step: local
+          disable_cookies: true
           timeout: 1
       response:
         expected_status: 201
@@ -102,7 +105,7 @@ spec:
 	if defaults.Metadata.Name != "root defaults" || !slices.Equal(defaults.Metadata.Labels, []string{"root", "shared"}) {
 		t.Fatalf("root defaults metadata = %+v", defaults.Metadata)
 	}
-	if defaults.Spec.BaseURL != "https://example.test" || defaults.Spec.BasePath != "/v1" || defaults.Spec.Headers["Accept"] != "application/json" || defaults.Spec.Timeout != 8 || defaults.Spec.Retries != 2 {
+	if defaults.Spec.BaseURL != "https://example.test" || defaults.Spec.BasePath != "/v1" || defaults.Spec.Headers["Accept"] != "application/json" || defaults.Spec.DisableCookies == nil || !*defaults.Spec.DisableCookies || defaults.Spec.Timeout != 8 || defaults.Spec.Retries != 2 {
 		t.Fatalf("root defaults spec = %+v", defaults.Spec)
 	}
 
@@ -117,10 +120,11 @@ spec:
 		t.Fatalf("len(steps) = %d, want %d", got, want)
 	}
 	if got, want := stepsDefinition.Spec.Defaults, (domain.Defaults{
-		BasePath: "/steps",
-		Headers:  map[string]string{"X-Definition": "yes"},
-		Timeout:  6,
-		Retries:  2,
+		BasePath:       "/steps",
+		Headers:        map[string]string{"X-Definition": "yes"},
+		DisableCookies: boolPointer(false),
+		Timeout:        6,
+		Retries:        2,
 	}); !reflect.DeepEqual(got, want) {
 		t.Fatalf("steps-file defaults = %+v, want %+v", got, want)
 	}
@@ -132,9 +136,10 @@ spec:
 		t.Fatalf("first request = vars:%v request:%+v", first.Vars, first.Request)
 	}
 	if got, want := first.Request.Defaults, (domain.Defaults{
-		BaseURL: "https://step.example",
-		Headers: map[string]string{"X-Step": "local"},
-		Timeout: 1,
+		BaseURL:        "https://step.example",
+		Headers:        map[string]string{"X-Step": "local"},
+		DisableCookies: boolPointer(true),
+		Timeout:        1,
 	}); !reflect.DeepEqual(got, want) {
 		t.Fatalf("step request defaults = %+v, want %+v", got, want)
 	}

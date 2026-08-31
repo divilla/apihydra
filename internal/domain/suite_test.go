@@ -107,6 +107,7 @@ func TestDomainSchemaMatchesReference(t *testing.T) {
 		{"BaseURL", reflect.TypeOf(""), `yaml:"base_url" json:"base_url"`},
 		{"BasePath", reflect.TypeOf(""), `yaml:"base_path" json:"base_path"`},
 		{"Headers", reflect.TypeOf(map[string]string(nil)), `yaml:"headers" json:"headers"`},
+		{"DisableCookies", reflect.TypeOf((*bool)(nil)), `yaml:"disable_cookies" json:"disable_cookies"`},
 		{"Timeout", reflect.TypeOf(0), `yaml:"timeout" json:"timeout"`},
 		{"Retries", reflect.TypeOf(0), `yaml:"retries" json:"retries"`},
 	})
@@ -146,11 +147,13 @@ spec:
     headers:
       Accept: application/json
     timeout: 8
+    disable_cookies: true
   steps:
     - request:
         path: /items
         defaults:
           base_url: https://example.test
+          disable_cookies: false
           retries: 2
       response:
         expected_body: '{"expected":true}'
@@ -162,14 +165,15 @@ spec:
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 	if got, want := definition.Spec.Defaults, (Defaults{
-		BasePath: "/v1",
-		Headers:  map[string]string{"Accept": "application/json"},
-		Timeout:  8,
+		BasePath:       "/v1",
+		Headers:        map[string]string{"Accept": "application/json"},
+		DisableCookies: boolPointer(true),
+		Timeout:        8,
 	}); !reflect.DeepEqual(got, want) {
 		t.Fatalf("steps defaults = %+v, want %+v", got, want)
 	}
 	step := definition.Spec.Steps[0]
-	if got, want := step.Request.Defaults, (Defaults{BaseURL: "https://example.test", Retries: 2}); !reflect.DeepEqual(got, want) {
+	if got, want := step.Request.Defaults, (Defaults{BaseURL: "https://example.test", DisableCookies: boolPointer(false), Retries: 2}); !reflect.DeepEqual(got, want) {
 		t.Fatalf("request defaults = %+v, want %+v", got, want)
 	}
 	if step.Response.ExpectedBody != `{"expected":true}` || step.Response.ActualBody != `{"actual":true}` {
@@ -215,7 +219,7 @@ spec:
 	if got, exists := defaults["base_path"]; !exists || got != "" {
 		t.Fatalf("JSON request.defaults.base_path = %#v (exists %t), want empty string", got, exists)
 	}
-	for _, direct := range []string{"base_url", "base_path", "headers", "timeout", "retries"} {
+	for _, direct := range []string{"base_url", "base_path", "headers", "disable_cookies", "timeout", "retries"} {
 		if _, exists := request[direct]; exists {
 			t.Fatalf("JSON request contains direct defaults field %q", direct)
 		}
@@ -231,6 +235,47 @@ spec:
 	if strings.Contains(string(encodedYAML), "curl --header") || strings.Contains(string(encodedJSON), "complete-secret") {
 		t.Fatal("runtime-only RawCurl was serialized")
 	}
+}
+
+func TestDefaultsDisableCookiesPreservesPresence(t *testing.T) {
+	tests := map[string]struct {
+		yaml string
+		json string
+		want *bool
+	}{
+		"absent inherits": {yaml: "{}", json: `{}`, want: nil},
+		"true disables":   {yaml: "disable_cookies: true", json: `{"disable_cookies":true}`, want: boolPointer(true)},
+		"false enables":   {yaml: "disable_cookies: false", json: `{"disable_cookies":false}`, want: boolPointer(false)},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			for format, decode := range map[string]func(*Defaults) error{
+				"yaml": func(defaults *Defaults) error { return yaml.Unmarshal([]byte(test.yaml), defaults) },
+				"json": func(defaults *Defaults) error { return json.Unmarshal([]byte(test.json), defaults) },
+			} {
+				t.Run(format, func(t *testing.T) {
+					var defaults Defaults
+					if err := decode(&defaults); err != nil {
+						t.Fatalf("decode error = %v", err)
+					}
+					if test.want == nil {
+						if defaults.DisableCookies != nil {
+							t.Fatalf("DisableCookies = %v, want nil", *defaults.DisableCookies)
+						}
+						return
+					}
+					if defaults.DisableCookies == nil || *defaults.DisableCookies != *test.want {
+						t.Fatalf("DisableCookies = %v, want %v", defaults.DisableCookies, *test.want)
+					}
+				})
+			}
+		})
+	}
+}
+
+func boolPointer(value bool) *bool {
+	return &value
 }
 
 func TestStepResponseExpectationSchema(t *testing.T) {

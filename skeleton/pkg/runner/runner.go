@@ -23,9 +23,10 @@ var ErrGitDiff = errors.New("git diff error")
 // Curl builds and executes a curl HTTP request and returns its response body
 // and status code. It is equivalent to calling CurlBuild followed by
 // CurlExecute with the returned executable and arguments unchanged and the
-// original body as standard input.
-func Curl(ctx context.Context, method string, url string, headers map[string]string, timeout int, retries int, query string, body string) (string, int, error) {
-	executable, args, err := CurlBuild(ctx, method, url, headers, timeout, retries, query, body)
+// original body as standard input. A non-empty cookieJar enables curl's
+// automatic cookie engine; an empty cookieJar omits automatic cookie options.
+func Curl(ctx context.Context, method string, url string, headers map[string]string, cookieJar string, timeout int, retries int, query string, body string) (string, int, error) {
+	executable, args, err := CurlBuild(ctx, method, url, headers, cookieJar, timeout, retries, query, body)
 	if err != nil {
 		return "", 0, err
 	}
@@ -34,10 +35,12 @@ func Curl(ctx context.Context, method string, url string, headers map[string]str
 
 // CurlBuild constructs the curl executable and complete argument list for an
 // HTTP request without executing it. It returns complete, unredacted values in
-// deterministic argument order. A non-empty body of at most 1,024 Unicode
-// characters is the final --data-binary argument value. A longer body uses @-
-// as that final value. An empty body adds no --data-binary argument.
-func CurlBuild(ctx context.Context, method string, url string, headers map[string]string, timeout int, retries int, query string, body string) (executable string, args []string, err error) {
+// deterministic argument order. A non-empty cookieJar adds --cookie and
+// --cookie-jar with that same path; an empty cookieJar adds neither. A
+// non-empty body of at most 1,024 Unicode characters is the final
+// --data-binary argument value. A longer body uses @- as that final value. An
+// empty body adds no --data-binary argument.
+func CurlBuild(ctx context.Context, method string, url string, headers map[string]string, cookieJar string, timeout int, retries int, query string, body string) (executable string, args []string, err error) {
 	// TODO: implement
 	return "", []string{}, nil
 }

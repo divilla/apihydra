@@ -9,5 +9,6 @@ spec:
   headers:
     Content-Type: application/json
     User-Agent: APIHydra example
+  disable_cookies: false
   timeout: 10
   retries: 3

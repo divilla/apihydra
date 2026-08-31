@@ -85,3 +85,8 @@
 +13 -2 code - +78 -7 tests --- review fixes 05
 +3 -3 code - +25 -2 tests --- review fixes 06
 +46 -21 code - +37 -0 tests --- review fixes 07
+
+2026-31-08 14:14 016-add-cookie-support
++284 -25 code - +920 -28 tests --- change
++34 -4 code - +67 -4 tests --- review fixes 01
++21 -5 code - +11 -0 tests --- review fixes 02

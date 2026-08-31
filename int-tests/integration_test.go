@@ -103,6 +103,32 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		}
 		requests.add(r, requestBody)
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/cookies" {
+			query := r.URL.Query()
+			if delayText := query.Get("delay_ms"); delayText != "" {
+				delay, parseErr := strconv.Atoi(delayText)
+				if parseErr != nil {
+					http.Error(w, parseErr.Error(), http.StatusBadRequest)
+					return
+				}
+				time.Sleep(time.Duration(delay) * time.Millisecond)
+			}
+			gotCookie := ""
+			if cookie, cookieErr := r.Cookie("session"); cookieErr == nil {
+				gotCookie = cookie.Value
+			}
+			if wantCookie := query.Get("want"); gotCookie != wantCookie {
+				w.WriteHeader(http.StatusConflict)
+				_, _ = w.Write([]byte(`{"ok":false}`))
+				return
+			}
+			if value := query.Get("set"); value != "" {
+				http.SetCookie(w, &http.Cookie{Name: "session", Value: value, Path: "/"})
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+			return
+		}
 		if r.URL.Path == "/invalid-json" {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte("not-json"))
@@ -218,6 +244,27 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		invalidArguments := runArguments(args)
 		if invalidArguments.exitCode != 102 || invalidArguments.stdout != "" || invalidArguments.stderr == "" {
 			t.Fatalf("invalid arguments %v = code %d, stdout %q, stderr %q", args, invalidArguments.exitCode, invalidArguments.stdout, invalidArguments.stderr)
+		}
+	}
+	for iteration := range 2 {
+		cookiesModeZero := runArguments([]string{"--parallelism=0", filepath.Join("scenarios", "cookies-mode0")})
+		if cookiesModeZero.exitCode != 0 || cookiesModeZero.stderr != "" {
+			t.Fatalf("cookies mode 0 run %d = code %d, stdout %q, stderr %q", iteration, cookiesModeZero.exitCode, cookiesModeZero.stdout, cookiesModeZero.stderr)
+		}
+	}
+	for mode, suite := range map[string]string{
+		"1": filepath.Join("scenarios", "cookies-mode1"),
+		"2": filepath.Join("scenarios", "cookies-mode2"),
+	} {
+		result := runArguments([]string{"--parallelism=" + mode, suite})
+		if result.exitCode != 0 || result.stderr != "" {
+			t.Fatalf("cookies mode %s = code %d, stdout %q, stderr %q", mode, result.exitCode, result.stdout, result.stderr)
+		}
+	}
+	for _, suite := range []string{"cookies-mode2-empty-root", "cookies-mode2-empty-file"} {
+		result := runArguments([]string{"--parallelism=2", filepath.Join("scenarios", suite)})
+		if result.exitCode != 0 || result.stderr != "" {
+			t.Fatalf("%s = code %d, stdout %q, stderr %q", suite, result.exitCode, result.stdout, result.stderr)
 		}
 	}
 	orderedDirectories := runArguments([]string{filepath.Join("scenarios", "ordered-directories")})
@@ -420,6 +467,11 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 			t.Fatalf("debug defaults stdout = %q, want %q", debugDefaults.stdout, want)
 		}
 	}
+	cookieArguments := regexp.MustCompile(`--cookie ([^ ]+\.cookie\.jar) --cookie-jar ([^ ]+\.cookie\.jar)`)
+	cookieMatch := cookieArguments.FindStringSubmatch(debugDefaults.stdout)
+	if len(cookieMatch) != 3 || cookieMatch[1] != cookieMatch[2] || !strings.Contains(cookieMatch[1], string(filepath.Separator)+"apih"+string(filepath.Separator)+"run-") {
+		t.Fatalf("debug defaults cookie arguments = %v; stdout = %q", cookieMatch, debugDefaults.stdout)
+	}
 	if strings.Contains(debugDefaults.stdout, "--output") || strings.Contains(debugDefaults.stdout, "apih-curl-response-") {
 		t.Fatalf("debug defaults stdout = %q, contains temporary curl response output", debugDefaults.stdout)
 	}
@@ -445,7 +497,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if !ok || !hasBaseURL || baseURL == "" || defaults["timeout"] != float64(10) || defaults["retries"] != float64(3) {
 		t.Fatalf("debug request.defaults = %#v, want base_url plus timeout 10 and retries 3", request["defaults"])
 	}
-	for _, direct := range []string{"base_url", "base_path", "headers", "timeout", "retries"} {
+	for _, direct := range []string{"base_url", "base_path", "headers", "disable_cookies", "timeout", "retries"} {
 		if _, exists := request[direct]; exists {
 			t.Fatalf("debug request contains direct defaults field %q: %#v", direct, request)
 		}

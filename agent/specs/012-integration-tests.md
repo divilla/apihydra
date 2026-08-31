@@ -39,7 +39,11 @@ YAML remains static and unchanged.
   resolved `request.defaults` value with its 10-second timeout and 3 retries,
   a complete authorization header, the raw Curl statement, and latest runtime
   response values, plus a terminal-error debug scenario; these scenarios must
-  not affect either top-level fixture.
+  not affect either top-level fixture. Cookie scenarios exercise
+  `disable_cookies` inheritance and explicit re-enabling, real local-server
+  `Set-Cookie`/`Cookie` traffic, the three parallelism ownership modes,
+  parent-child stage inheritance, controlled mode-2 completion selection, and
+  separate-run isolation.
 - Build output is temporary. The harness builds `./cmd/cli` with Go coverage
   instrumentation over `apih/...`, runs the scenarios with `GOCOVERDIR`, and
   removes artifacts through the test temporary directory lifecycle.
@@ -56,11 +60,12 @@ YAML remains static and unchanged.
 
 ## Deliberately unspecified
 
-Except for the exact Debug layout, actual Curl statement, and binding ordered
-stage transaction contract, the suite does not make Reporter presentation,
-particular external-command argument choices, or other PRD-unspecified choices
-into assertions. Other scenarios check only stable output fragments needed to
-identify the selected work directory or a fatal diagnostic.
+Except for the exact Debug layout, actual Curl statement, binding automatic
+cookie arguments, and binding ordered stage transaction contract, the suite
+does not make Reporter presentation, other external-command argument choices,
+or other PRD-unspecified choices into assertions. Other scenarios check only
+stable output fragments needed to identify the selected work directory or a
+fatal diagnostic.
 
 ## Acceptance criteria
 
@@ -108,3 +113,12 @@ identify the selected work directory or a fatal diagnostic.
     final fatal diagnostic ordering, use of a unique
     `os.UserCacheDir()/apih/run-*` directory, and best-effort run-directory
     cleanup without any system-temporary fallback.
+12. Cookie scenarios prove enabled requests send and update their selected
+    run-local jar, disabled requests omit both automatic-cookie arguments while
+    preserving explicit `Cookie` headers, and false re-enables automatic
+    handling below true. Mode `0` shares one serial run lineage, mode `1` gives
+    each directory an independent parent-derived lineage, and mode `2` gives
+    each steps file an independent lineage derived from the parent file whose
+    step finishes last under controlled scheduling. Empty directories preserve
+    incoming state, separate invocations exchange no cookies, and Debug shows
+    the exact selected `--cookie` and `--cookie-jar` path.

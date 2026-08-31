@@ -5,3 +5,4 @@ spec:
   base_path: /api/v2
   headers:
     X-Suite-Area: billing
+  disable_cookies: false

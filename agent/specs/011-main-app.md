@@ -33,7 +33,11 @@ from the reference.
 Every valid run owns one private `run-*` directory below
 `os.UserCacheDir()/apih`. `run` defers best-effort removal of the entire
 directory and suppresses every cleanup failure. Abrupt termination may leave a
-run directory. Help and invalid invocations do not create one.
+run directory. Help and invalid invocations do not create one. Executor places
+all cookie jars in a namespaced child of this injected `Config.TempRunDir`;
+CLI adds no cookie-specific persistence or cleanup path. Removing the run
+directory removes its jars together with every other run-local artifact, and a
+later run never reuses a directory left by abrupt termination.
 
 ## Application package tests
 
@@ -72,7 +76,8 @@ Black-box subprocess fixtures and application coverage belong to
 4. Every valid run uses a unique private directory below
    `os.UserCacheDir()/apih`, injects it as `Config.TempRunDir`, and attempts to
    remove it on every controlled return. Cleanup failures are silent and do not
-   alter results or produce output.
+   alter results or produce output. Cookie jars remain beneath that directory
+   and rely exclusively on this same lifetime and cleanup contract.
 5. Reporter output failures return `errs.ExitInternal` and preserve the writer
    failure.
 6. Fatal errors are logged to stderr after the final ordered stdout stage

@@ -20,6 +20,8 @@ func NewResolver() *Resolver {
 
 // ResolveDefaults traverses suite.Root and populates each ResolvedDefaults with
 // values merged from the directory's and parent directory's DefaultsDefinition.
+// DisableCookies is presence-sensitive: nil inherits, true disables automatic
+// cookie handling, and false explicitly enables it.
 func (l *Resolver) ResolveDefaults(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -39,6 +41,7 @@ func (l *Resolver) ResolveDefaults(
 			defaults = mergeDefaults(defaults, directory.DefaultsDefinition.Spec)
 		} else {
 			defaults.Headers = cloneMap(defaults.Headers)
+			defaults.DisableCookies = cloneBool(defaults.DisableCookies)
 		}
 		resolved[directory] = defaults
 		return nil
@@ -56,7 +59,9 @@ func (l *Resolver) ResolveDefaults(
 }
 
 // ResolveSteps traverses suite.Root and populates each ResolvedSteps with values
-// merged from the directory's StepsDefinitions and DefaultsDefinition.
+// merged from the directory's StepsDefinitions and DefaultsDefinition. It
+// applies the same DisableCookies presence-sensitive overlay from directory to
+// steps-file to individual-step defaults.
 func (l *Resolver) ResolveSteps(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -127,6 +132,11 @@ func mergeDefaults(parent, local domain.Defaults) domain.Defaults {
 	if local.Retries != 0 {
 		merged.Retries = local.Retries
 	}
+	if local.DisableCookies != nil {
+		merged.DisableCookies = cloneBool(local.DisableCookies)
+	} else {
+		merged.DisableCookies = cloneBool(parent.DisableCookies)
+	}
 	merged.Headers = mergeMaps(parent.Headers, local.Headers)
 	return merged
 }
@@ -156,6 +166,14 @@ func mergeMaps[K comparable, V any](base, overlay map[K]V) map[K]V {
 
 func cloneMap[K comparable, V any](source map[K]V) map[K]V {
 	return mergeMaps(source, nil)
+}
+
+func cloneBool(source *bool) *bool {
+	if source == nil {
+		return nil
+	}
+	cloned := *source
+	return &cloned
 }
 
 func cloneStringSlices(source map[string][]string) map[string][]string {

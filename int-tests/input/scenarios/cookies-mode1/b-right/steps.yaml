@@ -1,0 +1,14 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        path: /cookies?want=parent-state&delay_ms=250
+      response:
+        expected_status: 200
+        expected_body: '{"ok":true}'
+    - request:
+        path: /cookies?want=parent-state
+      response:
+        expected_status: 200
+        expected_body: '{"ok":true}'

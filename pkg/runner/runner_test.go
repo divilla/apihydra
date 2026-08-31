@@ -33,8 +33,8 @@ func TestExportedContract(t *testing.T) {
 		})
 	}
 
-	var _ func(context.Context, string, string, map[string]string, int, int, string, string) (string, int, error) = Curl
-	var _ func(context.Context, string, string, map[string]string, int, int, string, string) (string, []string, error) = CurlBuild
+	var _ func(context.Context, string, string, map[string]string, string, int, int, string, string) (string, int, error) = Curl
+	var _ func(context.Context, string, string, map[string]string, string, int, int, string, string) (string, []string, error) = CurlBuild
 	var _ func(context.Context, string, []string, string) (string, int, error) = CurlExecute
 	var _ func(string, []string) string = CurlRaw
 	var _ func(context.Context, string, string) (string, int, error) = JQProject
@@ -60,6 +60,7 @@ printf 'http-code:202' >&2
 			"Authorization": "Bearer complete secret",
 			"Cookie":        "session=unredacted-cookie",
 		},
+		"/cache/apih/run-1/cookies/request.cookie.jar",
 		10,
 		3,
 		"include=all",
@@ -72,6 +73,11 @@ printf 'http-code:202' >&2
 	for _, sensitive := range []string{"Authorization: Bearer complete secret", "Cookie: session=unredacted-cookie"} {
 		if !strings.Contains(wantRaw, sensitive) {
 			t.Fatalf("CurlRaw() = %q, want complete sensitive value %q", wantRaw, sensitive)
+		}
+	}
+	for _, cookieOption := range []string{"--cookie /cache/apih/run-1/cookies/request.cookie.jar", "--cookie-jar /cache/apih/run-1/cookies/request.cookie.jar"} {
+		if !strings.Contains(wantRaw, cookieOption) {
+			t.Fatalf("CurlRaw() = %q, want %q", wantRaw, cookieOption)
 		}
 	}
 	if !strings.Contains(wantRaw, `--data-binary '{"security":"visible"}'`) {
@@ -101,6 +107,36 @@ printf 'http-code:202' >&2
 		t.Fatalf("CurlExecute() arguments = %q, want unchanged %q", got, want)
 	}
 	assertFileContents(t, stdinPath, `{"security":"visible"}`)
+}
+
+func TestCurlBuildUsesOneSelectedJarForBothCookieOptions(t *testing.T) {
+	jar := "/cache/apih/run-1/cookies/selected.cookie.jar"
+	_, args, err := CurlBuild(
+		context.Background(),
+		"GET",
+		"https://example.test",
+		map[string]string{"Cookie": "manual=preserved"},
+		jar,
+		0,
+		0,
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSequence := []string{"--header", "Cookie: manual=preserved", "--cookie", jar, "--cookie-jar", jar}
+	if !containsArgumentSequence(args, wantSequence) {
+		t.Fatalf("CurlBuild() args = %q, want sequence %q", args, wantSequence)
+	}
+
+	_, withoutCookies, err := CurlBuild(context.Background(), "GET", "https://example.test", map[string]string{"Cookie": "manual=preserved"}, "", 0, 0, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if containsArgument(withoutCookies, "--cookie") || containsArgument(withoutCookies, "--cookie-jar") || !containsArgumentSequence(withoutCookies, []string{"--header", "Cookie: manual=preserved"}) {
+		t.Fatalf("CurlBuild(empty jar) args = %q, want explicit header without automatic cookie options", withoutCookies)
+	}
 }
 
 func TestCurlRawCompactsBodyAndQuotesAndEscapesArguments(t *testing.T) {
@@ -147,6 +183,7 @@ printf 'http-code:201' >&2
 		"POST",
 		"https://example.test/resource?fixed=yes#section",
 		map[string]string{"Z-Last": "z", "Accept": "application/json"},
+		"",
 		12,
 		3,
 		"page=2",
@@ -194,7 +231,7 @@ func TestCurlBuildShowsBodiesUpTo1024CharactersInRawCommand(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			executable, args, err := CurlBuild(
-				context.Background(), "POST", "https://example.test", nil, 0, 0, "", test.body,
+				context.Background(), "POST", "https://example.test", nil, "", 0, 0, "", test.body,
 			)
 			if err != nil {
 				t.Fatalf("CurlBuild() error = %v", err)
@@ -217,7 +254,7 @@ printf 'HTTP/1.1 200 OK\r\nContent-Length: 12\r\n\r\n'
 printf 'http-code:200' >&2
 `)
 
-	body, status, err := Curl(context.Background(), "HEAD", "https://example.test/resource", nil, 0, 0, "", "")
+	body, status, err := Curl(context.Background(), "HEAD", "https://example.test/resource", nil, "", 0, 0, "", "")
 	if err != nil {
 		t.Fatalf("Curl() error = %v", err)
 	}
@@ -259,7 +296,7 @@ printf '{"ok":true}'
 printf 'http-code:200' >&2
 `)
 
-			body, status, err := Curl(context.Background(), "", "https://example.test/resource", nil, 0, 0, "", test.body)
+			body, status, err := Curl(context.Background(), "", "https://example.test/resource", nil, "", 0, 0, "", test.body)
 			if err != nil {
 				t.Fatalf("Curl() error = %v", err)
 			}
@@ -278,7 +315,7 @@ printf '%s\n' "$@" > "$APIH_TEST_ARGS"
 printf 'http-code:204' >&2
 `)
 
-	_, _, err := Curl(context.Background(), "GET", "https://example.test/resource#section", nil, 0, 0, "page=2", "")
+	_, _, err := Curl(context.Background(), "GET", "https://example.test/resource#section", nil, "", 0, 0, "page=2", "")
 	if err != nil {
 		t.Fatalf("Curl() error = %v", err)
 	}
@@ -305,7 +342,7 @@ printf '%s\n' "$@" > "$APIH_TEST_ARGS"
 printf 'http-code:204' >&2
 `)
 
-			_, _, err := Curl(context.Background(), "GET", test.url, nil, 0, 0, "page=2", "")
+			_, _, err := Curl(context.Background(), "GET", test.url, nil, "", 0, 0, "page=2", "")
 			if err != nil {
 				t.Fatalf("Curl() error = %v", err)
 			}
@@ -323,7 +360,7 @@ printf '{"message":"http-code:599"}'
 printf 'http-code:200' >&2
 `)
 
-	body, status, err := Curl(context.Background(), "GET", "https://example.test", nil, 0, 1, "", "")
+	body, status, err := Curl(context.Background(), "GET", "https://example.test", nil, "", 0, 1, "", "")
 	if err != nil {
 		t.Fatalf("Curl() error = %v", err)
 	}
@@ -343,7 +380,7 @@ printf 'plain response'
 printf 'http-code:204' >&2
 `)
 
-	body, status, err := Curl(context.Background(), "GET", "https://example.test", nil, 0, 0, "", "")
+	body, status, err := Curl(context.Background(), "GET", "https://example.test", nil, "", 0, 0, "", "")
 	if err != nil {
 		t.Fatalf("Curl() error = %v", err)
 	}
@@ -360,7 +397,7 @@ printf 'http-code:204' >&2
 func TestCurlRejectsMalformedCommandOutput(t *testing.T) {
 	t.Run("missing status", func(t *testing.T) {
 		installCommand(t, "curl", `printf 'response without status'`)
-		_, status, err := Curl(context.Background(), "GET", "https://example.test", nil, 0, 0, "", "")
+		_, status, err := Curl(context.Background(), "GET", "https://example.test", nil, "", 0, 0, "", "")
 		assertCommandError(t, err, ErrCurl)
 		if status != 0 {
 			t.Fatalf("Curl() status = %d, want 0", status)
@@ -369,7 +406,7 @@ func TestCurlRejectsMalformedCommandOutput(t *testing.T) {
 
 	t.Run("invalid status", func(t *testing.T) {
 		installCommand(t, "curl", `printf 'response'; printf 'http-code:not-a-number' >&2`)
-		_, status, err := Curl(context.Background(), "GET", "https://example.test", nil, 0, 0, "", "")
+		_, status, err := Curl(context.Background(), "GET", "https://example.test", nil, "", 0, 0, "", "")
 		assertCommandError(t, err, ErrCurl)
 		if status != 0 {
 			t.Fatalf("Curl() status = %d, want 0", status)
@@ -513,7 +550,7 @@ printf 'connection failed' >&2
 printf 'http-code:000' >&2
 exit 6
 `)
-	body, status, err := Curl(context.Background(), "GET", "https://example.test", nil, 0, 0, "", "")
+	body, status, err := Curl(context.Background(), "GET", "https://example.test", nil, "", 0, 0, "", "")
 	assertCommandError(t, err, ErrCurl)
 	if body != "" || status != 0 {
 		t.Fatalf("Curl() = (%q, %d), want empty response", body, status)
@@ -531,7 +568,7 @@ printf 'http-code:200' >&2
 `)
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
 
-	body, status, err := Curl(context.Background(), "GET", "https://example.test", nil, 0, 0, "", "")
+	body, status, err := Curl(context.Background(), "GET", "https://example.test", nil, "", 0, 0, "", "")
 	if err != nil || body != "in-memory response" || status != 200 {
 		t.Fatalf("Curl() = (%q, %d, %v), want in-memory response and 200", body, status, err)
 	}
@@ -791,4 +828,22 @@ func assertLines(t *testing.T, path string, want []string) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("lines = %#v, want %#v", got, want)
 	}
+}
+
+func containsArgument(args []string, want string) bool {
+	for _, arg := range args {
+		if arg == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsArgumentSequence(args, want []string) bool {
+	for start := 0; start+len(want) <= len(args); start++ {
+		if reflect.DeepEqual(args[start:start+len(want)], want) {
+			return true
+		}
+	}
+	return false
 }

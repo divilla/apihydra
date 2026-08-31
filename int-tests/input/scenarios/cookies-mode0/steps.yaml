@@ -1,0 +1,25 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        path: /cookies?want=&set=run-state
+      response:
+        expected_status: 200
+        expected_body: '{"ok":true}'
+    - request:
+        path: /cookies?want=manual-state
+        defaults:
+          disable_cookies: true
+          headers:
+            Cookie: session=manual-state
+      response:
+        expected_status: 200
+        expected_body: '{"ok":true}'
+    - request:
+        path: /cookies?want=run-state
+        defaults:
+          disable_cookies: false
+      response:
+        expected_status: 200
+        expected_body: '{"ok":true}'

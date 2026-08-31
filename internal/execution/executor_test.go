@@ -50,6 +50,8 @@ func TestPrepareDeepCopiesAllMutableStepStateAcrossTree(t *testing.T) {
 	}
 	step.Request.Body = `{"value":"$request"}`
 	step.Request.Defaults.Headers = map[string]string{"Accept": "application/json"}
+	disableCookies := true
+	step.Request.Defaults.DisableCookies = &disableCookies
 	step.Response.ExpectedBody = `{"value":"$request"}`
 	step.Response.ExpectedTypes = map[string][]string{
 		".empty": {},
@@ -91,6 +93,7 @@ func TestPrepareDeepCopiesAllMutableStepStateAcrossTree(t *testing.T) {
 
 	runtimeStep.Vars["request"] = "changed"
 	runtimeStep.Request.Defaults.Headers["Accept"] = "text/plain"
+	*runtimeStep.Request.Defaults.DisableCookies = false
 	runtimeStep.Response.ExpectedTypes[".value"][0] = "number"
 	runtimeStep.Response.Capture["captured"] = ".other"
 	runtimeStep.Request.Body = "interpolated"
@@ -99,6 +102,9 @@ func TestPrepareDeepCopiesAllMutableStepStateAcrossTree(t *testing.T) {
 	}
 	if got := root.ResolvedSteps[0][0].Request.Defaults.Headers["Accept"]; got != "application/json" {
 		t.Fatalf("Prepare() shared Headers map, resolved value = %q", got)
+	}
+	if got := root.ResolvedSteps[0][0].Request.Defaults.DisableCookies; got == nil || !*got {
+		t.Fatalf("Prepare() shared DisableCookies pointer, resolved value = %v", got)
 	}
 	if got := root.ResolvedSteps[0][0].Response.ExpectedTypes[".value"][0]; got != "string" {
 		t.Fatalf("Prepare() shared ExpectedTypes slice, resolved value = %q", got)
@@ -867,6 +873,9 @@ esac
 	var output bytes.Buffer
 	config := domain.Config{TempRunDir: t.TempDir()}
 	executor := NewExecutor(NewBinder(NewKeyValueStore()), NewValidator(config), reporting.NewReporter(&output, false), config)
+	if err := executor.cookies.prepareStage([]*domain.Directory{dir}); err != nil {
+		t.Fatal(err)
+	}
 
 	exitCode, err := executor.processDir(context.Background(), discardResult, dir)
 	if exitCode != 0 || !errors.Is(err, errDebugStop) {
@@ -898,9 +907,11 @@ esac
 		t.Fatalf("phase order = %v, want %v", got, wantOrder)
 	}
 	debugStep := &dir.RuntimeSteps[0][1]
+	selectedJar := executor.cookies.jarFor(dir, 0)
 	for _, want := range []string{
 		"stage: 0\ndir-path: /suite\nfile-path: steps.yaml\n\ncurl-command:\n",
 		debugStep.RawCurl,
+		"--cookie " + selectedJar + " --cookie-jar " + selectedJar,
 		`"actual_body"`,
 	} {
 		if !strings.Contains(output.String(), want) {
@@ -1088,7 +1099,11 @@ exit 1
 	binder := NewBinder(NewKeyValueStore())
 
 	config := domain.Config{TempRunDir: t.TempDir()}
-	exitCode, err := NewExecutor(binder, NewValidator(config), reporting.NewReporter(&output, false), config).processDir(context.Background(), discardResult, dir)
+	executor := NewExecutor(binder, NewValidator(config), reporting.NewReporter(&output, false), config)
+	if err := executor.cookies.prepareStage([]*domain.Directory{dir}); err != nil {
+		t.Fatal(err)
+	}
+	exitCode, err := executor.processDir(context.Background(), discardResult, dir)
 	if exitCode != errs.ExitValidation || err != nil {
 		t.Fatalf("processDir() = (%d, %v), want (%d, nil)", exitCode, err, errs.ExitValidation)
 	}
@@ -1360,7 +1375,11 @@ func executorForStep(t *testing.T, binder *Binder, step domain.Step, output inte
 	t.Helper()
 	step.Definition.File.Directory.RuntimeSteps = [][]domain.Step{{step}}
 	config := domain.Config{TempRunDir: t.TempDir()}
-	return NewExecutor(binder, NewValidator(config), reporting.NewReporter(output, false), config)
+	executor := NewExecutor(binder, NewValidator(config), reporting.NewReporter(output, false), config)
+	if err := executor.cookies.prepareStage([]*domain.Directory{step.Definition.File.Directory}); err != nil {
+		t.Fatal(err)
+	}
+	return executor
 }
 
 func discardResult(int, error) {}

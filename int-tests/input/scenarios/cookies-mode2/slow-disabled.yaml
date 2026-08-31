@@ -1,0 +1,11 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        path: /cookies?want=&delay_ms=250
+        defaults:
+          disable_cookies: true
+      response:
+        expected_status: 200
+        expected_body: '{"ok":true}'

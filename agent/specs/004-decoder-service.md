@@ -31,9 +31,10 @@ errors.
   with decoding and validation over the exact binding domain fields.
 - Test output: `internal/definition/decoder_test.go` covers defaults and steps
   decoding, including `StepsDefinition.Spec.Defaults` and each
-  `Step.Request.Defaults` using the shared `domain.Defaults` shape, source
-  provenance, traversal, malformed YAML, chosen validation rules,
-  context/error paths, and mutation boundaries.
+  `Step.Request.Defaults` using the shared `domain.Defaults` shape,
+  `disable_cookies` absent/true/false decoding at every defaults scope, source
+  provenance, traversal, malformed YAML, chosen validation rules, context/error
+  paths, and mutation boundaries.
 - Each acceptance criterion is traced to at least one meaningful unit test, and
   Decoder unit-test statement coverage remains greater than 95%.
 
@@ -44,7 +45,8 @@ errors.
    the two decoded-definition fields named by the skeleton.
    Steps-file defaults and individual-step request defaults decode into
    value-typed `domain.Defaults`; Decoder does not create a parallel shape or
-   use `*domain.Defaults`.
+   use `*domain.Defaults`. Their `DisableCookies *bool` member preserves nil,
+   true, and false exactly as decoded.
 3. Both validation methods traverse the decoded definitions indicated by the
    reference contract.
 4. Decoder does not classify files, resolve values, execute steps, or invent

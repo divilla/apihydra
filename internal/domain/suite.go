@@ -68,11 +68,12 @@ type Metadata struct {
 }
 
 type Defaults struct {
-	BaseURL  string            `yaml:"base_url" json:"base_url"`
-	BasePath string            `yaml:"base_path" json:"base_path"`
-	Headers  map[string]string `yaml:"headers" json:"headers"`
-	Timeout  int               `yaml:"timeout" json:"timeout"`
-	Retries  int               `yaml:"retries" json:"retries"`
+	BaseURL        string            `yaml:"base_url" json:"base_url"`
+	BasePath       string            `yaml:"base_path" json:"base_path"`
+	Headers        map[string]string `yaml:"headers" json:"headers"`
+	DisableCookies *bool             `yaml:"disable_cookies" json:"disable_cookies"`
+	Timeout        int               `yaml:"timeout" json:"timeout"`
+	Retries        int               `yaml:"retries" json:"retries"`
 }
 
 type Step struct {
