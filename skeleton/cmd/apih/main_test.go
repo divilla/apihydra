@@ -6,12 +6,16 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/divilla/apihydra/skeleton/internal/definition"
 	"github.com/divilla/apihydra/skeleton/internal/domain"
+	"github.com/divilla/apihydra/skeleton/internal/execution"
 	"github.com/divilla/apihydra/skeleton/internal/reporting"
 	"github.com/divilla/apihydra/skeleton/pkg/errs"
+	"github.com/divilla/apihydra/skeleton/pkg/runner"
 
 	"github.com/spf13/pflag"
 )
@@ -22,6 +26,14 @@ type failingWriter struct {
 
 func (w failingWriter) Write([]byte) (int, error) {
 	return 0, w.err
+}
+
+func writeRootDefinition(t *testing.T, directory, name string) {
+	t.Helper()
+	contents := []byte("app: apihydra\nkind: root\nspec: {}\n")
+	if err := os.WriteFile(filepath.Join(directory, name), contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestRunReturnsConfigurationExitCodeForInvalidPath(t *testing.T) {
@@ -40,6 +52,9 @@ func TestRunReturnsConfigurationExitCodeForInvalidPath(t *testing.T) {
 }
 
 func TestRunReturnsSuccessAfterDefinitionPipeline(t *testing.T) {
+	workDir := t.TempDir()
+	writeRootDefinition(t, workDir, "suite.yml")
+	t.Chdir(workDir)
 	var output bytes.Buffer
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
@@ -55,7 +70,60 @@ func TestRunReturnsSuccessAfterDefinitionPipeline(t *testing.T) {
 	}
 }
 
+func TestRunSelectsDirectoryContainingRootDefinition(t *testing.T) {
+	parent := t.TempDir()
+	suiteDir := filepath.Join(parent, "suite")
+	if err := os.Mkdir(suiteDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeRootDefinition(t, suiteDir, "configuration.yaml")
+	t.Chdir(parent)
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	var output bytes.Buffer
+
+	exitCode, err := run(context.Background(), domain.Config{Directory: "suite", Parallelism: 1}, reporting.NewReporter(&output, false))
+	if err != nil || exitCode != 0 {
+		t.Fatalf("run() = (%d, %v), want (0, nil)", exitCode, err)
+	}
+	if got, want := output.String(), "Working Directory: "+suiteDir+"\n\n"; got != want {
+		t.Fatalf("run() output = %q, want %q", got, want)
+	}
+}
+
+func TestRunRejectsMissingRootBeforeApplicationOutput(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var output bytes.Buffer
+
+	exitCode, err := run(context.Background(), domain.Config{Parallelism: 1}, reporting.NewReporter(&output, false))
+	if exitCode != errs.ExitConfiguration || !errors.Is(err, definition.ErrRootDefinitionMissing) {
+		t.Fatalf("run() = (%d, %v), want (%d, ErrRootDefinitionMissing)", exitCode, err, errs.ExitConfiguration)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("run() output = %q, want empty output", output.String())
+	}
+}
+
+func TestRunRejectsSelectedDirectoryMissingRootBeforeApplicationOutput(t *testing.T) {
+	parent := t.TempDir()
+	if err := os.Mkdir(filepath.Join(parent, "suite"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(parent)
+	var output bytes.Buffer
+
+	exitCode, err := run(context.Background(), domain.Config{Directory: "suite", Parallelism: 1}, reporting.NewReporter(&output, false))
+	if exitCode != errs.ExitConfiguration || !errors.Is(err, definition.ErrRootDefinitionMissing) {
+		t.Fatalf("run() = (%d, %v), want (%d, ErrRootDefinitionMissing)", exitCode, err, errs.ExitConfiguration)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("run() output = %q, want empty output", output.String())
+	}
+}
+
 func TestRunReturnsInternalExitCodeForOutputFailure(t *testing.T) {
+	workDir := t.TempDir()
+	writeRootDefinition(t, workDir, "root.yaml")
+	t.Chdir(workDir)
 	wantErr := errors.New("output failed")
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 
@@ -116,9 +184,53 @@ func TestParseConfigHelpUsesPflag(t *testing.T) {
 	}
 }
 
+func TestFatalDiagnosticUsesSpecificManualAnchor(t *testing.T) {
+	err := errs.Build(errs.ExitConfiguration, definition.ErrRootDefinitionMissing, nil)
+	want := "error: root definition missing\n\n" +
+		"please check user manual: " + userManualReference + "#root-definition-missing\n"
+	if got := fatalDiagnostic(err); got != want {
+		t.Fatalf("fatalDiagnostic() = %q, want %q", got, want)
+	}
+	if got := fatalDiagnostic(nil); got != "" {
+		t.Fatalf("fatalDiagnostic(nil) = %q, want empty output", got)
+	}
+}
+
+func TestTroubleshootingAnchorClassifiesFatalErrors(t *testing.T) {
+	tests := map[string]struct {
+		err  error
+		want string
+	}{
+		"root missing":       {definition.ErrRootDefinitionMissing, "root-definition-missing"},
+		"arguments":          {ErrInvalidArguments, "invalid-arguments"},
+		"parallelism":        {execution.ErrInvalidParallelism, "invalid-arguments"},
+		"selected directory": {ErrInvalidPath, "invalid-selected-directory"},
+		"invalid definition": {definition.ErrInvalidDefinition, "invalid-yaml-definition"},
+		"discovery":          {definition.ErrDefinitionDiscovery, "definition-discovery-error"},
+		"variable":           {execution.ErrVariable, "missing-or-duplicate-variable"},
+		"missing key":        {execution.ErrNotFound, "missing-or-duplicate-variable"},
+		"duplicate key":      {execution.ErrKeyExists, "missing-or-duplicate-variable"},
+		"external command":   {runner.ErrCommand, "external-tool-failure"},
+		"curl":               {runner.ErrCurl, "external-tool-failure"},
+		"jq selector":        {runner.ErrJQSelector, "external-tool-failure"},
+		"jq pretty":          {runner.ErrJQPretty, "external-tool-failure"},
+		"git diff":           {runner.ErrGitDiff, "external-tool-failure"},
+		"capture":            {execution.ErrCapture, "capture-error"},
+		"unknown":            {errors.New("unexpected"), "internal-errors"},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := troubleshootingAnchor(test.err); got != test.want {
+				t.Fatalf("troubleshootingAnchor() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestMainLogsFatalErrorAndPreservesProductExitCode(t *testing.T) {
 	cmd := exec.Command(os.Args[0], "-test.run=TestMainHelperProcess")
-	cmd.Env = append(os.Environ(), "APIH_TEST_MAIN_HELPER=1")
+	cmd.Env = append(os.Environ(), "APIH_TEST_MAIN_HELPER=invalid-path")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -135,15 +247,50 @@ func TestMainLogsFatalErrorAndPreservesProductExitCode(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("main process stdout = %q, want empty output", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), ErrInvalidPath.Error()) {
-		t.Fatalf("main process stderr = %q, want ErrInvalidPath", stderr.String())
+	if !strings.HasPrefix(stderr.String(), "error: "+ErrInvalidPath.Error()+":") {
+		t.Fatalf("main process stderr = %q, want prefixed ErrInvalidPath", stderr.String())
+	}
+	wantFooter := "\n\nplease check user manual: " + userManualReference + "#invalid-selected-directory\n"
+	if !strings.HasSuffix(stderr.String(), wantFooter) {
+		t.Fatalf("main process stderr = %q, want footer %q", stderr.String(), wantFooter)
+	}
+	if strings.Count(stderr.String(), "error: ") != 1 || strings.Count(stderr.String(), "please check user manual: ") != 1 {
+		t.Fatalf("main process stderr = %q, want one diagnostic and one footer", stderr.String())
+	}
+}
+
+func TestMainReportsExactMissingRootDiagnostic(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=TestMainHelperProcess")
+	cmd.Dir = t.TempDir()
+	cmd.Env = append(os.Environ(), "APIH_TEST_MAIN_HELPER=missing-root")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != errs.ExitConfiguration {
+		t.Fatalf("main process error = %v, want exit %d", err, errs.ExitConfiguration)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("main process stdout = %q, want empty output", stdout.String())
+	}
+	want := "error: root definition missing\n\n" +
+		"please check user manual: " + userManualReference + "#root-definition-missing\n"
+	if stderr.String() != want {
+		t.Fatalf("main process stderr = %q, want %q", stderr.String(), want)
 	}
 }
 
 func TestMainHelperProcess(t *testing.T) {
-	if os.Getenv("APIH_TEST_MAIN_HELPER") != "1" {
+	scenario := os.Getenv("APIH_TEST_MAIN_HELPER")
+	if scenario == "" {
 		return
 	}
-	os.Args = []string{"apih", "path-that-does-not-exist"}
+	os.Args = []string{"apih"}
+	if scenario == "invalid-path" {
+		os.Args = append(os.Args, "path-that-does-not-exist")
+	}
 	main()
 }

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 
@@ -14,9 +13,12 @@ import (
 	"github.com/divilla/apihydra/skeleton/internal/execution"
 	"github.com/divilla/apihydra/skeleton/internal/reporting"
 	"github.com/divilla/apihydra/skeleton/pkg/errs"
+	"github.com/divilla/apihydra/skeleton/pkg/runner"
 
 	"github.com/spf13/pflag"
 )
+
+const userManualReference = "https://github.com/divilla/apihydra/blob/master/docs/user-manual/apih.md"
 
 // ErrInvalidPath classifies an invalid working-directory argument.
 var ErrInvalidPath = errors.New("invalid path")
@@ -37,20 +39,17 @@ var ErrUserCacheDirectory = errors.New("user cache directory error")
 var ErrTempRunDirectory = errors.New("temporary run directory error")
 
 func main() {
-	log.SetFlags(0)
-	log.SetOutput(os.Stderr)
-
 	var help bytes.Buffer
 	config, err := parseConfig(os.Args, &help)
 	if errors.Is(err, pflag.ErrHelp) {
 		if _, writeErr := os.Stdout.Write(help.Bytes()); writeErr != nil {
-			log.Print(writeErr)
+			writeFatalError(writeErr)
 			os.Exit(errs.ExitInternal)
 		}
 		return
 	}
 	if err != nil {
-		log.Print(err)
+		writeFatalError(err)
 		os.Exit(errs.ExitConfiguration)
 	}
 
@@ -60,9 +59,44 @@ func main() {
 		reporting.NewReporter(os.Stdout, isTerminal(os.Stdout)),
 	)
 	if err != nil {
-		log.Print(err)
+		writeFatalError(err)
 	}
 	os.Exit(exitCode)
+}
+
+func writeFatalError(err error) {
+	_, _ = io.WriteString(os.Stderr, fatalDiagnostic(err))
+}
+
+func fatalDiagnostic(err error) string {
+	if err == nil {
+		return ""
+	}
+	return "error: " + err.Error() + "\n\nplease check user manual: " + userManualReference + "#" + troubleshootingAnchor(err) + "\n"
+}
+
+func troubleshootingAnchor(err error) string {
+	switch {
+	case errors.Is(err, definition.ErrRootDefinitionMissing):
+		return "root-definition-missing"
+	case errors.Is(err, ErrInvalidArguments), errors.Is(err, execution.ErrInvalidParallelism):
+		return "invalid-arguments"
+	case errors.Is(err, ErrInvalidPath):
+		return "invalid-selected-directory"
+	case errors.Is(err, definition.ErrInvalidDefinition):
+		return "invalid-yaml-definition"
+	case errors.Is(err, definition.ErrDefinitionDiscovery):
+		return "definition-discovery-error"
+	case errors.Is(err, execution.ErrNotFound), errors.Is(err, execution.ErrKeyExists), errors.Is(err, execution.ErrVariable):
+		return "missing-or-duplicate-variable"
+	case errors.Is(err, runner.ErrCommand), errors.Is(err, runner.ErrCurl), errors.Is(err, runner.ErrJQSelector),
+		errors.Is(err, runner.ErrJQPretty), errors.Is(err, runner.ErrGitDiff):
+		return "external-tool-failure"
+	case errors.Is(err, execution.ErrCapture):
+		return "capture-error"
+	default:
+		return "internal-errors"
+	}
 }
 
 // parseConfig uses native pflag parsing. It accepts attached, equals, repeated,
@@ -118,6 +152,15 @@ func run(ctx context.Context, config domain.Config, reporter *reporting.Reporter
 		workDir = path
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	suite := &domain.Suite{WorkDir: workDir}
+	loader := definition.NewLoader()
+	if err = loader.LoadDirectoryStructure(ctx, suite); err != nil {
+		return errs.ExitConfiguration, err
+	}
+
 	config.TempRunDir, err = createTempRunDirectory()
 	if err != nil {
 		return errs.ExitInternal, err
@@ -130,15 +173,6 @@ func run(ctx context.Context, config domain.Config, reporter *reporting.Reporter
 		return errs.ExitInternal, err
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	suite := &domain.Suite{WorkDir: workDir}
-
-	loader := definition.NewLoader()
-	if err = loader.LoadDirectoryStructure(ctx, suite); err != nil {
-		return errs.ExitConfiguration, err
-	}
 	if err = loader.LoadDirectoryFiles(ctx, suite); err != nil {
 		return errs.ExitConfiguration, err
 	}
