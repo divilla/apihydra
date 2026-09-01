@@ -1,7 +1,6 @@
 package definition
 
 import (
-	"apih/internal/domain"
 	"context"
 	"errors"
 	"os"
@@ -10,6 +9,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/divilla/apihydra/internal/domain"
 )
 
 func TestLoaderContractAndConstructor(t *testing.T) {

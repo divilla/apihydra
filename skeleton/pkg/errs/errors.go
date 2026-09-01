@@ -1,10 +1,11 @@
 package errs
 
 import (
-	"apih/skeleton/internal/domain"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/divilla/apihydra/skeleton/internal/domain"
 )
 
 const (

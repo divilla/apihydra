@@ -1,12 +1,14 @@
 package errs
 
 import (
-	"apih/internal/domain"
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/divilla/apihydra/internal/domain"
 )
 
+// Product process exit codes.
 const (
 	ExitValidation    = 101
 	ExitConfiguration = 102
@@ -67,6 +69,7 @@ func (e *ExitError) Unwrap() []error {
 	return errs
 }
 
+// ExitCode returns the process exit code attached to the error.
 func (e *ExitError) ExitCode() int {
 	return e.code
 }

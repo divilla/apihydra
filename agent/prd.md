@@ -19,10 +19,10 @@ skeleton.
 
 ## Product scope
 
-APIHydra is a Go CLI for discovering YAML definitions in a directory tree,
-decoding and validating those definitions, resolving inherited request
-defaults, preparing request steps, executing requests, and validating
-responses.
+APIHydra is an ultra-fast, agent-first API integration tester. Its `apih` CLI
+discovers YAML definitions in a directory tree, decodes and validates those
+definitions, resolves inherited request defaults, prepares request steps,
+executes requests, and validates responses.
 
 When no directory, steps file, or individual step supplies them, request
 resolution uses a 10-second timeout and 3 retries. Nonzero values at each
@@ -52,7 +52,7 @@ remain strings. A successful debug step completes the application
 successfully; a terminal error retains its error and exit code after the dump.
 No later step or stage is executed. No later execution output follows a
 successful Debug dump; after a terminal error dump, fatal stderr diagnostics
-remain owned by `cmd/cli`.
+remain owned by `cmd/apih`.
 
 ## Debug Curl presentation
 
@@ -93,7 +93,7 @@ hierarchy:
 
 | Package | Owned responsibility |
 | --- | --- |
-| `cmd/cli` | Working-directory selection, service composition, fatal-diagnostic logging, and process exit. |
+| `cmd/apih` | Working-directory selection, service composition, fatal-diagnostic logging, and process exit. |
 | `internal/domain` | Shared suite, directory, file, definition, defaults, and step values. |
 | `internal/definition` | Directory/file loading, document classification, definition decoding and validation, and resolution. |
 | `internal/execution` | The key-value store, variable phases, response validation, step preparation, staged execution, and run-local cookie-jar ownership and inheritance. |
@@ -107,7 +107,7 @@ The architecture test makes four ownership rules enforceable:
 - production contextual error composition with `fmt.Errorf` or `errors.Join`
   is confined to `pkg/errs`;
 - production execution-output writes are confined to `internal/reporting`;
-- fatal standard-error diagnostics are confined to `cmd/cli`.
+- fatal standard-error diagnostics are confined to `cmd/apih`.
 
 `bat` and a `BatDiff` API are expressly absent.
 
@@ -229,7 +229,7 @@ without starting a run. Other argument failures return configuration code
 `102`, write no application stdout, and end with the CLI-owned stderr
 diagnostic.
 
-`skeleton/cmd/cli.run` starts with `os.Getwd()`. If `Config.Directory` is
+`skeleton/cmd/apih.run` starts with `os.Getwd()`. If `Config.Directory` is
 non-empty, it joins that value to the current directory and requires the result
 to be a directory. Invalid input returns configuration code `102` and an error
 matching CLI-owned `ErrInvalidPath`.

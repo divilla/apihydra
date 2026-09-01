@@ -1,5 +1,5 @@
-PKG := "apih"
-PKG_LIST := $(shell go list ${PKG}/... | grep -Ev '^apih/skeleton(/|$$)')
+PKG := "github.com/divilla/apihydra"
+PKG_LIST := $(shell go list ${PKG}/... | grep -Ev '^github[.]com/divilla/apihydra/skeleton(/|$$)')
 
 ifneq ($(filter implement,$(firstword $(MAKECMDGOALS))),)
 IMPLEMENT_ARGS := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))

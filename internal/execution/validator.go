@@ -1,15 +1,16 @@
 package execution
 
 import (
-	"apih/internal/domain"
-	"apih/pkg/errs"
-	"apih/pkg/runner"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/pkg/errs"
+	"github.com/divilla/apihydra/pkg/runner"
 )
 
 // ErrValidation classifies a nonfatal validation mismatch represented as an

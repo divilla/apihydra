@@ -13,7 +13,7 @@
 The binding skeleton implementation, comments, and tests define Reporter's API
 and output contract. This guide does not reproduce them. Reporter owns
 human-readable execution output through its injected writer; fatal diagnostics
-and process exit remain in `cmd/cli`. The validation reporting methods mirror
+and process exit remain in `cmd/apih`. The validation reporting methods mirror
 Validator's separate type, status, and body operations without taking ownership
 of validation itself.
 
@@ -164,7 +164,7 @@ Canonical zero-value TODO bodies are not acceptable production implementations.
   arguments, omission of `RawCurl` and `Definition`, nil/failing writers,
   cancellation policy, and concurrent writes under the race detector.
 - Root `architecture_test.go` proves that production execution output remains
-  in this package and fatal diagnostics remain in `cmd/cli`.
+  in this package and fatal diagnostics remain in `cmd/apih`.
 - Each acceptance criterion is traced to a meaningful unit or architecture
   test, and Reporter unit-test statement coverage remains greater than 95%.
 

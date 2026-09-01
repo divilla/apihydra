@@ -29,7 +29,6 @@ make init
 make check
 
 # Run specific tests
-go test ./middleware/...
 go test -race ./...
 
 # Run benchmarks
@@ -47,37 +46,21 @@ make benchmark
 
 ## User-maintained reference skeleton
 
-- The user maintains the `skeleton/` directory. It contains the reference
-  architecture and API for this repository.
-- Treat the entire `skeleton/` directory as read-only reference material.
-- Treat `skeleton/` as the binding reference architecture and API. All agent
-  work must align completely with it and obey its contracts.
-- `skeleton/` reflects the complete external contract: all shared types, public
-  types, public methods, and public functions must be declared there. An agent
-  must not design, specify, document, test, mock, scaffold, or implement any new
-  item in those categories before consulting the user and obtaining agreement
-  on the corresponding change to `skeleton/`. The agreed skeleton change must
-  be made before the new contract item is produced anywhere else in the
-  repository.
-- `skeleton/` is the primary and authoritative source of truth for the
-  repository. The PRD, specifications, documentation, tests, and implementation
-  code must all match the skeleton reference.
-- When the PRD, a specification, documentation, a test, or implementation code
-  conflicts with `skeleton/`, do not treat the conflicting artifact as authority
-  and do not silently reconcile the difference. Report the mismatch to the user.
-  Resolve it either by changing every conflicting artifact to match `skeleton/`,
-  or, only when the user explicitly directs a change to `skeleton/`, by changing
-  the skeleton reference and bringing every affected artifact into alignment
-  with the revised reference.
-- If an agent has doubts about the reference, identifies a conflict, or believes
-  any part of the work would be better implemented differently, the agent must
-  stop, explain the concern and proposed alternative to the user, and obtain the
-  user's explicit decision before continuing.
-- Deviation from `skeleton/` is never allowed. User approval of an alternative
-  authorizes changing the skeleton reference itself, not implementing an
-  exception to it. After any such change, the PRD, specifications,
-  documentation, tests, and implementation code must all match the updated
-  skeleton before the work is complete.
+- The user-maintained skeleton/ directory is read-only and defines the 
+  repository’s binding architecture, API, and complete external contract.
+- All shared/public types, methods, and functions must be declared in 
+  skeleton/. Before creating or changing such an item anywhere, obtain the
+  user’s agreement, update skeleton/ first, then align the PRD, specifications,
+  documentation, tests, mocks, scaffolding, and implementation.
+- If any artifact conflicts with skeleton/, or an alternative design seems 
+  preferable, stop and report it. Continue only after the user decides whether 
+  to align the artifact with skeleton/ or explicitly revise skeleton/.
+- Deviations and one-off exceptions are prohibited. Approval of an alternative
+  authorizes revising skeleton/, after which every affected artifact must be 
+  aligned before the work is complete.
+
+## Permissions
+
 - Never modify this `AGENTS.md` file or any file or directory under `skeleton/`
   unless the user explicitly directs that specific protected path to be
   changed.

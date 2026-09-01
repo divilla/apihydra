@@ -1,8 +1,9 @@
 package definition
 
 import (
-	"apih/internal/domain"
 	"context"
+
+	"github.com/divilla/apihydra/internal/domain"
 )
 
 const (

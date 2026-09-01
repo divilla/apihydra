@@ -3,7 +3,7 @@ package execution
 import (
 	"context"
 
-	"apih/skeleton/internal/domain"
+	"github.com/divilla/apihydra/skeleton/internal/domain"
 )
 
 // Binder loads, interpolates, and captures step variables through

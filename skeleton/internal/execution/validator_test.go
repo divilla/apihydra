@@ -1,8 +1,9 @@
 package execution
 
 import (
-	"apih/skeleton/internal/domain"
 	"testing"
+
+	"github.com/divilla/apihydra/skeleton/internal/domain"
 )
 
 func TestNewValidatorRetainsConfig(t *testing.T) {

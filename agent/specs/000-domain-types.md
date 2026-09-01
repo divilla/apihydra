@@ -18,7 +18,8 @@ boundaries in the PRD executable.
 
 The type declarations in the skeleton are implementation, not illustrative
 schema. Their field types, tags, constants, and method behavior are retained
-exactly after removing only the `apih/skeleton/` package location.
+exactly after replacing the `github.com/divilla/apihydra/skeleton/` package
+location with `github.com/divilla/apihydra/`.
 
 `domain.Config` is the single injected invocation configuration. Its three
 untagged fields retain parsed parallelism, the optional positional directory,

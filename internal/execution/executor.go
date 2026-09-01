@@ -1,10 +1,6 @@
 package execution
 
 import (
-	"apih/internal/domain"
-	"apih/internal/reporting"
-	"apih/pkg/errs"
-	"apih/pkg/runner"
 	"context"
 	"errors"
 	"fmt"
@@ -13,6 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/internal/reporting"
+	"github.com/divilla/apihydra/pkg/errs"
+	"github.com/divilla/apihydra/pkg/runner"
 )
 
 // ErrInvalidDirectoryTree classifies a malformed Suite directory tree.

@@ -5,7 +5,7 @@
 Implement this change against these binding references:
 
 - `skeleton/internal/domain/config.go`
-- `skeleton/cmd/cli/main.go`
+- `skeleton/cmd/apih/main.go`
 - `skeleton/internal/execution/executor.go`
 - `skeleton/internal/execution/validator.go`
 - `skeleton/internal/reporting/reporter.go`
@@ -23,8 +23,8 @@ On 2026-08-31, the user explicitly approved the versions present at commit
 `7c76be8` of all skeleton files changed by this change as the valid,
 authoritative skeleton reference:
 
-- `skeleton/cmd/cli/main.go`
-- `skeleton/cmd/cli/main_test.go`
+- `skeleton/cmd/apih/main.go`
+- `skeleton/cmd/apih/main_test.go`
 - `skeleton/internal/domain/config.go`
 - `skeleton/internal/domain/config_test.go`
 - `skeleton/internal/execution/executor.go`
@@ -142,7 +142,7 @@ change final logical output order.
   file, its directory through that path, and `spec.steps[index]`.
 - On a terminal execution error, cancel and join active work, perform the final
   ordered `EndStage` render, and return the original coded failure.
-- `cmd/cli` then writes the provenance-bearing fatal diagnostic to stderr.
+- `cmd/apih` then writes the provenance-bearing fatal diagnostic to stderr.
   That diagnostic is the final application output: no later stdout, stderr,
   reporting event, cleanup diagnostic, step, file, directory, or stage is
   permitted.
@@ -152,8 +152,9 @@ change final logical output order.
 
 ## Required implementation and tests
 
-- Mirror every revised skeleton declaration in production, removing only the
-  `apih/skeleton/` import prefix.
+- Mirror every revised skeleton declaration in production, replacing only the
+  `github.com/divilla/apihydra/skeleton/` import prefix with
+  `github.com/divilla/apihydra/`.
 - Implement Config-aware CLI, Validator, Executor, Reporter, and Runner
   behavior without retaining skeleton TODO placeholders in production.
 - Update architecture ownership checks so `domain.Config` has one owner and

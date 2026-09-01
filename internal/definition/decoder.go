@@ -1,9 +1,10 @@
 package definition
 
 import (
-	"apih/internal/domain"
-	"apih/pkg/errs"
 	"context"
+
+	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/pkg/errs"
 
 	"github.com/goccy/go-yaml"
 )

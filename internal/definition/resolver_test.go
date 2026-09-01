@@ -1,11 +1,12 @@
 package definition
 
 import (
-	"apih/internal/domain"
 	"context"
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/divilla/apihydra/internal/domain"
 )
 
 func TestResolverContractAndConstructor(t *testing.T) {

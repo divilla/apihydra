@@ -1,9 +1,6 @@
 package execution
 
 import (
-	"apih/internal/domain"
-	"apih/internal/reporting"
-	"apih/pkg/errs"
 	"context"
 	"errors"
 	"os"
@@ -11,6 +8,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/internal/reporting"
+	"github.com/divilla/apihydra/pkg/errs"
 )
 
 func TestCookieJarsModeZeroUsesOneRunJar(t *testing.T) {

@@ -1,11 +1,12 @@
 package reporting
 
 import (
-	"apih/skeleton/internal/domain"
 	"bytes"
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/divilla/apihydra/skeleton/internal/domain"
 )
 
 func TestWorkingDirectoryUsesInjectedWriter(t *testing.T) {

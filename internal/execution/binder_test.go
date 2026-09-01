@@ -1,8 +1,6 @@
 package execution
 
 import (
-	"apih/internal/domain"
-	"apih/pkg/runner"
 	"context"
 	"errors"
 	"os"
@@ -10,6 +8,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/pkg/runner"
 )
 
 func TestNewBinderRetainsStoreAndMatchesReferenceContract(t *testing.T) {

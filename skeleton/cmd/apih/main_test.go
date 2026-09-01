@@ -1,9 +1,6 @@
 package main
 
 import (
-	"apih/skeleton/internal/domain"
-	"apih/skeleton/internal/reporting"
-	"apih/skeleton/pkg/errs"
 	"bytes"
 	"context"
 	"errors"
@@ -11,6 +8,10 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/divilla/apihydra/skeleton/internal/domain"
+	"github.com/divilla/apihydra/skeleton/internal/reporting"
+	"github.com/divilla/apihydra/skeleton/pkg/errs"
 
 	"github.com/spf13/pflag"
 )

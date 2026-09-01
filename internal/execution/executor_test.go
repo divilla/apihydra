@@ -1,10 +1,6 @@
 package execution
 
 import (
-	"apih/internal/domain"
-	"apih/internal/reporting"
-	"apih/pkg/errs"
-	"apih/pkg/runner"
 	"bytes"
 	"context"
 	"errors"
@@ -15,6 +11,11 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/internal/reporting"
+	"github.com/divilla/apihydra/pkg/errs"
+	"github.com/divilla/apihydra/pkg/runner"
 )
 
 func TestExecutorExportedContractAndConstructorState(t *testing.T) {

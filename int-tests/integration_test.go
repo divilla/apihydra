@@ -84,7 +84,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	}
 
 	repoRoot := repositoryRoot(t)
-	cliPackage := filepath.Join(repoRoot, "cmd", "cli")
+	cliPackage := filepath.Join(repoRoot, "cmd", "apih")
 	if _, err := os.Stat(cliPackage); errors.Is(err, os.ErrNotExist) {
 		t.Skip("integration prerequisite missing: implement agent/specs/011-main-app.md")
 	} else if err != nil {
@@ -674,7 +674,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 }
 
 func TestTotalCoverage(t *testing.T) {
-	percentage, err := totalCoverage("apih/pkg\tcoverage: 91.2% of statements\ntotal:\t(statements)\t91.2%\n")
+	percentage, err := totalCoverage("github.com/divilla/apihydra/pkg\tcoverage: 91.2% of statements\ntotal:\t(statements)\t91.2%\n")
 	if err != nil {
 		t.Fatalf("totalCoverage() error = %v", err)
 	}
@@ -767,7 +767,7 @@ func buildCoveredCLI(t *testing.T, ctx context.Context, repoRoot, binary string)
 }
 
 func coveredCLIBuildArguments(binary string) []string {
-	return []string{"build", "-buildvcs=false", "-cover", "-covermode=atomic", "-coverpkg=apih/...", "-o", binary, "./cmd/cli"}
+	return []string{"build", "-buildvcs=false", "-cover", "-covermode=atomic", "-coverpkg=github.com/divilla/apihydra/...", "-o", binary, "./cmd/apih"}
 }
 
 type cliResult struct {

@@ -1,9 +1,10 @@
 package execution
 
 import (
-	"apih/skeleton/internal/domain"
 	"context"
 	"errors"
+
+	"github.com/divilla/apihydra/skeleton/internal/domain"
 )
 
 // ErrValidation classifies a nonfatal validation mismatch represented as an

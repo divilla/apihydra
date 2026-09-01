@@ -1,9 +1,6 @@
 package main
 
 import (
-	"apih/internal/domain"
-	"apih/internal/reporting"
-	"apih/pkg/errs"
 	"bytes"
 	"context"
 	"errors"
@@ -16,6 +13,10 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/internal/reporting"
+	"github.com/divilla/apihydra/pkg/errs"
 
 	"github.com/spf13/pflag"
 )
@@ -70,11 +71,15 @@ func TestMainSourceMatchesSkeletonContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read production main: %v", err)
 	}
-	reference, err := os.ReadFile(filepath.Join("..", "..", "skeleton", "cmd", "cli", "main.go"))
+	reference, err := os.ReadFile(filepath.Join("..", "..", "skeleton", "cmd", "apih", "main.go"))
 	if err != nil {
 		t.Fatalf("read reference main: %v", err)
 	}
-	reference = bytes.ReplaceAll(reference, []byte("apih/skeleton/"), []byte("apih/"))
+	reference = bytes.ReplaceAll(
+		reference,
+		[]byte("github.com/divilla/apihydra/skeleton/"),
+		[]byte("github.com/divilla/apihydra/"),
+	)
 	if !bytes.Equal(production, reference) {
 		t.Fatal("production main does not match the binding skeleton after the import-prefix rewrite")
 	}

@@ -18,22 +18,22 @@ cat >"$fake_bin/go" <<'EOF'
 set -euo pipefail
 
 [[ ${1-} == list ]]
-if [[ $# -eq 2 && $2 == apih/... ]]; then
+if [[ $# -eq 2 && $2 == github.com/divilla/apihydra/... ]]; then
 	if [[ ${MAKEFILE_TEST_EMPTY-} == 1 ]]; then
-		printf '%s\n' apih/skeleton apih/skeleton/internal/domain
+		printf '%s\n' github.com/divilla/apihydra/skeleton github.com/divilla/apihydra/skeleton/internal/domain
 		exit 0
 	fi
-	printf '%s\n' apih/pkg/runner apih/skeleton apih/skeleton/internal/domain
+	printf '%s\n' github.com/divilla/apihydra/pkg/runner github.com/divilla/apihydra/skeleton github.com/divilla/apihydra/skeleton/internal/domain
 	exit 0
 fi
 
 [[ $# -eq 4 && $2 == -f && $3 == '{{.Dir}}' ]]
 printf 'go-list-dir:%s\n' "$4" >>"$MAKEFILE_TEST_LOG"
 case "$4" in
-apih/pkg/runner)
+github.com/divilla/apihydra/pkg/runner)
 	printf '%s\n' "$MAKEFILE_TEST_REPO/pkg/runner"
 	;;
-apih/...)
+github.com/divilla/apihydra/...)
 	printf '%s\n' \
 		"$MAKEFILE_TEST_REPO/pkg/runner" \
 		"$MAKEFILE_TEST_REPO/skeleton" \
@@ -87,11 +87,11 @@ done
 )
 
 [[ $(grep -c '^goimports:' "$log") -eq 1 ]]
-grep -Fxq "go-list-dir:apih/pkg/runner" "$log"
+grep -Fxq "go-list-dir:github.com/divilla/apihydra/pkg/runner" "$log"
 grep -Fxq "goimports:$repo/pkg/runner" "$log"
-grep -Fxq 'staticcheck:apih/pkg/runner' "$log"
-grep -Fxq 'golint:apih/pkg/runner' "$log"
-! grep -Fq 'go-list-dir:apih/skeleton' "$log"
+grep -Fxq 'staticcheck:github.com/divilla/apihydra/pkg/runner' "$log"
+grep -Fxq 'golint:github.com/divilla/apihydra/pkg/runner' "$log"
+! grep -Fq 'go-list-dir:github.com/divilla/apihydra/skeleton' "$log"
 
 : >"$log"
 (

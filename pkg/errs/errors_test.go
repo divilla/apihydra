@@ -1,11 +1,12 @@
 package errs
 
 import (
-	"apih/internal/domain"
 	"errors"
 	"fmt"
 	"slices"
 	"testing"
+
+	"github.com/divilla/apihydra/internal/domain"
 )
 
 func TestExportedContractMatchesReference(t *testing.T) {

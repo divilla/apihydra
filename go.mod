@@ -1,4 +1,4 @@
-module apih
+module github.com/divilla/apihydra
 
 go 1.25.12
 

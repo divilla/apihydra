@@ -1,9 +1,6 @@
 package reporting
 
 import (
-	"apih/internal/domain"
-	"apih/pkg/errs"
-	"apih/pkg/runner"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -14,6 +11,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/pkg/errs"
+	"github.com/divilla/apihydra/pkg/runner"
 )
 
 type failingWriter struct {

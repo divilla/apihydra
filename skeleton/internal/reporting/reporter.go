@@ -1,13 +1,14 @@
 package reporting
 
 import (
-	"apih/skeleton/internal/domain"
-	"apih/skeleton/pkg/errs"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"sync"
+
+	"github.com/divilla/apihydra/skeleton/internal/domain"
+	"github.com/divilla/apihydra/skeleton/pkg/errs"
 )
 
 // ErrReporter classifies a failure to write execution output.

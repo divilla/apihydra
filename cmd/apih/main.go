@@ -1,11 +1,6 @@
 package main
 
 import (
-	"apih/internal/definition"
-	"apih/internal/domain"
-	"apih/internal/execution"
-	"apih/internal/reporting"
-	"apih/pkg/errs"
 	"bytes"
 	"context"
 	"errors"
@@ -13,6 +8,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/divilla/apihydra/internal/definition"
+	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/internal/execution"
+	"github.com/divilla/apihydra/internal/reporting"
+	"github.com/divilla/apihydra/pkg/errs"
 
 	"github.com/spf13/pflag"
 )

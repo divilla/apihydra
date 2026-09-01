@@ -1,11 +1,12 @@
 package definition
 
 import (
-	"apih/internal/domain"
 	"context"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/divilla/apihydra/internal/domain"
 
 	"github.com/goccy/go-yaml"
 )

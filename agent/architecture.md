@@ -11,7 +11,7 @@ contracts. This document describes package relationships only.
 ## Package layout
 
 ```text
-cmd/cli/                    process composition and exit
+cmd/apih/                   process composition and exit
 internal/domain/            shared Config/Suite/Directory/File/definition/step models
 internal/definition/        Loader, Decoder, Resolver
 internal/execution/         KeyValueStore, Binder, Validator, Executor
@@ -31,12 +31,12 @@ package dependencies acyclic and enforces four production boundaries:
 - external command execution belongs to `pkg/runner`;
 - contextual error composition belongs to `pkg/errs`;
 - execution-output writes belong to `internal/reporting`;
-- fatal standard-error diagnostics belong to `cmd/cli`.
+- fatal standard-error diagnostics belong to `cmd/apih`.
 
-`cmd/cli` is the composition root and the only reference package that calls
+`cmd/apih` is the composition root and the only reference package that calls
 `os.Exit`. `bat` and `BatDiff` are absent.
 
-`cmd/cli` parses one `domain.Config`, creates its private per-run cache
+`cmd/apih` parses one `domain.Config`, creates its private per-run cache
 directory, and injects the resulting value into runtime consumers. The cache
 path and parallelism mode are not communicated through package globals or
 process-wide environment mutation.
@@ -104,7 +104,7 @@ execution guides do not duplicate those orchestration rules.
 The [`Reporter`](specs/009-reporter-service.md) skeleton contract defines the
 execution-output API, exact working-directory behavior, per-file stage buffers,
 live ordered terminal redraws, and ordered non-terminal stage commits. Reporter
-never owns fatal standard-error diagnostics; `cmd/cli` logs the final
+never owns fatal standard-error diagnostics; `cmd/apih` logs the final
 provenance-bearing diagnostic before process exit.
 
 The [`pkg/runner`](specs/001-runner-pkg.md) skeleton contract defines Curl,
@@ -112,7 +112,7 @@ JQProject, JQExtract, JQFilter, JQPretty, and run-directory-scoped GitDiff.
 Command-line construction and result-normalization details absent from that
 contract are not architectural requirements.
 
-The [`cmd/cli` guide](specs/011-main-app.md) completes the production
+The [`cmd/apih` guide](specs/011-main-app.md) completes the production
 composition root. The separate [`integration-test guide`](specs/012-integration-tests.md)
 owns only black-box verification and fixtures; it introduces no production API.
 

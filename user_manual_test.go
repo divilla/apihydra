@@ -1,7 +1,6 @@
 package apih_test
 
 import (
-	"apih/internal/domain"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -9,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+
+	"github.com/divilla/apihydra/internal/domain"
 
 	"github.com/goccy/go-yaml"
 )
@@ -43,7 +44,8 @@ func TestUserManualAcceptanceCriterion1AgentFirstSingleDocument(t *testing.T) {
 func TestUserManualAcceptanceCriterion2QuickStartCLIAndExitCodes(t *testing.T) {
 	manual := readUserManual(t)
 	required := []string{
-		"go build -o ./bin/apih ./cmd/cli",
+		"go build -o ./bin/apih ./cmd/apih",
+		"go run ./cmd/apih",
 		"apih [flags] [directory]",
 		"`-h`, `--help`",
 		"`-p`, `--parallelism`",
@@ -60,6 +62,33 @@ func TestUserManualAcceptanceCriterion2QuickStartCLIAndExitCodes(t *testing.T) {
 		"git",
 	}
 	assertContainsAll(t, manual, required)
+}
+
+func TestDocumentationUsesCanonicalModuleAndCommandPaths(t *testing.T) {
+	paths := []string{
+		userManualPath,
+		"agent/prd.md",
+		"agent/architecture.md",
+		"agent/changes/015-parallelism-and-tmp-dir.md",
+	}
+	specPaths, err := filepath.Glob("agent/specs/*.md")
+	if err != nil {
+		t.Fatalf("Glob(): %v", err)
+	}
+	paths = append(paths, specPaths...)
+
+	for _, path := range paths {
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("ReadFile(%q): %v", path, err)
+			continue
+		}
+		for _, obsolete := range []string{"cmd/cli", "apih/skeleton/"} {
+			if strings.Contains(string(contents), obsolete) {
+				t.Errorf("%s contains obsolete path %q", path, obsolete)
+			}
+		}
+	}
 }
 
 func TestUserManualAcceptanceCriterion3CompleteConfigurationReference(t *testing.T) {

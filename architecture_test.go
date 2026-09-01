@@ -36,10 +36,10 @@ func TestPackageBoundaries(t *testing.T) {
 		)
 	})
 
-	t.Run("fatal diagnostics belong to cli", func(t *testing.T) {
+	t.Run("fatal diagnostics belong to apih", func(t *testing.T) {
 		assertPatternsAbsentOutside(
 			t,
-			filepath.FromSlash("cmd/cli"),
+			filepath.FromSlash("cmd/apih"),
 			[]string{"log.Print(", "log.Printf(", "log.Println(", "os.Stderr", "os.Exit("},
 		)
 	})

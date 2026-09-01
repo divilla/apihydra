@@ -1,9 +1,6 @@
 package execution
 
 import (
-	"apih/skeleton/internal/domain"
-	"apih/skeleton/internal/reporting"
-	"apih/skeleton/pkg/errs"
 	"bytes"
 	"context"
 	"errors"
@@ -12,6 +9,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/divilla/apihydra/skeleton/internal/domain"
+	"github.com/divilla/apihydra/skeleton/internal/reporting"
+	"github.com/divilla/apihydra/skeleton/pkg/errs"
 )
 
 func TestValidateDirectoriesAndPlanStagesSupportArbitraryValidDepth(t *testing.T) {

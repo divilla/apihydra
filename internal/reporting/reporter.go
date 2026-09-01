@@ -1,9 +1,6 @@
 package reporting
 
 import (
-	"apih/internal/domain"
-	"apih/pkg/errs"
-	"apih/pkg/runner"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +11,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/pkg/errs"
+	"github.com/divilla/apihydra/pkg/runner"
 
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"

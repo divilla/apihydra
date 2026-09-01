@@ -12,7 +12,7 @@
 
 This guide owns no production API or behavior. It verifies the completed
 application from guides `000` through `011` by building and running the real
-`cmd/cli` process against checked-in YAML directory trees. Assertions are
+`cmd/apih` process against checked-in YAML directory trees. Assertions are
 limited to behavior already owned by the skeleton and PRD: working-directory
 selection, the complete pipeline, HTTP execution, response validation,
 reporting boundaries, and product exit codes.
@@ -44,8 +44,9 @@ YAML remains static and unchanged.
   `Set-Cookie`/`Cookie` traffic, the three parallelism ownership modes,
   parent-child stage inheritance, controlled mode-2 completion selection, and
   separate-run isolation.
-- Build output is temporary. The harness builds `./cmd/cli` with Go coverage
-  instrumentation over `apih/...`, runs the scenarios with `GOCOVERDIR`, and
+- Build output is temporary. The harness builds `./cmd/apih` with Go coverage
+  instrumentation over `github.com/divilla/apihydra/...`, runs the scenarios
+  with `GOCOVERDIR`, and
   removes artifacts through the test temporary directory lifecycle.
 - Coverage means aggregate statement coverage of production packages linked
   into the real CLI binary and executed only by these black-box scenarios.
@@ -54,7 +55,7 @@ YAML remains static and unchanged.
   non-Unix systems; the lower platform baselines account only for production
   error branches requiring Unix shell/filesystem facilities or Linux PTY and
   inotify facilities.
-- Until `cmd/cli` is created by guide `011`, the tagged suite skips with an
+- Until `cmd/apih` is created by guide `011`, the tagged suite skips with an
   explicit prerequisite message. Once that path exists, build, scenario, and
   coverage failures are hard failures rather than skips.
 

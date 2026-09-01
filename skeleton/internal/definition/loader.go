@@ -1,8 +1,9 @@
 package definition
 
 import (
-	"apih/skeleton/internal/domain"
 	"context"
+
+	"github.com/divilla/apihydra/skeleton/internal/domain"
 )
 
 // Loader discovers directories and definition files.

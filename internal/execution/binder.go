@@ -1,11 +1,12 @@
 package execution
 
 import (
-	"apih/internal/domain"
-	"apih/pkg/runner"
 	"context"
 	"regexp"
 	"slices"
+
+	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/pkg/runner"
 )
 
 var variablePlaceholder = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*`)

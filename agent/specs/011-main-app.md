@@ -1,9 +1,9 @@
-# `cmd/cli` main application
+# `cmd/apih` main application
 
 ## Status and ownership
 
-- Binding implementation reference: [`skeleton/cmd/cli/main.go`](../../skeleton/cmd/cli/main.go)
-- Binding reference tests: [`skeleton/cmd/cli/main_test.go`](../../skeleton/cmd/cli/main_test.go)
+- Binding implementation reference: [`skeleton/cmd/apih/main.go`](../../skeleton/cmd/apih/main.go)
+- Binding reference tests: [`skeleton/cmd/apih/main_test.go`](../../skeleton/cmd/apih/main_test.go)
 - Shared CLI and exit-code contract: [`prd.md`](../prd.md)
 - Shared domain types: [`000-domain-types.md`](000-domain-types.md)
 - Reporter guide: [`009-reporter-service.md`](009-reporter-service.md)
@@ -17,11 +17,12 @@
 
 The binding skeleton implementation and tests define the composition root,
 working-directory selection, pipeline order, collaborator construction,
-diagnostic handling, and process exit. Production `cmd/cli/main.go` reproduces
-that reference except for removing the `apih/skeleton/` import prefix. This
+diagnostic handling, and process exit. Production `cmd/apih/main.go` reproduces
+that reference except for replacing the `github.com/divilla/apihydra/skeleton/`
+import prefix with `github.com/divilla/apihydra/`. This
 guide does not reproduce the reference code or control flow.
 
-Keeping composition in `cmd/cli` prevents definition, execution, and reporting
+Keeping composition in `cmd/apih` prevents definition, execution, and reporting
 packages from acquiring process-level responsibilities. CLI uses native
 `pflag` behavior to populate the binding `domain.Config`, validates the
 parallelism range and single optional directory, creates the per-run cache
@@ -41,8 +42,8 @@ later run never reuses a directory left by abrupt termination.
 
 ## Application package tests
 
-Tests remain in `cmd/cli/*_test.go` and follow
-`skeleton/cmd/cli/main_test.go`, using production import paths. They verify
+Tests remain in `cmd/apih/*_test.go` and follow
+`skeleton/cmd/apih/main_test.go`, using production import paths. They verify
 native pflag forms, help, invalid arguments and paths, cache creation and silent
 best-effort cleanup, successful main-flow completion, terminal detection,
 output failure handling, and final diagnostic ordering without adding
@@ -53,9 +54,9 @@ Black-box subprocess fixtures and application coverage belong to
 
 ## Required implementation and tests
 
-- Production output: `cmd/cli/main.go` reproduces the binding composition root
+- Production output: `cmd/apih/main.go` reproduces the binding composition root
   with production import paths and no placeholders or alternate API.
-- Test output: `cmd/cli/main_test.go` reproduces and extends the binding package
+- Test output: `cmd/apih/main_test.go` reproduces and extends the binding package
   tests to cover path selection, pipeline failures reachable without a new
   public seam, reporter failures, main logging, and exact exit propagation.
 - Each acceptance criterion is traced to at least one meaningful unit or helper
@@ -64,8 +65,9 @@ Black-box subprocess fixtures and application coverage belong to
 
 ## Acceptance criteria
 
-1. `cmd/cli/main.go` is identical to `skeleton/cmd/cli/main.go` after replacing
-   `apih/skeleton/` import prefixes with `apih/`.
+1. `cmd/apih/main.go` is identical to `skeleton/cmd/apih/main.go` after
+   replacing `github.com/divilla/apihydra/skeleton/` import prefixes with
+   `github.com/divilla/apihydra/`.
 2. Native pflag attached, equals, repeated, interspersed, and `--` behavior is
    preserved. `-p`/`--parallelism` defaults to `1`, the last occurrence wins,
    only `0..2` is valid, at most one directory is accepted, help exits `0` on
@@ -87,7 +89,7 @@ Black-box subprocess fixtures and application coverage belong to
    collaborators, validates the directory tree, prepares runtime steps, plans
    stages, and executes the plan in the exact order represented by the
    skeleton, without adding behavior absent from that reference.
-8. `go test ./cmd/cli`, `go test ./...`, `go test -race ./...`, and
+8. `go test ./cmd/apih`, `go test ./...`, `go test -race ./...`, and
    `git diff --check` pass.
 9. With guides `000` through `010` implemented, completing this guide produces
    a runnable `apih` application and enables the `012` black-box suite.

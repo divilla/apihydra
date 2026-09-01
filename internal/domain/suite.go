@@ -1,7 +1,9 @@
 package domain
 
+// DocumentKind identifies the role of a definition document.
 type DocumentKind string
 
+// Supported definition document kinds.
 const (
 	KindRoot     DocumentKind = "root"
 	KindDefaults DocumentKind = "defaults"
@@ -14,6 +16,7 @@ type Suite struct {
 	Root    *Directory
 }
 
+// Directory is one directory in a suite's definition tree.
 type Directory struct {
 	Stage              int
 	Path               string
@@ -29,6 +32,7 @@ type Directory struct {
 	RuntimeSteps       [][]Step
 }
 
+// File is a definition file and its owning directory.
 type File struct {
 	Stage     int
 	Path      string
@@ -37,12 +41,14 @@ type File struct {
 	Directory *Directory
 }
 
+// BaseDefinition contains the fields used to classify a definition document.
 type BaseDefinition struct {
 	App  string     `yaml:"app" json:"app"`
 	Kind string     `yaml:"kind" json:"kind"`
 	Spec YAMLString `yaml:"spec" json:"spec"`
 }
 
+// DefaultsDefinition contains request defaults decoded from a definition file.
 type DefaultsDefinition struct {
 	App      string       `yaml:"app" json:"app"`
 	Kind     DocumentKind `yaml:"kind" json:"kind"`
@@ -51,6 +57,7 @@ type DefaultsDefinition struct {
 	File     *File        `yaml:"-" json:"-"`
 }
 
+// StepsDefinition contains executable steps decoded from a definition file.
 type StepsDefinition struct {
 	App      string       `yaml:"app" json:"app"`
 	Kind     DocumentKind `yaml:"kind" json:"kind"`
@@ -62,11 +69,13 @@ type StepsDefinition struct {
 	File *File `yaml:"-" json:"-"`
 }
 
+// Metadata describes a named definition and its labels.
 type Metadata struct {
 	Name   string   `yaml:"name" json:"name"`
 	Labels []string `yaml:"labels" json:"labels"`
 }
 
+// Defaults contains request values inherited across definition scopes.
 type Defaults struct {
 	BaseURL        string            `yaml:"base_url" json:"base_url"`
 	BasePath       string            `yaml:"base_path" json:"base_path"`
@@ -76,6 +85,7 @@ type Defaults struct {
 	Retries        int               `yaml:"retries" json:"retries"`
 }
 
+// Step contains the declarative and runtime state of one request step.
 type Step struct {
 	Index   int                   `yaml:"-" json:"index"`
 	Vars    map[string]YAMLString `yaml:"vars" json:"vars"`
@@ -102,24 +112,30 @@ type Step struct {
 	Definition *StepsDefinition `yaml:"-" json:"-"`
 }
 
+// DirectoryStage returns the stage of the step's owning directory.
 func (s *Step) DirectoryStage() int {
 	return s.Definition.File.Directory.Stage
 }
 
+// DirectoryPath returns the path of the step's owning directory.
 func (s *Step) DirectoryPath() string {
 	return s.Definition.File.Directory.Path
 }
 
+// FilePath returns the path of the step's source definition file.
 func (s *Step) FilePath() string {
 	return s.Definition.File.Path
 }
 
+// YAMLString preserves a scalar string when marshaling and unmarshaling YAML.
 type YAMLString string
 
+// MarshalYAML returns the underlying string for YAML encoding.
 func (s YAMLString) MarshalYAML() (interface{}, error) {
 	return string(s), nil
 }
 
+// UnmarshalYAML decodes a YAML scalar string without further interpretation.
 func (s *YAMLString) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var value string
 	if err := unmarshal(&value); err != nil {

@@ -1,7 +1,7 @@
 # APIHydra (`apih`) user manual
 
-APIHydra is an agent-first API integration tester. An `apih` suite is a
-directory tree of YAML definitions: root and defaults documents configure
+APIHydra is an ultra-fast, agent-first API integration tester. An `apih` suite
+is a directory tree of YAML definitions: root and defaults documents configure
 requests, while steps documents send HTTP requests and validate responses.
 
 This manual is written for coding agents first and humans too. Rules are stated
@@ -40,11 +40,11 @@ Build the command from the repository root:
 
 ```sh
 mkdir -p bin
-go build -o ./bin/apih ./cmd/cli
+go build -o ./bin/apih ./cmd/apih
 ./bin/apih --help
 ```
 
-For development, `go run ./cmd/cli` can replace `./bin/apih` in every command
+For development, `go run ./cmd/apih` can replace `./bin/apih` in every command
 below.
 
 ### Minimal suite

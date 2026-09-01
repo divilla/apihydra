@@ -8,7 +8,7 @@ created records and cleanup requests.
 Run it from the APIHydra repository root:
 
 ```bash
-go run ./cmd/cli work/mch-api
+go run ./cmd/apih work/mch-api
 ```
 
 Database-unavailable error handling has a separate suite so the normal suite
@@ -16,7 +16,7 @@ remains valid against a healthy API. Start a second backend on port `19082`
 with a deliberately unavailable PostgreSQL connection, then run:
 
 ```bash
-go run ./cmd/cli work/mch-api-unavailable
+go run ./cmd/apih work/mch-api-unavailable
 ```
 
 The following source tests are intentionally outside this HTTP-only suite:
