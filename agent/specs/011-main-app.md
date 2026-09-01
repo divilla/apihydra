@@ -34,11 +34,18 @@ from the reference.
 Every valid run owns one private `run-*` directory below
 `os.UserCacheDir()/apih`. `run` defers best-effort removal of the entire
 directory and suppresses every cleanup failure. Abrupt termination may leave a
-run directory. Help and invalid invocations do not create one. Executor places
-all cookie jars in a namespaced child of this injected `Config.TempRunDir`;
-CLI adds no cookie-specific persistence or cleanup path. Removing the run
-directory removes its jars together with every other run-local artifact, and a
-later run never reuses a directory left by abrupt termination.
+run directory. Help, invalid invocations, and a missing qualifying direct root
+do not create one. Root qualification also precedes working-directory output
+and recursive discovery. Executor places all cookie jars in a namespaced child
+of this injected `Config.TempRunDir`; CLI adds no cookie-specific persistence
+or cleanup path. Removing the run directory removes its jars together with
+every other run-local artifact, and a later run never reuses a directory left
+by abrupt termination.
+
+Fatal errors use the binding lowercase two-part diagnostic with one blank line
+and one final canonical, category-specific user-manual link. Error identities
+select stable troubleshooting anchors; help, success, and validation-only exit
+`101` do not emit the footer.
 
 ## Application package tests
 
@@ -47,7 +54,9 @@ Tests remain in `cmd/apih/*_test.go` and follow
 native pflag forms, help, invalid arguments and paths, cache creation and silent
 best-effort cleanup, successful main-flow completion, terminal detection,
 output failure handling, and final diagnostic ordering without adding
-production test seams absent from the skeleton.
+production test seams absent from the skeleton. They also cover direct root
+qualification, exact missing-root output, category selection, and footer
+cardinality.
 
 Black-box subprocess fixtures and application coverage belong to
 [`012-integration-tests.md`](012-integration-tests.md), not this package guide.
@@ -74,7 +83,9 @@ Black-box subprocess fixtures and application coverage belong to
    stdout without a run, and other invocation errors exit `102` on stderr.
 3. Invalid selected paths return `errs.ExitConfiguration` and no working
    directory output; a successful main flow returns `0` after reporting the
-   working directory.
+   working directory. A selected directory without a qualifying direct root
+   returns `ErrRootDefinitionMissing` and exit `102` before reporting output or
+   creating its run cache.
 4. Every valid run uses a unique private directory below
    `os.UserCacheDir()/apih`, injects it as `Config.TempRunDir`, and attempts to
    remove it on every controlled return. Cleanup failures are silent and do not
@@ -82,9 +93,11 @@ Black-box subprocess fixtures and application coverage belong to
    and rely exclusively on this same lifetime and cleanup contract.
 5. Reporter output failures return `errs.ExitInternal` and preserve the writer
    failure.
-6. Fatal errors are logged to stderr after the final ordered stdout stage
+6. Fatal errors are written to stderr after the final ordered stdout stage
    render, retain the exact product exit code returned by `run`, include the
-   available directory/file/step provenance, and are followed by no output.
+   available directory/file/step/variable/capture provenance, and end with
+   exactly one specific canonical troubleshooting link followed by no output.
+   Their `error:` prefix is lowercase.
 7. After `Resolver.ResolveSteps`, the application constructs the execution
    collaborators, validates the directory tree, prepares runtime steps, plans
    stages, and executes the plan in the exact order represented by the

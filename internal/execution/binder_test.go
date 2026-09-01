@@ -25,6 +25,12 @@ func TestNewBinderRetainsStoreAndMatchesReferenceContract(t *testing.T) {
 	var _ func(*Binder, context.Context, *domain.Step) (int, error) = (*Binder).InterpolateRequestBody
 	var _ func(*Binder, context.Context, *domain.Step) (int, error) = (*Binder).InterpolateResponseExpectedBody
 	var _ func(*Binder, context.Context, *domain.Step) (int, error) = (*Binder).CaptureResponseVariables
+	if got, want := ErrVariable.Error(), "variable error"; got != want {
+		t.Fatalf("ErrVariable = %q, want %q", got, want)
+	}
+	if got, want := ErrCapture.Error(), "capture error"; got != want {
+		t.Fatalf("ErrCapture = %q, want %q", got, want)
+	}
 }
 
 func TestLoadVariablesStoresDeclarationsWithoutMutatingStep(t *testing.T) {
@@ -58,8 +64,11 @@ func TestLoadVariablesPreservesExistingValueOnDuplicate(t *testing.T) {
 	step := &domain.Step{Vars: map[string]domain.YAMLString{"name": "second"}}
 
 	exitCode, err := NewBinder(store).LoadVariables(context.Background(), step)
-	if exitCode != 0 || !errors.Is(err, ErrKeyExists) {
-		t.Fatalf("LoadVariables() = (%d, %v), want (0, ErrKeyExists)", exitCode, err)
+	if exitCode != 0 || !errors.Is(err, ErrVariable) || !errors.Is(err, ErrKeyExists) {
+		t.Fatalf("LoadVariables() = (%d, %v), want named ErrVariable and ErrKeyExists", exitCode, err)
+	}
+	if !strings.Contains(err.Error(), "name") {
+		t.Fatalf("LoadVariables() error = %q, want variable name", err)
 	}
 	if got, err := store.Get("name"); err != nil || got != "first" {
 		t.Fatalf("store.Get(name) = (%q, %v), want (first, nil)", got, err)
@@ -139,8 +148,11 @@ func TestInterpolationReturnsMissingVariableWithoutPartialMutation(t *testing.T)
 			wantBody := test.body(step)
 
 			exitCode, err := test.call(binder, step)
-			if exitCode != 0 || !errors.Is(err, ErrNotFound) {
-				t.Fatalf("interpolation = (%d, %v), want (0, ErrNotFound)", exitCode, err)
+			if exitCode != 0 || !errors.Is(err, ErrVariable) || !errors.Is(err, ErrNotFound) {
+				t.Fatalf("interpolation = (%d, %v), want named ErrVariable and ErrNotFound", exitCode, err)
+			}
+			if !strings.Contains(err.Error(), "missing") {
+				t.Fatalf("interpolation error = %q, want missing variable name", err)
 			}
 			if got := test.body(step); got != wantBody {
 				t.Fatalf("body = %q, want unchanged %q", got, wantBody)
@@ -207,8 +219,11 @@ printf '"second"\n'
 	step.Response.Capture = map[string]domain.YAMLString{"name": ".name"}
 
 	exitCode, err := NewBinder(store).CaptureResponseVariables(context.Background(), step)
-	if exitCode != 0 || !errors.Is(err, ErrKeyExists) {
-		t.Fatalf("CaptureResponseVariables() = (%d, %v), want (0, ErrKeyExists)", exitCode, err)
+	if exitCode != 0 || !errors.Is(err, ErrCapture) || !errors.Is(err, ErrKeyExists) {
+		t.Fatalf("CaptureResponseVariables() = (%d, %v), want named ErrCapture and ErrKeyExists", exitCode, err)
+	}
+	if !strings.Contains(err.Error(), "name") {
+		t.Fatalf("CaptureResponseVariables() error = %q, want capture name", err)
 	}
 	if got, err := store.Get("name"); err != nil || got != `"first"` {
 		t.Fatalf("store.Get(name) = (%q, %v), want first value", got, err)
@@ -226,11 +241,14 @@ exit 7
 	binder := NewBinder(NewKeyValueStore())
 
 	exitCode, err := binder.CaptureResponseVariables(context.Background(), step)
-	if exitCode != 7 || !errors.Is(err, runner.ErrJQSelector) || !errors.Is(err, runner.ErrCommand) {
+	if exitCode != 7 || !errors.Is(err, ErrCapture) || !errors.Is(err, runner.ErrJQSelector) || !errors.Is(err, runner.ErrCommand) {
 		t.Fatalf("CaptureResponseVariables() = (%d, %v), want jq command failure with code 7", exitCode, err)
 	}
 	if !strings.Contains(err.Error(), "invalid selector") {
 		t.Fatalf("error = %q, want command stderr", err)
+	}
+	if !strings.Contains(err.Error(), "value") {
+		t.Fatalf("error = %q, want capture name", err)
 	}
 	if _, err := binder.kvs.Get("value"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("store.Get(value) error = %v, want ErrNotFound", err)
@@ -246,7 +264,7 @@ func TestCaptureResponseVariablesPropagatesCanceledContext(t *testing.T) {
 	step.Response.Capture = map[string]domain.YAMLString{"value": ".value"}
 
 	exitCode, err := NewBinder(NewKeyValueStore()).CaptureResponseVariables(ctx, step)
-	if exitCode != -1 || !errors.Is(err, context.Canceled) || !errors.Is(err, runner.ErrJQSelector) {
+	if exitCode != -1 || !errors.Is(err, ErrCapture) || !errors.Is(err, context.Canceled) || !errors.Is(err, runner.ErrJQSelector) {
 		t.Fatalf("CaptureResponseVariables() = (%d, %v), want canceled jq extraction", exitCode, err)
 	}
 }

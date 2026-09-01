@@ -83,13 +83,13 @@ Expected exit code:
 102
 ```
 
-`stdout.txt` must be empty. `stderr.txt` must contain exactly the following,
-with `<user-manual-ref>` replaced by the canonical published manual URL:
+`stdout.txt` must be empty. `stderr.txt` must contain exactly the following
+diagnostic using the canonical published manual URL:
 
 ```text
 error: root definition missing
 
-please check user manual: <user-manual-ref>#root-definition-missing
+please check user manual: https://github.com/divilla/apihydra/blob/master/docs/user-manual/apih.md#root-definition-missing
 ```
 
 The final line ends with one newline. Remove the temporary directory after

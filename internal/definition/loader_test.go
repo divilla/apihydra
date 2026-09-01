@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/pkg/errs"
 )
 
 func TestLoaderContractAndConstructor(t *testing.T) {
@@ -25,6 +27,15 @@ func TestLoaderContractAndConstructor(t *testing.T) {
 	if got := reflect.TypeOf(Loader{}).NumField(); got != 0 {
 		t.Fatalf("Loader fields = %d, want stateless Loader", got)
 	}
+	for err, want := range map[error]string{
+		ErrRootDefinitionMissing: "root definition missing",
+		ErrDefinitionDiscovery:   "definition discovery error",
+		ErrInvalidDefinition:     "invalid definition",
+	} {
+		if err.Error() != want {
+			t.Fatalf("error = %q, want %q", err, want)
+		}
+	}
 }
 
 func TestLoadDirectoryStructureBuildsRelativeTree(t *testing.T) {
@@ -38,7 +49,7 @@ func TestLoadDirectoryStructureBuildsRelativeTree(t *testing.T) {
 			t.Fatalf("MkdirAll(%q): %v", path, err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(workDir, "not-a-directory.yaml"), []byte("kind: root"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(workDir, "not-a-directory.yaml"), []byte("app: apihydra\nkind: root\n"), 0o600); err != nil {
 		t.Fatalf("WriteFile(): %v", err)
 	}
 	if err := os.Symlink(filepath.Join(workDir, "alpha"), filepath.Join(workDir, "linked-directory")); err != nil {
@@ -75,6 +86,7 @@ func TestLoadDirectoryStructureReturnsErrorsWithoutReplacingRoot(t *testing.T) {
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
 	descendingWorkDir := t.TempDir()
+	writeValidRoot(t, descendingWorkDir, "root.yaml")
 	if err := os.Mkdir(filepath.Join(descendingWorkDir, "child"), 0o755); err != nil {
 		t.Fatalf("Mkdir(): %v", err)
 	}
@@ -101,7 +113,7 @@ func TestLoadDirectoryStructureReturnsErrorsWithoutReplacingRoot(t *testing.T) {
 		},
 		"canceled after final directory read": {
 			ctx:     &checkingContext{cancelAt: 2},
-			workDir: t.TempDir(),
+			workDir: rootSuiteDir(t, "root.yaml"),
 			wantErr: context.Canceled,
 		},
 	}
@@ -110,8 +122,8 @@ func TestLoadDirectoryStructureReturnsErrorsWithoutReplacingRoot(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			suite := &domain.Suite{WorkDir: test.workDir, Root: oldRoot}
 			err := NewLoader().LoadDirectoryStructure(test.ctx, suite)
-			if !errors.Is(err, test.wantErr) {
-				t.Fatalf("LoadDirectoryStructure() error = %v, want %v", err, test.wantErr)
+			if !errors.Is(err, test.wantErr) || !errors.Is(err, ErrDefinitionDiscovery) {
+				t.Fatalf("LoadDirectoryStructure() error = %v, want discovery and %v", err, test.wantErr)
 			}
 			if suite.Root != oldRoot {
 				t.Fatal("LoadDirectoryStructure() replaced Root after an error")
@@ -126,7 +138,7 @@ func TestLoadDirectoryFilesLoadsSupportedRegularFilesWithSourceLinks(t *testing.
 	if err := os.Mkdir(childPath, 0o755); err != nil {
 		t.Fatalf("Mkdir(): %v", err)
 	}
-	writeTestFile(t, filepath.Join(workDir, "a.yaml"), "kind: root\n")
+	writeTestFile(t, filepath.Join(workDir, "a.yaml"), "app: apihydra\nkind: root\n")
 	writeTestFile(t, filepath.Join(workDir, "b.yml"), "kind: defaults\n")
 	writeTestFile(t, filepath.Join(workDir, "ignored.YAML"), "kind: steps\n")
 	writeTestFile(t, filepath.Join(workDir, "ignored.txt"), "kind: steps\n")
@@ -152,7 +164,7 @@ func TestLoadDirectoryFilesLoadsSupportedRegularFilesWithSourceLinks(t *testing.
 		t.Fatalf("LoadDirectoryFiles() error = %v", err)
 	}
 	assertFiles(t, root, []expectedFile{
-		{stage: 0, path: "a.yaml", contents: "kind: root\n"},
+		{stage: 0, path: "a.yaml", contents: "app: apihydra\nkind: root\n"},
 		{stage: 0, path: "b.yml", contents: "kind: defaults\n"},
 	})
 	assertFiles(t, child, []expectedFile{
@@ -217,8 +229,8 @@ func TestLoadDirectoryFilesReturnsErrorsWithoutMutatingFiles(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			suite := &domain.Suite{WorkDir: test.workDir, Root: test.root}
 			err := NewLoader().LoadDirectoryFiles(test.ctx, suite)
-			if !errors.Is(err, test.wantErr) {
-				t.Fatalf("LoadDirectoryFiles() error = %v, want %v", err, test.wantErr)
+			if !errors.Is(err, test.wantErr) || !errors.Is(err, ErrDefinitionDiscovery) {
+				t.Fatalf("LoadDirectoryFiles() error = %v, want discovery and %v", err, test.wantErr)
 			}
 			if !slices.Equal(test.root.Files, oldFiles) {
 				t.Fatal("LoadDirectoryFiles() mutated Files after an error")
@@ -319,6 +331,12 @@ func TestDecodeBaseDefinitionsReturnsErrorsWithoutPartialClassification(t *testi
 	if err == nil {
 		t.Fatal("DecodeBaseDefinitions() error = nil for malformed YAML")
 	}
+	if !errors.Is(err, ErrInvalidDefinition) || !strings.Contains(err.Error(), "file invalid.yaml") {
+		t.Fatalf("DecodeBaseDefinitions() error = %v, want invalid-definition classification and file", err)
+	}
+	if got := errs.Code(err, errs.ExitInternal); got != errs.ExitConfiguration {
+		t.Fatalf("DecodeBaseDefinitions() exit code = %d, want %d", got, errs.ExitConfiguration)
+	}
 	if valid.Kind != "" || invalid.Kind != "" {
 		t.Fatal("DecodeBaseDefinitions() partially mutated File.Kind after an error")
 	}
@@ -392,6 +410,64 @@ func TestLoaderPhasesAllowEmptyTree(t *testing.T) {
 	if err := loader.DecodeBaseDefinitions(context.Background(), suite); err != nil {
 		t.Fatalf("DecodeBaseDefinitions() empty-tree error = %v", err)
 	}
+}
+
+func TestLoadDirectoryStructureRequiresQualifyingTopLevelRoot(t *testing.T) {
+	tests := map[string]struct {
+		files   map[string]string
+		wantErr bool
+	}{
+		"arbitrary yaml name": {files: map[string]string{"suite.yaml": "app: apihydra\nkind: root\nspec: {}\n"}},
+		"yml extension":       {files: map[string]string{"suite.yml": "app: apihydra\nkind: root\nspec: {}\n"}},
+		"no yaml":             {wantErr: true},
+		"malformed":           {files: map[string]string{"root.yaml": "["}, wantErr: true},
+		"non-string app":      {files: map[string]string{"root.yaml": "app: []\nkind: root\n"}, wantErr: true},
+		"non-string kind":     {files: map[string]string{"root.yaml": "app: apihydra\nkind: []\n"}, wantErr: true},
+		"wrong app":           {files: map[string]string{"root.yaml": "app: other\nkind: root\n"}, wantErr: true},
+		"wrong kind":          {files: map[string]string{"root.yaml": "app: apihydra\nkind: defaults\n"}, wantErr: true},
+		"nested root":         {files: map[string]string{"nested/root.yaml": "app: apihydra\nkind: root\n"}, wantErr: true},
+		"wrong extension":     {files: map[string]string{"root.json": "app: apihydra\nkind: root\n"}, wantErr: true},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			workDir := t.TempDir()
+			for path, contents := range test.files {
+				absolutePath := filepath.Join(workDir, filepath.FromSlash(path))
+				if err := os.MkdirAll(filepath.Dir(absolutePath), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				writeTestFile(t, absolutePath, contents)
+			}
+			suite := &domain.Suite{WorkDir: workDir}
+
+			err := NewLoader().LoadDirectoryStructure(context.Background(), suite)
+			if test.wantErr {
+				if !errors.Is(err, ErrRootDefinitionMissing) || errs.Code(err, 0) != errs.ExitConfiguration {
+					t.Fatalf("LoadDirectoryStructure() error = %v, want configuration ErrRootDefinitionMissing", err)
+				}
+				if suite.Root != nil {
+					t.Fatalf("suite.Root = %#v, want nil", suite.Root)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadDirectoryStructure() error = %v", err)
+			}
+		})
+	}
+}
+
+func rootSuiteDir(t *testing.T, name string) string {
+	t.Helper()
+	directory := t.TempDir()
+	writeValidRoot(t, directory, name)
+	return directory
+}
+
+func writeValidRoot(t *testing.T, directory, name string) {
+	t.Helper()
+	writeTestFile(t, filepath.Join(directory, name), "app: apihydra\nkind: root\nspec: {}\n")
 }
 
 func assertDirectory(t *testing.T, directory *domain.Directory, stage int, path string, parent *domain.Directory) {

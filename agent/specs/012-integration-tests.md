@@ -33,7 +33,8 @@ YAML remains static and unchanged.
   nested suite exercising variables, both placeholder forms,
   request/expected-body interpolation, inheritance, HTTP, response validation,
   and capture; `int-tests/input/test2/` contains nonfatal status and body
-  validation mismatches plus a valid sibling definition in the same directory;
+  validation mismatches plus a valid sibling definition and qualifying root in
+  the same directory;
   and `int-tests/input/scenarios/` contains auxiliary
   failure and edge-case suites, including a debug step that exposes the
   resolved `request.defaults` value with its 10-second timeout and 3 retries,
@@ -123,3 +124,13 @@ fatal diagnostic.
     step finishes last under controlled scheduling. Empty directories preserve
     incoming state, separate invocations exchange no cookies, and Debug shows
     the exact selected `--cookie` and `--cookie-jar` path.
+13. No-argument and explicit-directory runs require a qualifying root YAML
+    file directly in the selected directory. Missing, malformed, wrongly
+    typed/classified, unsupported-extension, directory, and nested-only
+    candidates produce exact exit `102`, empty stdout, and the root-specific
+    diagnostic before recursive decoding. An arbitrarily named qualifying
+    `.yml` file permits the run, after which malformed nested YAML identifies
+    its file and links to the invalid-definition troubleshooting section.
+14. Every fatal black-box scenario has a lowercase `error:` prefix and exactly
+    one final canonical category-specific manual link. Successful, help, and
+    validation-only exit `101` scenarios have no fatal footer.

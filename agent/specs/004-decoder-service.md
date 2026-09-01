@@ -22,8 +22,9 @@ response-type tokens, jq syntax, or a non-empty suite rule. The shared
 
 When an implementation creates contextual definition errors, their
 construction is governed by `002-errs-pkg.md`; this guide does not duplicate its
-formatting rules. The skeleton currently declares no Decoder-specific static
-errors.
+formatting rules. Decoder uses the shared definition-package
+`ErrInvalidDefinition` identity and preserves the affected file plus the
+underlying YAML cause.
 
 ## Required implementation and tests
 
@@ -34,7 +35,7 @@ errors.
   `Step.Request.Defaults` using the shared `domain.Defaults` shape,
   `disable_cookies` absent/true/false decoding at every defaults scope, source
   provenance, traversal, malformed YAML, chosen validation rules, context/error
-  paths, and mutation boundaries.
+  paths, invalid-definition identity/cause, and mutation boundaries.
 - Each acceptance criterion is traced to at least one meaningful unit test, and
   Decoder unit-test statement coverage remains greater than 95%.
 
@@ -53,3 +54,5 @@ errors.
    validation rules absent from the reference.
 5. No TODO or zero-value placeholder remains in Decoder production methods;
    its unit tests and `git diff --check` pass.
+6. Malformed defaults and steps definitions match `ErrInvalidDefinition` and
+   identify their source file without discarding the YAML cause.

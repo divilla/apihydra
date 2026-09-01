@@ -37,9 +37,9 @@ package dependencies acyclic and enforces four production boundaries:
 `os.Exit`. `bat` and `BatDiff` are absent.
 
 `cmd/apih` parses one `domain.Config`, creates its private per-run cache
-directory, and injects the resulting value into runtime consumers. The cache
-path and parallelism mode are not communicated through package globals or
-process-wide environment mutation.
+directory after root qualification, and injects the resulting value into
+runtime consumers. The cache path and parallelism mode are not communicated
+through package globals or process-wide environment mutation.
 
 ## Domain lifecycle
 
@@ -84,6 +84,10 @@ is defined by the applicable skeleton code and comments.
 - [`Resolver`](specs/005-resolver-service.md)
 
 The current CLI composition order is owned by the PRD.
+Loader first qualifies a direct root definition before recursively constructing
+the remainder of the suite tree. Discovery and decoding errors retain the
+affected filesystem or YAML provenance through the shared definition error
+identities.
 
 ## Execution services
 
@@ -104,8 +108,9 @@ execution guides do not duplicate those orchestration rules.
 The [`Reporter`](specs/009-reporter-service.md) skeleton contract defines the
 execution-output API, exact working-directory behavior, per-file stage buffers,
 live ordered terminal redraws, and ordered non-terminal stage commits. Reporter
-never owns fatal standard-error diagnostics; `cmd/apih` logs the final
-provenance-bearing diagnostic before process exit.
+never owns fatal standard-error diagnostics; `cmd/apih` presents the final
+provenance-bearing diagnostic and category-specific manual link before process
+exit.
 
 The [`pkg/runner`](specs/001-runner-pkg.md) skeleton contract defines Curl,
 JQProject, JQExtract, JQFilter, JQPretty, and run-directory-scoped GitDiff.
@@ -121,13 +126,15 @@ owns only black-box verification and fixtures; it introduces no production API.
 Static classifications originate in the package that declares them.
 [`pkg/errs`](specs/002-errs-pkg.md) alone owns contextual construction and attached
 codes. The PRD owns the shared meanings of codes `0`, `101`, `102`, and `103`.
+`cmd/apih` maps those preserved identities to stable, specific troubleshooting
+anchors; the manual owns the corresponding remediation sections.
 
 ## Architecture constraints
 
 1. `skeleton/` remains the binding architecture and API.
 2. Shared carriers remain in `internal/domain`.
 3. Contextual errors, external commands, execution output, and fatal diagnostic
-   logging remain in their owner packages.
+   presentation remain in their owner packages.
 4. Package guides do not create parallel APIs or restate skeleton contracts.
 5. Behavior absent from the skeleton remains an implementation choice, not a
    product or architecture commitment.

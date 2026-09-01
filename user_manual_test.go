@@ -235,6 +235,59 @@ func TestUserManualAcceptanceCriterion6TroubleshootingAndUnspecifiedBoundaries(t
 	assertContainsAll(t, manual, required)
 }
 
+func TestEveryFatalDiagnosticAnchorResolvesExactlyOnceInUserManual(t *testing.T) {
+	const reference = "https://github.com/divilla/apihydra/blob/master/docs/user-manual/apih.md"
+	sourceBytes, err := os.ReadFile("cmd/apih/main.go")
+	if err != nil {
+		t.Fatalf("ReadFile(cmd/apih/main.go): %v", err)
+	}
+	source := string(sourceBytes)
+	if !strings.Contains(source, `const userManualReference = "`+reference+`"`) {
+		t.Fatalf("cmd/apih user-manual reference is not %q", reference)
+	}
+
+	start := strings.Index(source, "func troubleshootingAnchor")
+	endMarker := "\n}\n\n// parseConfig"
+	if start < 0 {
+		t.Fatal("cannot locate troubleshootingAnchor implementation")
+	}
+	endOffset := strings.Index(source[start:], endMarker)
+	if endOffset < 0 {
+		t.Fatal("cannot locate troubleshootingAnchor implementation")
+	}
+	function := source[start : start+endOffset]
+	matches := regexp.MustCompile(`return "([a-z0-9-]+)"`).FindAllStringSubmatch(function, -1)
+	want := []string{
+		"capture-error",
+		"definition-discovery-error",
+		"external-tool-failure",
+		"internal-errors",
+		"invalid-arguments",
+		"invalid-selected-directory",
+		"invalid-yaml-definition",
+		"missing-or-duplicate-variable",
+		"root-definition-missing",
+	}
+	got := make([]string, 0, len(matches))
+	for _, match := range matches {
+		got = append(got, match[1])
+	}
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Fatalf("troubleshooting anchors = %v, want %v", got, want)
+	}
+
+	manualAnchors := make(map[string]int)
+	for _, heading := range manualHeadings(readUserManual(t)) {
+		manualAnchors[markdownAnchor(heading)]++
+	}
+	for _, anchor := range got {
+		if count := manualAnchors[anchor]; count != 1 {
+			t.Errorf("%s#%s resolves to %d manual headings, want 1", reference, anchor, count)
+		}
+	}
+}
+
 func TestUserManualAcceptanceCriterion7CompactStructure(t *testing.T) {
 	manual := readUserManual(t)
 	wordCount := len(strings.Fields(manual))

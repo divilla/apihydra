@@ -130,7 +130,17 @@ apih -- -suite
 
 Unknown flags, malformed values, parallelism outside `0..2`, and extra
 positional arguments are configuration failures. They produce no application
-stdout; the CLI writes the fatal diagnostic to stderr.
+stdout; the CLI writes the fatal diagnostic to stderr. Every fatal diagnostic
+uses this lowercase form and links to its specific troubleshooting section:
+
+```text
+error: <message>
+
+please check user manual: https://github.com/divilla/apihydra/blob/master/docs/user-manual/apih.md#<category>
+```
+
+The footer appears exactly once and is the final stderr line. Help, success,
+and validation-only exit `101` do not print it.
 
 ### Exit codes
 
@@ -147,10 +157,19 @@ use the final stderr diagnostic to identify the failed operation.
 
 ## Suites, stages, and parallelism
 
-`apih` recursively builds a directory tree from the selected suite directory.
-It reads regular files whose names end in lowercase `.yaml` or `.yml`.
-Directory depth determines execution stage: the selected directory is stage
-`0`, its direct children are stage `1`, and so on.
+Before recursively building a directory tree, `apih` requires the selected
+suite directory itself to contain a regular file with a lowercase `.yaml` or
+`.yml` suffix whose top-level envelope has string `app: apihydra` and
+`kind: root`. The filename is arbitrary. A malformed document, wrong scalar
+type, wrong app or kind, unsupported extension, directory named like a YAML
+file, or qualifying document only in a nested directory does not satisfy this
+root check. If none qualifies, the run stops before recursive discovery,
+cache creation, or application output with exit `102`; see
+[Root definition missing](#root-definition-missing).
+
+After the root check passes, `apih` recursively reads regular lowercase
+`.yaml` and `.yml` files. Directory depth determines execution stage: the
+selected directory is stage `0`, its direct children are stage `1`, and so on.
 
 Only steps documents contain executable requests. Root and defaults documents
 provide defaults inherited by steps in their directory and descendants.
@@ -167,10 +186,10 @@ suite/                              stage 0
         └── refund-steps.yaml       executable steps file
 ```
 
-Use a root document at the suite root and a defaults document for a nested
-directory. Both have the same defaults shape. Keep at most one root/defaults
-document in a directory for predictable suites: placement and cardinality when
-multiple default-bearing documents coexist are not a published contract.
+Use a qualifying root document directly in the suite root and a defaults
+document for a nested directory. Both have the same defaults shape. Behavior
+with multiple qualifying root documents, and cardinality when multiple
+default-bearing documents coexist, is not a published contract.
 
 ### Stage and parallelism rules
 
@@ -698,8 +717,11 @@ steps file.
 
 A terminal error cancels and joins active work, commits the accumulated stage
 output in canonical order, and prevents later work. The CLI then writes the
-provenance-bearing fatal diagnostic to stderr. That diagnostic is the final
-application output; cleanup failures never add diagnostics.
+provenance-bearing fatal diagnostic and one category-specific manual link to
+stderr. That diagnostic is the final application output; cleanup failures
+never add diagnostics. Once a qualifying root exists, invalid recursively
+discovered definitions identify the affected file and, when available, the
+YAML location.
 
 ### Private run directory
 
@@ -981,7 +1003,7 @@ Debug cannot redact them. See [Debug breakpoints](#debug-breakpoints).
 | `git` diff error or executable not found after a body mismatch | `git` is required to render unequal expected and actual bodies. Install it and ensure the run cache is writable. |
 | Invalid selected directory | Pass zero or one existing directory. Relative paths resolve from the current working directory. Exit is `102`. |
 | Malformed YAML or a scalar type error | Correct the reported file/YAML location. Body, variable, capture, metadata, header, path, query, and URL values are strings; quote numeric-looking variable values. |
-| Missing variable | Define it before interpolation. Keep dependent steps serial. Exact missing-key diagnostics are not a stable contract. |
+| Missing variable | Define it before interpolation. Keep dependent steps serial. The fatal diagnostic identifies the affected variable. |
 | Duplicate variable or capture | The store is run-wide and write-once. Rename the later key; the first value is preserved. |
 | Invalid jq selector | Test it against the actual response with `jq`. Capture and type selectors delegate to jq; selector failure is terminal. |
 | Invalid expected or actual JSON during body validation | Supply a valid nonempty JSON expected body and ensure the service returns JSON. Omit `expected_body` only when body validation is intentionally skipped. |
@@ -994,6 +1016,57 @@ Debug cannot redact them. See [Debug breakpoints](#debug-breakpoints).
 | A later request lost cookie updates | A disabled request leaves the owning jar unchanged; parallel modes also isolate writable jars. Check scope overlays and the selected mode. |
 | Debug exposed a secret | Treat the output as compromised, rotate the secret, and remove it before sharing future Debug output. Debug has no redaction mode. |
 | An old `run-*` cache directory remains | Abrupt termination can prevent cleanup. Later runs do not reuse it. The product defines no startup scavenger; manage abandoned user-cache data outside active runs. |
+
+### Root definition missing
+
+Start `apih` with no arguments from the directory containing the suite root,
+or pass that directory. Add a regular lowercase `.yaml` or `.yml` file there
+with string values `app: apihydra` and `kind: root`. Its filename is arbitrary;
+nested, malformed, wrongly typed, or differently classified documents do not
+qualify.
+
+### Invalid arguments
+
+Pass at most one directory and use parallelism `0`, `1`, or `2`. Check unknown
+flags and malformed values.
+
+### Invalid selected directory
+
+Pass an existing directory. Relative paths resolve from the current working
+directory; a YAML file itself is not a valid directory argument.
+
+### Invalid YAML definition
+
+Correct the reported file and YAML location. Use documented scalar and mapping
+shapes; quote numeric-looking values where a string is required.
+
+### Definition discovery error
+
+Check that suite directories and YAML files remain readable during discovery.
+The diagnostic identifies the failed path.
+
+### Missing or duplicate variable
+
+Define each interpolated variable before use and only once per invocation.
+Keep producer and consumer steps serial when ordering matters, and rename a
+duplicate variable or capture; the diagnostic identifies the affected name.
+
+### External tool failure
+
+Install `curl`, `jq`, and `git`, ensure they are on `PATH`, and check the
+reported command input. Curl performs requests, jq handles JSON selectors and
+formatting, and git renders unequal response bodies.
+
+### Capture error
+
+Check the named capture's jq selector against the actual response JSON. Ensure
+the response is valid JSON and choose a selector that returns the intended
+value.
+
+### Internal errors
+
+Review its provenance, check cache permissions, and retry. If it persists,
+report the diagnostic with a minimal reproducible suite.
 
 ## Agent checklist
 

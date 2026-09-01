@@ -14,9 +14,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/divilla/apihydra/internal/definition"
 	"github.com/divilla/apihydra/internal/domain"
+	"github.com/divilla/apihydra/internal/execution"
 	"github.com/divilla/apihydra/internal/reporting"
 	"github.com/divilla/apihydra/pkg/errs"
+	"github.com/divilla/apihydra/pkg/runner"
 
 	"github.com/spf13/pflag"
 )
@@ -27,6 +30,14 @@ type failingWriter struct {
 
 func (w failingWriter) Write([]byte) (int, error) {
 	return 0, w.err
+}
+
+func writeRootDefinition(t *testing.T, directory, name string) {
+	t.Helper()
+	contents := []byte("app: apihydra\nkind: root\nspec: {}\n")
+	if err := os.WriteFile(filepath.Join(directory, name), contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func setTestUserCacheDir(t *testing.T, root string) string {
@@ -128,6 +139,7 @@ func TestRunSelectsDirectoryAndCompletesDefinitionPipeline(t *testing.T) {
 	if err := os.Mkdir(selected, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	writeRootDefinition(t, selected, "suite.yml")
 	t.Chdir(workDir)
 	var output bytes.Buffer
 
@@ -180,7 +192,9 @@ func TestRunReturnsInternalExitCodeWhenWorkingDirectoryIsUnavailable(t *testing.
 
 func TestRunReturnsInternalExitCodeForOutputFailure(t *testing.T) {
 	setTestUserCacheDir(t, t.TempDir())
-	t.Chdir(t.TempDir())
+	workDir := t.TempDir()
+	writeRootDefinition(t, workDir, "root.yaml")
+	t.Chdir(workDir)
 	wantErr := errors.New("output failed")
 
 	exitCode, err := run(context.Background(), domain.Config{Parallelism: 1}, reporting.NewReporter(failingWriter{err: wantErr}, false))
@@ -206,15 +220,15 @@ func TestRunReturnsConfigurationExitCodeForCanceledDefinitionPipeline(t *testing
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("run() error = %v, want context.Canceled", err)
 	}
-	if !strings.HasPrefix(output.String(), "Working Directory: ") {
-		t.Fatalf("run() output = %q, want working-directory output", output.String())
+	if output.Len() != 0 {
+		t.Fatalf("run() output = %q, want cancellation before application output", output.String())
 	}
 }
 
 func TestRunReturnsConfigurationExitCodeForDefinitionFailures(t *testing.T) {
 	tests := map[string]string{
 		"base definition":    "[",
-		"decoded definition": "app: apihydra\nkind: defaults\nspec:\n  timeout: invalid\n",
+		"decoded definition": "app: apihydra\nkind: steps\nspec:\n  defaults:\n    timeout: invalid\n  steps: []\n",
 	}
 
 	for name, contents := range tests {
@@ -224,6 +238,7 @@ func TestRunReturnsConfigurationExitCodeForDefinitionFailures(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(workDir, "definition.yaml"), []byte(contents), 0o600); err != nil {
 				t.Fatal(err)
 			}
+			writeRootDefinition(t, workDir, "root.yaml")
 			original, err := os.Getwd()
 			if err != nil {
 				t.Fatal(err)
@@ -303,6 +318,7 @@ func TestRunCoversCancellationFromStepsValidation(t *testing.T) {
 	setTestUserCacheDir(t, t.TempDir())
 
 	workDir := t.TempDir()
+	writeRootDefinition(t, workDir, "root.yaml")
 	contents := []byte("app: apihydra\nkind: steps\nspec:\n  steps: []\n")
 	for index := range 20000 {
 		if err := os.WriteFile(filepath.Join(workDir, fmt.Sprintf("steps-%05d.yaml", index)), contents, 0o600); err != nil {
@@ -494,9 +510,89 @@ func TestParseConfigHelpUsesPflagOutput(t *testing.T) {
 	}
 }
 
+func TestRunRequiresRootInCurrentOrSelectedDirectory(t *testing.T) {
+	tests := map[string]struct {
+		setup  func(*testing.T) domain.Config
+		config domain.Config
+	}{
+		"current directory": {
+			setup: func(t *testing.T) domain.Config {
+				t.Chdir(t.TempDir())
+				return domain.Config{Parallelism: 1}
+			},
+		},
+		"selected directory": {
+			setup: func(t *testing.T) domain.Config {
+				parent := t.TempDir()
+				if err := os.Mkdir(filepath.Join(parent, "suite"), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				t.Chdir(parent)
+				return domain.Config{Directory: "suite", Parallelism: 1}
+			},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			config := test.setup(t)
+			var output bytes.Buffer
+			exitCode, err := run(context.Background(), config, reporting.NewReporter(&output, false))
+			if exitCode != errs.ExitConfiguration || !errors.Is(err, definition.ErrRootDefinitionMissing) {
+				t.Fatalf("run() = (%d, %v), want (%d, ErrRootDefinitionMissing)", exitCode, err, errs.ExitConfiguration)
+			}
+			if output.Len() != 0 {
+				t.Fatalf("run() output = %q, want empty output", output.String())
+			}
+		})
+	}
+}
+
+func TestFatalDiagnosticUsesSpecificManualAnchors(t *testing.T) {
+	tests := map[string]struct {
+		err    error
+		anchor string
+	}{
+		"root missing":       {definition.ErrRootDefinitionMissing, "root-definition-missing"},
+		"arguments":          {ErrInvalidArguments, "invalid-arguments"},
+		"parallelism":        {execution.ErrInvalidParallelism, "invalid-arguments"},
+		"selected directory": {ErrInvalidPath, "invalid-selected-directory"},
+		"invalid definition": {definition.ErrInvalidDefinition, "invalid-yaml-definition"},
+		"discovery":          {definition.ErrDefinitionDiscovery, "definition-discovery-error"},
+		"variable":           {execution.ErrVariable, "missing-or-duplicate-variable"},
+		"missing key":        {execution.ErrNotFound, "missing-or-duplicate-variable"},
+		"duplicate key":      {execution.ErrKeyExists, "missing-or-duplicate-variable"},
+		"external command":   {runner.ErrCommand, "external-tool-failure"},
+		"curl":               {runner.ErrCurl, "external-tool-failure"},
+		"jq selector":        {runner.ErrJQSelector, "external-tool-failure"},
+		"jq pretty":          {runner.ErrJQPretty, "external-tool-failure"},
+		"git diff":           {runner.ErrGitDiff, "external-tool-failure"},
+		"capture":            {execution.ErrCapture, "capture-error"},
+		"unknown":            {errors.New("unexpected"), "internal-errors"},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := troubleshootingAnchor(test.err); got != test.anchor {
+				t.Fatalf("troubleshootingAnchor() = %q, want %q", got, test.anchor)
+			}
+			got := fatalDiagnostic(test.err)
+			wantFooter := "\n\nplease check user manual: " + userManualReference + "#" + test.anchor + "\n"
+			if !strings.HasPrefix(got, "error: ") || !strings.HasSuffix(got, wantFooter) {
+				t.Fatalf("fatalDiagnostic() = %q, want error prefix and footer %q", got, wantFooter)
+			}
+		})
+	}
+	if got := fatalDiagnostic(nil); got != "" {
+		t.Fatalf("fatalDiagnostic(nil) = %q, want empty output", got)
+	}
+}
+
 func TestRunDirectoryIsUniqueRunScopedAndCleaned(t *testing.T) {
 	cacheRoot := setTestUserCacheDir(t, t.TempDir())
-	t.Chdir(t.TempDir())
+	workDir := t.TempDir()
+	writeRootDefinition(t, workDir, "root.yaml")
+	t.Chdir(workDir)
 	cacheDir := filepath.Join(cacheRoot, "apih")
 	if err := os.Mkdir(cacheDir, 0o777); err != nil {
 		t.Fatal(err)
@@ -583,7 +679,9 @@ func TestCreateTempRunDirectoryClassifiesCacheFailures(t *testing.T) {
 }
 
 func TestRunReturnsInternalWhenRunDirectoryCannotBeCreated(t *testing.T) {
-	t.Chdir(t.TempDir())
+	workDir := t.TempDir()
+	writeRootDefinition(t, workDir, "root.yaml")
+	t.Chdir(workDir)
 	clearTestUserCacheDir(t)
 	var output bytes.Buffer
 	exitCode, err := run(context.Background(), domain.Config{Parallelism: 1}, reporting.NewReporter(&output, false))
@@ -636,6 +734,9 @@ func TestMainLogsFatalErrorAndPreservesProductExitCode(t *testing.T) {
 	if !strings.Contains(stderr.String(), ErrInvalidPath.Error()) {
 		t.Fatalf("main process stderr = %q, want ErrInvalidPath", stderr.String())
 	}
+	if !strings.HasPrefix(stderr.String(), "error: ") || !strings.HasSuffix(stderr.String(), "#invalid-selected-directory\n") {
+		t.Fatalf("main process stderr = %q, want prefixed anchored diagnostic", stderr.String())
+	}
 }
 
 func TestMainHandlesHelpInvalidArgumentsSuccessAndHelpWriteFailure(t *testing.T) {
@@ -668,6 +769,7 @@ func TestMainHandlesHelpInvalidArgumentsSuccessAndHelpWriteFailure(t *testing.T)
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			workDir := t.TempDir()
+			writeRootDefinition(t, workDir, "root.yaml")
 			cacheDir := t.TempDir()
 			cmd := exec.Command(os.Args[0], "-test.run=TestMainHelperProcess")
 			cmd.Dir = workDir
@@ -698,7 +800,34 @@ func TestMainHandlesHelpInvalidArgumentsSuccessAndHelpWriteFailure(t *testing.T)
 			if test.mode == "invalid-arguments" && stdout.Len() != 0 {
 				t.Fatalf("invalid stdout = %q, want empty", stdout.String())
 			}
+			if test.wantStderr != "" && (!strings.HasPrefix(stderr.String(), "error: ") || !strings.Contains(stderr.String(), "\n\nplease check user manual: ")) {
+				t.Fatalf("stderr = %q, want one fatal diagnostic with manual footer", stderr.String())
+			}
 		})
+	}
+}
+
+func TestMainReportsExactMissingRootDiagnostic(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=TestMainHelperProcess")
+	cmd.Dir = t.TempDir()
+	cmd.Env = append(os.Environ(), "APIH_TEST_MAIN_HELPER=missing-root")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != errs.ExitConfiguration {
+		t.Fatalf("main process error = %v, want exit %d", err, errs.ExitConfiguration)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("main process stdout = %q, want empty output", stdout.String())
+	}
+	want := "error: root definition missing\n\n" +
+		"please check user manual: " + userManualReference + "#root-definition-missing\n"
+	if stderr.String() != want {
+		t.Fatalf("main process stderr = %q, want %q", stderr.String(), want)
 	}
 }
 
@@ -716,6 +845,8 @@ func TestMainHelperProcess(t *testing.T) {
 			os.Exit(99)
 		}
 	case "success":
+		os.Args = []string{"apih"}
+	case "missing-root":
 		os.Args = []string{"apih"}
 	default:
 		return
