@@ -61,9 +61,12 @@ A definition file with validation failures is headed once by a cross in
 terminal palette color 210 (`#ff8787`), matching failed type values and removed
 body-diff values. Every failing step is also headed by one palette-210 cross,
 followed without indentation by its resolved
-`request.defaults.base_path + request.path`, effective method, and one-based
-step number in cyan. An omitted method is effectively `POST` when the request
-has a body and `GET` otherwise.
+`request.defaults.base_path + request.path`, effective method, and light blue
+`line:<N>` (terminal palette color 117, #87d7ff). The one-based line identifies the first reported failing expectation
+key (`expected_types`, `expected_status`, or `expected_body`) in the original
+`File.Bytes`. Missing keys fall back to the step source line; unavailable source
+positions render as `line:unknown`. An omitted method is effectively `POST`
+when the request has a body and `GET` otherwise.
 
 Failed type declarations use the original `expected_types` key and complete
 value. The label has exactly four leading spaces; each declaration has exactly
@@ -71,12 +74,12 @@ eight. Keys use terminal palette color 15 and complete values use terminal
 palette color 210 (`#ff8787`), matching removed body-diff values.
 
 Status mismatches use the original response field names with exactly four
-leading spaces. `actual_status` is rendered in terminal palette color 210 and
-`expected_status` in palette color 10:
+leading spaces. `expected_status` is printed first in terminal palette color 10,
+followed by `actual_status` in palette color 210:
 
 ```text
-    actual_status: «color-210:201»
     expected_status: «color-10:200»
+    actual_status: «color-210:201»
 ```
 
 Body diffs use the `expected_body` label with four leading spaces and show the
@@ -90,7 +93,7 @@ retaining the diff's existing colors.
 
 ```text
 [«red:✗»] /change/create
-[«red:✗»] /api/v1/change/create POST «cyan:step-3»
+[«red:✗»] /api/v1/change/create POST «light-blue:line:66»
     expected_types:
         «color-15:.version:» «color-210:[number, null]»
         «color-15:.change_types:» «color-210:[array]»
@@ -182,10 +185,13 @@ Canonical zero-value TODO bodies are not acceptable production implementations.
 5. Successful definition files and grouped validation failures follow the
    terminal output contract above, including path derivation, indentation,
    palette-10 checks, one palette-210 cross per file and failing step, effective
-   methods, one-based cyan step numbers, four/eight-space indentation, one
+   methods, light blue source line labels, four/eight-space indentation, one
    trailing blank line per failing step, per-definition success in mixed-result
    directories, file/step deduplication, and palette-210 `actual_status` plus
-   palette-10 `expected_status` mismatch values.
+   palette-10 `expected_status` mismatch values printed before actual values.
+   Source lines identify expectation keys, including multiline values and later
+   steps; missing keys fall back to the step line and unavailable sources to
+   `line:unknown`.
 6. `ValidationTypes` accepts the failed string returned by type validation and
    renders the corresponding original `ExpectedTypes` entries with keys in
    terminal palette color 15 and complete values in palette color 210.

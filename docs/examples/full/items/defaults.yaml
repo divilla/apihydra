@@ -1,0 +1,14 @@
+app: apihydra
+kind: defaults
+metadata:
+  name: item-defaults
+  labels: [example, items]
+spec:
+  base_url: http://127.0.0.1:18080
+  base_path: /api
+  headers:
+    Accept: application/json
+    X-Scope: items
+  disable_cookies: true
+  timeout: 8
+  retries: 2

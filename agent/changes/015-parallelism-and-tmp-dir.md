@@ -199,5 +199,5 @@ change final logical output order.
    Successful Debug stops cleanly, retains accumulated canonical file output,
    renders its complete unredacted dump last, and produces nothing afterward.
 10. Changed package tests, black-box CLI and terminal tests, `go test ./...`,
-    `go test -race ./...`, `make check`, coverage checks, and
+    `go test -race ./...`, `make check`, `make check-scripts`, coverage checks, and
     `git diff --check` all pass.

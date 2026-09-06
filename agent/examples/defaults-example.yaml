@@ -1,8 +1,0 @@
-# Shape-only example. Values illustrate fields and do not define runtime behavior.
-app: apihydra
-kind: defaults
-spec:
-  base_path: /api/v2
-  headers:
-    X-Suite-Area: billing
-  disable_cookies: false

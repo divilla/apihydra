@@ -51,7 +51,7 @@ spec:
               "version": 0
             }
           }
-      debug: true
+#      debug: true
 
     - request:
         path: /change/create

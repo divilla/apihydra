@@ -30,6 +30,7 @@ import (
 const (
 	serverMarker       = "http://APIH_TEST_SERVER"
 	integrationTimeout = 2 * time.Minute
+	manualReference    = "https://github.com/divilla/apihydra/blob/master/docs/user-manual/apih.md"
 )
 
 type observedRequests struct {
@@ -185,6 +186,135 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		copyFixture(t, source, destination, server.URL)
 	}
 
+	wantMissingRoot := "error: root defaults file missing\n\nplease check user manual: " + manualReference + "#root-defaults-file-missing\n"
+	missingCurrentRoot := runCLIArguments(t, ctx, binary, runRoot, coverageDir, nil, io.Discard)
+	if missingCurrentRoot.exitCode != 102 || missingCurrentRoot.stdout != "" || missingCurrentRoot.stderr != wantMissingRoot {
+		t.Fatalf("current-directory missing root = code %d, stdout %q, stderr %q, want exact root diagnostic", missingCurrentRoot.exitCode, missingCurrentRoot.stdout, missingCurrentRoot.stderr)
+	}
+	missingSelectedDir := filepath.Join(runRoot, "missing-root")
+	if err := os.MkdirAll(filepath.Join(missingSelectedDir, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(missingSelectedDir, "nested", "invalid.yaml"), []byte("app: []\nkind: root\nspec: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, contents := range map[string]string{
+		"malformed.yaml": "[",
+		"wrong-app.yaml": "app: other\nkind: root\n",
+		"wrong-kind.yml": "app: other\nkind: []\n",
+		"ignored.YAML":   "app: apihydra\nkind: root\n",
+	} {
+		if err := os.WriteFile(filepath.Join(missingSelectedDir, name), []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	missingSelectedRoot := runCLI(t, ctx, binary, runRoot, coverageDir, "missing-root")
+	if missingSelectedRoot.exitCode != 102 || missingSelectedRoot.stdout != "" || missingSelectedRoot.stderr != wantMissingRoot {
+		t.Fatalf("selected-directory missing root = code %d, stdout %q, stderr %q, want exact root diagnostic", missingSelectedRoot.exitCode, missingSelectedRoot.stdout, missingSelectedRoot.stderr)
+	}
+	arbitraryRootDir := filepath.Join(runRoot, "arbitrary-root")
+	if err := os.Mkdir(arbitraryRootDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(arbitraryRootDir, "suite.yml"), []byte("app: apihydra\nkind: root\nspec: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	arbitraryRoot := runCLI(t, ctx, binary, runRoot, coverageDir, "arbitrary-root")
+	if arbitraryRoot.exitCode != 0 || arbitraryRoot.stderr != "" || !strings.Contains(arbitraryRoot.stdout, "Working Directory:") {
+		t.Fatalf("arbitrary root filename = code %d, stdout %q, stderr %q, want success", arbitraryRoot.exitCode, arbitraryRoot.stdout, arbitraryRoot.stderr)
+	}
+	invalidNestedDir := filepath.Join(runRoot, "invalid-nested-definition")
+	if err := os.MkdirAll(filepath.Join(invalidNestedDir, "child"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(invalidNestedDir, "root.yaml"), []byte("app: apihydra\nkind: root\nspec: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(invalidNestedDir, "child", "broken.yaml"), []byte("app: []\nkind: root\nspec: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	invalidNested := runCLI(t, ctx, binary, runRoot, coverageDir, "invalid-nested-definition")
+	if invalidNested.exitCode != 102 || !strings.Contains(invalidNested.stdout, "Working Directory:") ||
+		!strings.Contains(invalidNested.stderr, "invalid definition") || !strings.Contains(invalidNested.stderr, "file child/broken.yaml") ||
+		!strings.HasSuffix(invalidNested.stderr, "#invalid-yaml-definition\n") {
+		t.Fatalf("invalid nested definition = code %d, stdout %q, stderr %q, want contextual invalid-definition diagnostic", invalidNested.exitCode, invalidNested.stdout, invalidNested.stderr)
+	}
+
+	wantInvalidKind := "error: kind: must be one of: <root|defaults|steps>\n\nplease check user manual: " + manualReference + "#invalid-yaml-definition\n"
+	for name, kind := range map[string]string{
+		"missing": "", "unspecified": "kind:", "empty": "kind: ''",
+		"null": "kind: null", "unknown": "kind: custom", "case": "kind: Root",
+		"number": "kind: 1", "boolean": "kind: false", "list": "kind: []", "map": "kind: {}",
+	} {
+		for _, placement := range []string{"no-root", "root-first", "root-last", "nested", "nested-no-root"} {
+			t.Run("invalid-kind/"+name+"/"+placement, func(t *testing.T) {
+				dir := filepath.Join(runRoot, "kind-"+name+"-"+placement)
+				if err := os.MkdirAll(filepath.Join(dir, "child"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if placement != "no-root" && placement != "nested-no-root" {
+					rootName := "a-root.yaml"
+					if placement == "root-last" {
+						rootName = "z-root.yaml"
+					}
+					if err := os.WriteFile(filepath.Join(dir, rootName), []byte("app: apihydra\nkind: root\n"), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				invalidPath := filepath.Join(dir, "invalid.yml")
+				if placement == "nested" || placement == "nested-no-root" {
+					invalidPath = filepath.Join(dir, "child", "invalid.yml")
+				}
+				if err := os.WriteFile(invalidPath, []byte("app: apihydra\n"+kind+"\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				for _, currentDirectory := range []bool{false, true} {
+					cwd, args := runRoot, []string{filepath.Base(dir)}
+					if currentDirectory {
+						cwd, args = dir, nil
+					}
+					var stdout strings.Builder
+					result := runCLIArguments(t, ctx, binary, cwd, coverageDir, args, &stdout)
+					want := wantInvalidKind
+					if placement == "nested-no-root" {
+						want = wantMissingRoot
+					}
+					if result.exitCode != 102 || result.stderr != want {
+						t.Fatalf("current directory %v: code %d, stderr %q, want code 102 and %q", currentDirectory, result.exitCode, result.stderr, want)
+					}
+					if placement == "nested" {
+						if !strings.Contains(stdout.String(), "Working Directory:") {
+							t.Fatalf("nested kind validation did not follow discovery: stdout %q", stdout.String())
+						}
+					} else if stdout.Len() != 0 {
+						t.Fatalf("root inspection wrote stdout: %q", stdout.String())
+					}
+				}
+			})
+		}
+	}
+	for name, app := range map[string]string{"other": "app: other", "typo": "app: apyhidra", "missing": "", "null": "app: null"} {
+		t.Run("other-app-kind/"+name, func(t *testing.T) {
+			dir := filepath.Join(runRoot, "other-app-"+name)
+			if err := os.Mkdir(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			for file, data := range map[string]string{
+				"root.yaml":    "app: apihydra\nkind: root\n",
+				"unknown.yaml": app + "\nkind: custom\n",
+				"missing.yml":  app + "\n",
+			} {
+				if err := os.WriteFile(filepath.Join(dir, file), []byte(data), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			result := runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Base(dir))
+			if result.exitCode != 0 || result.stderr != "" {
+				t.Fatalf("other app received kind validation: code %d, stderr %q", result.exitCode, result.stderr)
+			}
+		})
+	}
+
 	invalid := runCLI(t, ctx, binary, runRoot, coverageDir, "missing-suite")
 	if invalid.exitCode != 102 {
 		t.Fatalf("invalid path exit code = %d, want 102; stderr = %q", invalid.exitCode, invalid.stderr)
@@ -195,6 +325,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if !strings.Contains(invalid.stderr, "invalid path") {
 		t.Fatalf("invalid path stderr = %q, want invalid-path diagnostic", invalid.stderr)
 	}
+	assertFatalDiagnostic(t, invalid.stderr)
 	nondirectory := runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("test1", "root.yaml"))
 	if nondirectory.exitCode != 102 {
 		t.Fatalf("file path exit code = %d, want 102; stderr = %q", nondirectory.exitCode, nondirectory.stderr)
@@ -205,6 +336,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if !strings.Contains(nondirectory.stderr, "invalid path") {
 		t.Fatalf("file path stderr = %q, want invalid-path diagnostic", nondirectory.stderr)
 	}
+	assertFatalDiagnostic(t, nondirectory.stderr)
 
 	runArguments := func(args []string, env ...string) cliResult {
 		var stdout strings.Builder
@@ -245,6 +377,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		if invalidArguments.exitCode != 102 || invalidArguments.stdout != "" || invalidArguments.stderr == "" {
 			t.Fatalf("invalid arguments %v = code %d, stdout %q, stderr %q", args, invalidArguments.exitCode, invalidArguments.stdout, invalidArguments.stderr)
 		}
+		assertFatalDiagnostic(t, invalidArguments.stderr)
 	}
 	for iteration := range 2 {
 		cookiesModeZero := runArguments([]string{"--parallelism=0", filepath.Join("scenarios", "cookies-mode0")})
@@ -391,13 +524,12 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	}
 	for _, want := range []string{
 		"[\x1b[38;5;210m✗\x1b[0m] /steps\n",
-		"[\x1b[38;5;210m✗\x1b[0m] /api/status-mismatch GET \x1b[36mstep-1\x1b[0m\n",
-		"[\x1b[38;5;210m✗\x1b[0m] /api/implicit-post POST \x1b[36mstep-2\x1b[0m\n",
+		"[\x1b[38;5;210m✗\x1b[0m] /api/status-mismatch GET \x1b[38;5;117mline:13\x1b[0m\n",
+		"[\x1b[38;5;210m✗\x1b[0m] /api/implicit-post POST \x1b[38;5;117mline:20\x1b[0m\n",
 		"[\x1b[38;5;10m✓\x1b[0m] /update\n",
 		"    expected_types:\n",
 		"\x1b[38;5;210m[string]\x1b[0m",
-		"    actual_status: \x1b[38;5;210m200\x1b[0m\n",
-		"    expected_status: \x1b[38;5;10m201\x1b[0m\n",
+		"    expected_status: \x1b[38;5;10m201\x1b[0m\n    actual_status: \x1b[38;5;210m200\x1b[0m\n",
 		"    expected_body:\n",
 		"\x1b[38;5;210m-  \"id\": 7,\x1b[m",
 		"\x1b[92m+\x1b[m\x1b[92m  \"id\": 9,\x1b[m",
@@ -639,6 +771,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		if result.stderr == "" {
 			t.Fatalf("%s stderr is empty, want fatal diagnostic", scenario.suite)
 		}
+		assertFatalDiagnostic(t, result.stderr)
 	}
 	combinedFatal, combinedOutput := runCLICombined(
 		t,
@@ -656,8 +789,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 			t.Fatalf("combined fatal output = %q, want provenance %q", combinedOutput, provenance)
 		}
 	}
-	lastLine := combinedOutput[strings.LastIndex(strings.TrimSuffix(combinedOutput, "\n"), "\n")+1:]
-	if !strings.Contains(lastLine, "yaml path spec.steps[0]") {
+	if !strings.HasSuffix(combinedOutput, "#missing-or-duplicate-variable\n") {
 		t.Fatalf("fatal diagnostic was not the final application output: %q", combinedOutput)
 	}
 
@@ -669,8 +801,20 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if commandFailure.stderr == "" {
 		t.Fatal("unavailable HTTP server stderr is empty, want fatal diagnostic")
 	}
+	assertFatalDiagnostic(t, commandFailure.stderr)
 
 	assertProductionCoverage(t, ctx, repoRoot, coverageDir, minimumCoverage)
+}
+
+func assertFatalDiagnostic(t *testing.T, stderr string) {
+	t.Helper()
+	if !strings.HasPrefix(stderr, "error: ") {
+		t.Fatalf("fatal stderr = %q, want error prefix", stderr)
+	}
+	footer := "\n\nplease check user manual: " + manualReference + "#"
+	if strings.Count(stderr, footer) != 1 || !strings.HasSuffix(stderr, "\n") {
+		t.Fatalf("fatal stderr = %q, want one final anchored manual footer", stderr)
+	}
 }
 
 func TestTotalCoverage(t *testing.T) {

@@ -10,10 +10,13 @@ $(IMPLEMENT_ARGS):
 endif
 endif
 
-.PHONY: check init lint vet test tooling-test integration-test coverage race benchmark help test_version implement
+.PHONY: check check-scripts init install lint vet test tooling-test integration-test coverage race benchmark help test_version implement
 
 .DEFAULT_GOAL := check
-check: lint vet race tooling-test integration-test ## Check project
+check: lint vet race integration-test ## Check application code and integration tests
+
+install: ## Install apih into the Go binary directory
+	@go install ./cmd/apih
 
 init:
 	@go install golang.org/x/tools/cmd/goimports@latest
@@ -40,13 +43,15 @@ lint: ## Lint the files
 vet: ## Vet the files
 	@if [ -n "${PKG_LIST}" ]; then go vet ${PKG_LIST}; fi
 
-test: tooling-test ## Run tests
+test: ## Run short application tests
 	@if [ -n "${PKG_LIST}" ]; then go test -short ${PKG_LIST}; fi
 
 integration-test: ## Run black-box CLI integration tests with production coverage
 	@go test -tags=integration ./int-tests -count=1
 
-tooling-test:
+tooling-test: check-scripts
+
+check-scripts: ## Run repository script tests
 	@scripts/makefile_test.sh
 	@scripts/create-change-branch_test.sh
 	@scripts/change-merge-direct_test.sh

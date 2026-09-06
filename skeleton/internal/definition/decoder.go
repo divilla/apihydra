@@ -16,7 +16,10 @@ func NewDecoder() *Decoder {
 
 // DecodeFiles traverses suite.Root, decoding each DefaultsFile and StepsFiles
 // entry into the corresponding Directory definition fields. It mutates only
-// Directory.DefaultsDefinition and Directory.StepsDefinitions.
+// Directory.DefaultsDefinition and Directory.StepsDefinitions. A malformed or
+// type-invalid file returns an ErrInvalidDefinition configuration error that
+// preserves the source file, the most specific available YAML path, and the
+// original YAML cause.
 func (l *Decoder) DecodeFiles(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -26,7 +29,8 @@ func (l *Decoder) DecodeFiles(
 }
 
 // ValidateDefaultsDefinitions traverses suite.Root and validates each
-// Directory.DefaultsDefinition, returning an error on failure.
+// Directory.DefaultsDefinition. A field validation failure returns an
+// ErrInvalidDefinition configuration error with file and YAML-path provenance.
 func (l *Decoder) ValidateDefaultsDefinitions(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -36,7 +40,8 @@ func (l *Decoder) ValidateDefaultsDefinitions(
 }
 
 // ValidateStepsDefinitions traverses suite.Root and validates every entry in
-// Directory.StepsDefinitions, returning an error on failure.
+// Directory.StepsDefinitions. A field validation failure returns an
+// ErrInvalidDefinition configuration error with file and YAML-path provenance.
 func (l *Decoder) ValidateStepsDefinitions(
 	ctx context.Context,
 	suite *domain.Suite,

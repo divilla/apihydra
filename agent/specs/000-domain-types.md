@@ -58,6 +58,16 @@ with the packages named in the PRD.
   `skeleton/` packages out of production targets, tolerate an empty production
   package list before this guide is implemented, and begin checking production
   packages as soon as they exist.
+- Repository workflows: `make check` runs lint, vet, race, and application
+  integration tests; `make check-scripts` runs script tests separately.
+  `make test` runs only short application tests, and `make tooling-test`
+  aliases `make check-scripts`. `make install` runs `go install ./cmd/apih`
+  and uses Go's normal `GOBIN` or `$GOPATH/bin` destination. Makefile wiring is
+  verified by `scripts/makefile_test.sh`.
+- User examples: `docs/examples/basic` and `docs/examples/full` use this domain
+  vocabulary for root, defaults, and steps documents. Full configures every
+  declarative field and every defaults scope; runtime-populated fields remain
+  absent. Example requirements belong to change `017-user-manual` and the PRD.
 - Test outputs: `internal/domain/suite_test.go` covers YAML and JSON schema,
   including steps-file and request `defaults` nesting, zero values, rejected
   incompatible shapes, the absence of the former direct default-related
@@ -104,4 +114,4 @@ Such behavior belongs to an owning service or requires a prior skeleton change.
    zero values required to keep the reference compilable (or has no return for
    a void method).
 7. `go test ./internal/domain`, the root architecture test, repository coverage,
-   `make check`, and `git diff --check` pass.
+   `make check`, `make check-scripts`, and `git diff --check` pass.

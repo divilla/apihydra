@@ -323,7 +323,25 @@ change. Include at least one complete runnable suite as a directory tree with
 the full contents of every file; it may depend on a clearly described HTTP
 fixture. Focused examples may omit unrelated fields.
 
-Audit every file below `agent/examples/` and ensure that every construct shown
+Maintain the checked-in examples under `docs/examples/` in two independently
+selectable groups:
+
+- `basic/` contains a minimal GET request with status validation and inherited
+  directory defaults; optional fields may be omitted.
+- `full/` explicitly configures every user-settable YAML field, including
+  metadata, variables, all request and response expectation/capture fields,
+  Debug, and all six defaults fields at root, nested directory, steps-file,
+  and request scope. Runtime-populated fields are excluded. `debug: false`
+  permits normal validation; explain how to enable the breakpoint.
+
+Each group has a qualifying top-level `root.yaml` plus a child directory with
+`defaults.yaml` and `steps.yaml`. `docs/examples/README.md` explains their
+purpose, local HTTP fixture requirements, and both invocation forms: select
+`docs/examples/basic` or `docs/examples/full` from the repository root, or
+change into either group and invoke `apih`. The full command explicitly sets
+`--parallelism=1`. The parent `docs/examples` is not itself a suite root.
+
+Audit every file below `docs/examples/` and ensure that every construct shown
 there is explained by the manual. Examples may be corrected, consolidated, or
 adapted into more useful scenarios rather than copied verbatim, and the manual
 must not depend on those source files to be complete. Application-specific
@@ -352,8 +370,12 @@ illustrative.
   declarative key, and has no broken repository-relative links.
 - Extract and decode every YAML block labeled as complete or runnable. Verify
   the complete field-coverage example reaches every declarative field.
-- Run `go test ./...`, `go test -race ./...`, `make check`, and
-  `git diff --check`.
+- Also verify the checked-in basic and full suites decode, the full suite
+  covers every declarative field at the applicable scopes, and both selection
+  forms succeed against a local HTTP fixture matching the examples README.
+- Run `go test ./...`, `go test -race ./...`, `make check`,
+  `make check-scripts`, and `git diff --check`. Application checks and
+  repository script checks are separate Makefile targets.
 - Perform a final source-to-manual audit for behavioral details that cannot be
   usefully established by a structural documentation test.
 
@@ -375,7 +397,9 @@ illustrative.
 5. The manual contains explained, copyable examples for every declarative
    field and user-visible feature required by this change, plus one complete
    runnable suite whose files decode successfully and whose assumed server
-   behavior is explicit.
+   behavior is explicit. Checked-in `docs/examples/basic` and
+   `docs/examples/full` provide the minimal and fully configured groups
+   described above, with working links from the README and manual.
 6. Troubleshooting guidance covers the required observable failures and never
    presents deliberately unspecified behavior as a stable product guarantee.
 7. The final manual has been compacted without losing relevant information;

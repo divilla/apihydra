@@ -235,6 +235,9 @@ func TestDecodeFilesReturnsContextualErrorsWithoutPartialMutation(t *testing.T) 
 			if err == nil {
 				t.Fatal("DecodeFiles() error = nil for malformed YAML")
 			}
+			if !errors.Is(err, ErrInvalidDefinition) {
+				t.Fatalf("DecodeFiles() error = %v, want ErrInvalidDefinition", err)
+			}
 			if got := errs.Code(err, errs.ExitInternal); got != errs.ExitConfiguration {
 				t.Fatalf("DecodeFiles() exit code = %d, want %d", got, errs.ExitConfiguration)
 			}

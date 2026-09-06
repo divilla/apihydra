@@ -93,7 +93,7 @@ hierarchy:
 
 | Package | Owned responsibility |
 | --- | --- |
-| `cmd/apih` | Working-directory selection, service composition, fatal-diagnostic logging, and process exit. |
+| `cmd/apih` | Working-directory selection, service composition, fatal-diagnostic presentation, and process exit. |
 | `internal/domain` | Shared suite, directory, file, definition, defaults, and step values. |
 | `internal/definition` | Directory/file loading, document classification, definition decoding and validation, and resolution. |
 | `internal/execution` | The key-value store, variable phases, response validation, step preparation, staged execution, and run-local cookie-jar ownership and inheritance. |
@@ -234,6 +234,32 @@ non-empty, it joins that value to the current directory and requires the result
 to be a directory. Invalid input returns configuration code `102` and an error
 matching CLI-owned `ErrInvalidPath`.
 
+Before creating run-local state or reporting output, Loader requires the
+selected directory itself to contain at least one regular lowercase `.yaml` or
+`.yml` file whose top-level envelope decodes with string `app: apihydra` and
+`kind: root`. The filename is arbitrary. First, every parseable top-level
+document with string `app: apihydra` must have string `kind` equal to `root`,
+`defaults`, or `steps`. Missing, unspecified, empty, null, non-string, and
+unsupported kinds return configuration-coded `ErrInvalidKind`, with exact
+fatal line `error: kind: must be one of: <root|defaults|steps>` and footer anchor
+`#invalid-yaml-definition`. This failure precedes root acceptance or rejection
+and stdout, including when another file qualifies. Other app values do not
+receive this check and retain existing decoding behavior.
+
+Invalid candidates and qualifying documents below the selected directory do
+not satisfy the root check. If kind validation passes and no file
+qualifies, the CLI returns configuration code `102`, empty stdout, and
+`ErrRootDefinitionMissing` with message `root defaults file missing`;
+recursive discovery and decoding have not begun. The fatal CLI line is
+`error: root defaults file missing`, and its manual anchor is
+`#root-defaults-file-missing`.
+
+After root qualification, Loader applies the same kind validation before typed
+base decoding to all recursively discovered files, without partially committing
+classification on failure. A nested kind failure cannot supersede a missing
+root. Malformed YAML retains existing parser/root-check behavior. The kind
+diagnostic is exact; other definition errors retain file and YAML provenance.
+
 For every valid run, CLI creates a private `run-*` directory below
 `os.UserCacheDir()/apih`, assigns it to `Config.TempRunDir`, and defers
 best-effort removal of the complete run directory. Cleanup failures are always
@@ -246,18 +272,19 @@ reused, or copied by another invocation, including when abrupt termination
 leaves an older run directory behind.
 
 The reference CLI creates one Reporter for `os.Stdout`, explicitly identifying
-whether stdout is a terminal. `run` reports the selected working directory,
-creates
-`domain.Suite{WorkDir: workDir}`, and invokes:
+whether stdout is a terminal. `run` creates
+`domain.Suite{WorkDir: workDir}` and invokes
+`Loader.LoadDirectoryStructure` first so the root check precedes cache
+creation and output. After that succeeds, it creates the private run directory,
+reports the selected working directory, and continues with:
 
-1. `Loader.LoadDirectoryStructure`
-2. `Loader.LoadDirectoryFiles`
-3. `Loader.DecodeBaseDefinitions`
-4. `Decoder.DecodeFiles`
-5. `Decoder.ValidateDefaultsDefinitions`
-6. `Decoder.ValidateStepsDefinitions`
-7. `Resolver.ResolveDefaults`
-8. `Resolver.ResolveSteps`
+1. `Loader.LoadDirectoryFiles`
+2. `Loader.DecodeBaseDefinitions`
+3. `Decoder.DecodeFiles`
+4. `Decoder.ValidateDefaultsDefinitions`
+5. `Decoder.ValidateStepsDefinitions`
+6. `Resolver.ResolveDefaults`
+7. `Resolver.ResolveSteps`
 
 After definition resolution, `run` creates one `KeyValueStore`, `Binder`, and
 Config-injected `Validator`, then creates a Config-injected `Executor` with
@@ -270,11 +297,16 @@ It then:
 3. obtains the execution plan with `Executor.PlanStages(suite)`; and
 4. returns `Executor.Execute(ctx, stagesPlan)` unchanged.
 
-When `run` returns an error, `main` writes it to `os.Stderr` with the standard
-logger and then calls `os.Exit` with the exact code returned by `run`. Reporter
-does not own fatal diagnostics or process exit. Executor first finalizes the
-active ordered stage render; the provenance-bearing stderr diagnostic is the
-last application output, and no later reporting or cleanup diagnostic follows.
+When `run` returns an error, `main` writes one lowercase diagnostic to
+`os.Stderr` and calls `os.Exit` with the exact code returned by `run`. The
+diagnostic has `error: <message>`, one blank line, and exactly one final
+`please check user manual: <canonical-manual>#<category>` line. Its anchor is
+selected from the binding error identities, and every emitted anchor resolves
+to exactly one specific troubleshooting section. Help, successful runs, and
+validation-only exit `101` do not receive this footer. Reporter does not own
+fatal diagnostics or process exit. Executor first finalizes the active ordered
+stage render; the provenance-bearing stderr diagnostic is the last application
+output, and no later reporting or cleanup diagnostic follows.
 
 ## Parallel execution and ordered output
 
@@ -297,6 +329,12 @@ canceled and joined, accumulated file output receives one final ordered render,
 and the CLI writes the provenance-bearing fatal stderr diagnostic last. Debug
 is likewise terminal: accumulated file blocks retain canonical order and the
 Debug dump is rendered as the final stdout block.
+
+Validation headings use light blue `line:<N>` for the first reported failing
+expectation key in the original YAML bytes, falling back to the step line or
+`line:unknown` when unavailable. File and step headers remain deduplicated.
+Status mismatches print `expected_status` first, then `actual_status`, retaining
+four-space indentation and palette colors 10 and 210 respectively.
 
 ### Cookie execution state
 
@@ -348,6 +386,32 @@ The construction and lookup semantics for coded errors are owned by
 [`002-errs-pkg.md`](specs/002-errs-pkg.md). Package guides must reference that
 contract instead of redefining contextual error formatting.
 
+## Documentation and repository workflow
+
+The canonical user manual is [`docs/user-manual/apih.md`](../docs/user-manual/apih.md).
+Checked-in examples live in [`docs/examples/`](../docs/examples/README.md), with
+two independently selectable suites: `basic` demonstrates a minimal GET and
+status validation; `full` explicitly configures every user-settable YAML field,
+including metadata and all six defaults fields at root, nested directory,
+steps-file, and request scope. Both contain root, defaults, and steps documents.
+Runtime-populated fields are excluded. The examples README documents local
+server expectations and both directory-selection forms; `docs/examples` itself
+is not a suite root. The manual remains self-contained.
+
+From the repository root, the Makefile provides these separate workflows:
+
+- `make install` executes `go install ./cmd/apih`, installing `apih` into
+  `GOBIN` when set or otherwise `$GOPATH/bin` (normally `~/go/bin`).
+- `make check` is the default target and runs application linting, vetting,
+  race tests, and black-box integration tests.
+- `make check-scripts` runs repository script tests independently.
+- `make test` runs short application tests only.
+- `make tooling-test` remains an alias for `make check-scripts`.
+- `make integration-test` runs the black-box application suite independently.
+
+Run both check targets when verifying application and repository tooling
+together. These workflows and examples use the existing application contract.
+
 ## Specification guides
 
 Each package guide points to its binding skeleton contract:
@@ -386,8 +450,8 @@ separate black-box integration suite.
 
 The following are not product requirements:
 
-- definition placement/cardinality rules beyond the reference fields and
-  service comments;
+- definition placement/cardinality rules beyond the required direct
+  qualifying root and behavior when multiple qualifying roots exist;
 - deterministic file ordering or symlink/hidden-directory policy;
 - presence-sensitive default merging beyond the defined `DisableCookies`
   overlay and the timeout/retry fallbacks,
@@ -419,14 +483,15 @@ updated to match.
 
 1. Production packages compile against the exact reference names, types, and
    method signatures without adapters that create a competing API.
-2. The current CLI follows the eight definition phases in order, then validates
-   the directory tree, prepares runtime steps, plans stages, and executes that
-   plan in the order fixed by the skeleton.
+2. The current CLI performs root qualification before cache creation, output,
+   and recursive discovery, then follows the remaining seven definition phases
+   in order, validates the directory tree, prepares runtime steps, plans
+   stages, and executes that plan in the order fixed by the skeleton.
 3. Shared workflow state uses `internal/domain` rather than parallel carriers.
    Directory, steps-file, and individual-step defaults use `domain.Defaults`
    values and resolve in that precedence order without `*domain.Defaults`.
 4. Command execution, contextual error composition, execution output, and
-   fatal diagnostic logging remain within their owner packages.
+   fatal diagnostic presentation remain within their owner packages.
 5. Every package-local behavior is defined once in the skeleton and referenced
    by the PRD, architecture, and specification guides.
 6. No behavior listed as unspecified is asserted by a package guide.
@@ -451,3 +516,7 @@ updated to match.
     by the mode, mode-2 selection follows the last observed step completion,
     empty directories preserve incoming state, no writable jar is shared or
     merged, and separate invocations never exchange jars.
+12. Every fatal diagnostic is lowercase, ends with exactly one canonical
+    category-specific manual link, and preserves the applicable package error
+    identity plus directory, file, step, variable, or capture provenance, except
+    that `ErrInvalidKind` uses the exact diagnostic specified above.

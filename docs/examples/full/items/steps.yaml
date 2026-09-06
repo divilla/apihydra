@@ -1,0 +1,45 @@
+app: apihydra
+kind: steps
+metadata:
+  name: create-item
+  labels: [example, create]
+spec:
+  defaults:
+    base_url: http://127.0.0.1:18080
+    base_path: /api
+    headers:
+      Content-Type: application/json
+      X-File: create-item
+    disable_cookies: true
+    timeout: 6
+    retries: 2
+  steps:
+    - vars:
+        item_title: "Example item"
+        expected_id: "7"
+      request:
+        method: POST
+        path: /items
+        query: source=example&limit=20
+        body: |
+          {"title":"$item_title"}
+        defaults:
+          base_url: http://127.0.0.1:18080
+          base_path: /api
+          headers:
+            Content-Type: application/json
+            X-Step: create-item
+          disable_cookies: false
+          timeout: 5
+          retries: 1
+      response:
+        expected_status: 201
+        expected_body: |
+          {"id":$expected_id,"title":"$item_title","ok":true}
+        expected_types:
+          .id: [int, zero]
+          .title: [string]
+          .ok: [boolean]
+        capture:
+          item_id: .id
+      debug: false

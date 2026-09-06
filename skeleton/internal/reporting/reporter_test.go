@@ -60,3 +60,51 @@ func TestValidationErrorLabelsMatchSplitResponseContract(t *testing.T) {
 		})
 	}
 }
+
+func TestValidationLineUsesOriginalExpectationKey(t *testing.T) {
+	const source = `app: apihydra
+kind: steps
+spec:
+  steps:
+    - response: {expected_status: 200}
+    - request:
+        body: |
+          expected_status: 999
+      response:
+        "expected_status":
+          200
+        expected_types:
+          .id: [string]
+        expected_body: |
+          {"id": "expected"}
+`
+	file := &domain.File{Bytes: []byte(source)}
+	step := &domain.Step{Index: 1, Definition: &domain.StepsDefinition{File: file}}
+	for field, want := range map[string]string{
+		"expected_status": "10", "expected_types": "12", "expected_body": "14", "missing": "6",
+	} {
+		if got := validationLine(step, field); got != want {
+			t.Errorf("validationLine(%s) = %s, want %s", field, got, want)
+		}
+	}
+	step.Index = 0
+	if got := validationLine(step, "expected_status"); got != "5" {
+		t.Errorf("flow mapping line = %s, want 5", got)
+	}
+}
+
+func TestValidationLineHandlesUnavailableSources(t *testing.T) {
+	for _, step := range []*domain.Step{
+		nil,
+		{},
+		{Index: -1},
+		{Definition: &domain.StepsDefinition{}},
+		{Definition: &domain.StepsDefinition{File: &domain.File{}}},
+		{Definition: &domain.StepsDefinition{File: &domain.File{Bytes: []byte("spec: [")}}},
+		{Index: 2, Definition: &domain.StepsDefinition{File: &domain.File{Bytes: []byte("spec: {steps: []}")}}},
+	} {
+		if got := validationLine(step, "expected_status"); got != "unknown" {
+			t.Errorf("validationLine(%+v) = %s, want unknown", step, got)
+		}
+	}
+}

@@ -21,17 +21,21 @@ behavior and Runner defines capture extraction.
 The skeleton does not define:
 
 - variable-name grammar within the two documented placeholder forms;
-- escaping, replacement precedence, or behavior for a missing variable;
+- escaping or replacement precedence;
 - variable scope or lifetime beyond the injected Binder store;
 - YAMLString serialization;
 - capture iteration order or selector syntax beyond delegation to
   `runner.JQExtract`;
 - nil binder, store, context, or step behavior;
-- success/failure code selection for these methods;
 - cancellation behavior beyond accepting a context.
 
 Duplicate storage behavior is inherited from `KeyValueStore.Set`; this guide
 does not redefine it.
+
+Missing and duplicate variable operations retain their store error identity
+and also match Binder's `ErrVariable`; capture extraction and storage failures
+match `ErrCapture`. Both contextual identities identify the affected variable
+or capture name and preserve the underlying cause and code.
 
 Capture reads `Step.Response.ActualBody` from its binding
 `domain.YAMLString` field. Binder may pass its string content to Runner, but it
@@ -45,7 +49,8 @@ does not replace the shared field with a parallel `string` carrier.
 - Test output: `internal/execution/binder_test.go` covers loading, both
   placeholder forms in request and expected-response bodies, missing and
   duplicate variables, capture extraction/storage, context/command failures,
-  and mutation boundaries under the chosen unspecified policies.
+  affected names, preserved identities/codes, and mutation boundaries under
+  the chosen unspecified policies.
 - Each acceptance criterion is traced to at least one meaningful unit test, and
   Binder unit-test statement coverage remains greater than 95%.
 
@@ -58,5 +63,7 @@ does not replace the shared field with a parallel `string` carrier.
 3. Phase ordering is not duplicated from the Executor skeleton contract.
 4. Capture delegates value extraction to `runner.JQExtract`; Binder does not
    execute external commands directly.
-5. No variable grammar or error policy absent from the skeleton is introduced.
+5. No variable grammar or error policy absent from the skeleton is introduced;
+   binding `ErrVariable` and `ErrCapture` classifications retain underlying
+   store or Runner errors and identify the affected name.
 6. Package tests, race tests, and `git diff --check` pass.

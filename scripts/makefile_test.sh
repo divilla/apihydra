@@ -17,6 +17,11 @@ cat >"$fake_bin/go" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ ${1-} == vet || ${1-} == test ]]; then
+	printf 'go:%s\n' "$*" >>"$MAKEFILE_TEST_LOG"
+	exit 0
+fi
+
 [[ ${1-} == list ]]
 if [[ $# -eq 2 && $2 == github.com/divilla/apihydra/... ]]; then
 	if [[ ${MAKEFILE_TEST_EMPTY-} == 1 ]]; then
@@ -103,6 +108,51 @@ grep -Fxq 'golint:github.com/divilla/apihydra/pkg/runner' "$log"
 		make lint vet race
 )
 [[ ! -s "$log" ]]
+
+script_tests=(
+	makefile_test.sh
+	create-change-branch_test.sh
+	change-merge-direct_test.sh
+	codex-code-spec_unit_test.pl
+	codex-code-spec_test.sh
+	codex-review-loop_unit_test.pl
+	codex-review-loop_test.sh
+)
+for tool in "${script_tests[@]}"; do
+	printf '%s\n' \
+		'#!/usr/bin/env bash' \
+		'printf "script:%s\n" "$(basename "$0")" >>"$MAKEFILE_TEST_LOG"' \
+		>"$repo/scripts/$tool"
+	chmod +x "$repo/scripts/$tool"
+done
+
+for target in check test check-scripts tooling-test; do
+	: >"$log"
+	(
+		cd "$repo"
+		PATH="$fake_bin:$PATH" \
+			MAKEFILE_TEST_LOG="$log" \
+			MAKEFILE_TEST_REPO="$repo" \
+			make "$target"
+	)
+	case "$target" in
+	check)
+		! grep -q '^script:' "$log"
+		grep -Fxq "goimports:$repo/pkg/runner" "$log"
+		grep -Fxq 'staticcheck:github.com/divilla/apihydra/pkg/runner' "$log"
+		grep -Fxq 'golint:github.com/divilla/apihydra/pkg/runner' "$log"
+		grep -Fxq 'go:vet github.com/divilla/apihydra/pkg/runner' "$log"
+		grep -Fxq 'go:test -race github.com/divilla/apihydra/pkg/runner' "$log"
+		grep -Fxq 'go:test -tags=integration ./int-tests -count=1' "$log"
+		;;
+	test)
+		[[ $(<"$log") == 'go:test -short github.com/divilla/apihydra/pkg/runner' ]]
+		;;
+	check-scripts|tooling-test)
+		[[ $(<"$log") == "$(printf 'script:%s\n' "${script_tests[@]}")" ]]
+		;;
+	esac
+done
 
 : >"$log"
 (

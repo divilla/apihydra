@@ -4,9 +4,8 @@ APIHydra is an ultra-fast, agent-first API integration tester. An `apih` suite
 is a directory tree of YAML definitions: root and defaults documents configure
 requests, while steps documents send HTTP requests and validate responses.
 
-This manual is written for coding agents first and humans too. Rules are stated
-literally, reference tables are exhaustive, and examples are designed to be
-copied.
+This manual is written for coding agents first and humans too.
+Reference tables are exhaustive; examples are copyable.
 
 ## Contents
 
@@ -44,8 +43,10 @@ go build -o ./bin/apih ./cmd/apih
 ./bin/apih --help
 ```
 
-For development, `go run ./cmd/apih` can replace `./bin/apih` in every command
-below.
+For development, replace `./bin/apih` with `go run ./cmd/apih`.
+
+`make install` runs `go install ./cmd/apih` into `GOBIN` or `$GOPATH/bin`.
+Application and script checks use separate [Makefile targets](../../scripts/README.md).
 
 ### Minimal suite
 
@@ -92,6 +93,9 @@ Run it from the directory containing `quick-start`:
 
 Exit code `0` means the request ran and all configured validations passed.
 
+[Basic and full examples](../examples/README.md) include files and fixture
+requirements.
+
 ## CLI reference
 
 ### Synopsis
@@ -130,7 +134,17 @@ apih -- -suite
 
 Unknown flags, malformed values, parallelism outside `0..2`, and extra
 positional arguments are configuration failures. They produce no application
-stdout; the CLI writes the fatal diagnostic to stderr.
+stdout; the CLI writes the fatal diagnostic to stderr. Every fatal diagnostic
+uses this lowercase form and links to its specific troubleshooting section:
+
+```text
+error: <message>
+
+please check user manual: https://github.com/divilla/apihydra/blob/master/docs/user-manual/apih.md#<category>
+```
+
+The footer appears exactly once and is the final stderr line. Help, success,
+and validation-only exit `101` do not print it.
 
 ### Exit codes
 
@@ -147,10 +161,18 @@ use the final stderr diagnostic to identify the failed operation.
 
 ## Suites, stages, and parallelism
 
-`apih` recursively builds a directory tree from the selected suite directory.
-It reads regular files whose names end in lowercase `.yaml` or `.yml`.
-Directory depth determines execution stage: the selected directory is stage
-`0`, its direct children are stage `1`, and so on.
+Before recursion, `apih` checks regular lowercase `.yaml`/`.yml` files directly
+in the selected directory. Parseable `app: apihydra` documents require string
+kind `root`, `defaults`, or `steps`; invalid kinds take priority over root
+selection, regardless of filename order. Other app values receive no kind
+check. If none qualifies as `app: apihydra`, `kind: root`, execution stops with
+`102` before discovery, cache creation, or stdout; see
+[Root defaults file missing](#root-defaults-file-missing).
+
+After root qualification, recursive decoding repeats kind validation.
+Malformed files retain parser diagnostics; nested files cannot mask a missing
+root. Directory depth determines stage: the selected directory is `0`, children
+are `1`, and so on.
 
 Only steps documents contain executable requests. Root and defaults documents
 provide defaults inherited by steps in their directory and descendants.
@@ -167,10 +189,10 @@ suite/                              stage 0
         └── refund-steps.yaml       executable steps file
 ```
 
-Use a root document at the suite root and a defaults document for a nested
-directory. Both have the same defaults shape. Keep at most one root/defaults
-document in a directory for predictable suites: placement and cardinality when
-multiple default-bearing documents coexist are not a published contract.
+Use a qualifying root document directly in the suite root and a defaults
+document for a nested directory. Both have the same defaults shape. Behavior
+with multiple qualifying root documents, and cardinality when multiple
+default-bearing documents coexist, is not a published contract.
 
 ### Stage and parallelism rules
 
@@ -202,7 +224,7 @@ Definitions use the following envelope. `spec` changes shape by document kind.
 | YAML key | Value shape | Scope/default | Effect |
 | --- | --- | --- | --- |
 | `app` | String; use `apihydra` | Document; empty if omitted | Identifies the APIHydra definition vocabulary. |
-| `kind` | `root`, `defaults`, or `steps` | Document; required for useful classification | Selects the `spec` shape and whether the document configures or executes. |
+| `kind` | `root`, `defaults`, or `steps` | Required for `app: apihydra` | Selects the `spec` shape and whether the document configures or executes. |
 | `metadata.name` | String | Root, defaults, or steps document; empty if omitted | Descriptive definition name and reporting identity where applicable. |
 | `metadata.labels` | List of strings | Root, defaults, or steps document; empty if omitted | Descriptive labels. No CLI name/label filter is currently defined. |
 | `spec` | Mapping | Document | Contains defaults for `root`/`defaults`, or defaults plus steps for `steps`. |
@@ -686,20 +708,22 @@ and argument list used for the request; rendering never mutates execution.
 
 ## Output, failures, and temporary data
 
-Logical stdout order is always stage, directory, steps file, then step, using
-the suite plan and slice order. Runtime completion order does not reorder the
-final logical output.
+Stdout follows stage, directory, steps file, then step in suite-plan order,
+regardless of completion order. Terminals redraw only the active stage; the
+working-directory heading and completed stages stay fixed. Non-terminal output
+writes each stage once at its barrier, grouping results by file.
 
-On a terminal, Reporter clears and redraws only the active-stage region as
-events arrive. The working-directory heading and completed stages stay fixed.
-When stdout is not a terminal, `apih` buffers the stage and writes it once at
-the stage barrier. Success and validation output stay grouped under the owning
-steps file.
+Failure headings show `line:<N>` for the first failing expectation key in YAML,
+falling back to the step line or `line:unknown`. Status failures print
+`expected_status` first, then `actual_status`.
 
 A terminal error cancels and joins active work, commits the accumulated stage
 output in canonical order, and prevents later work. The CLI then writes the
-provenance-bearing fatal diagnostic to stderr. That diagnostic is the final
-application output; cleanup failures never add diagnostics.
+provenance-bearing fatal diagnostic and one category-specific manual link to
+stderr. That diagnostic is the final application output; cleanup failures
+never add diagnostics. Once a qualifying root exists, invalid recursively
+discovered definitions identify the affected file and, when available, the
+YAML location.
 
 ### Private run directory
 
@@ -981,7 +1005,7 @@ Debug cannot redact them. See [Debug breakpoints](#debug-breakpoints).
 | `git` diff error or executable not found after a body mismatch | `git` is required to render unequal expected and actual bodies. Install it and ensure the run cache is writable. |
 | Invalid selected directory | Pass zero or one existing directory. Relative paths resolve from the current working directory. Exit is `102`. |
 | Malformed YAML or a scalar type error | Correct the reported file/YAML location. Body, variable, capture, metadata, header, path, query, and URL values are strings; quote numeric-looking variable values. |
-| Missing variable | Define it before interpolation. Keep dependent steps serial. Exact missing-key diagnostics are not a stable contract. |
+| Missing variable | Define it before interpolation. Keep dependent steps serial. The fatal diagnostic identifies the affected variable. |
 | Duplicate variable or capture | The store is run-wide and write-once. Rename the later key; the first value is preserved. |
 | Invalid jq selector | Test it against the actual response with `jq`. Capture and type selectors delegate to jq; selector failure is terminal. |
 | Invalid expected or actual JSON during body validation | Supply a valid nonempty JSON expected body and ensure the service returns JSON. Omit `expected_body` only when body validation is intentionally skipped. |
@@ -994,6 +1018,61 @@ Debug cannot redact them. See [Debug breakpoints](#debug-breakpoints).
 | A later request lost cookie updates | A disabled request leaves the owning jar unchanged; parallel modes also isolate writable jars. Check scope overlays and the selected mode. |
 | Debug exposed a secret | Treat the output as compromised, rotate the secret, and remove it before sharing future Debug output. Debug has no redaction mode. |
 | An old `run-*` cache directory remains | Abrupt termination can prevent cleanup. Later runs do not reuse it. The product defines no startup scavenger; manage abandoned user-cache data outside active runs. |
+
+### Root defaults file missing
+
+For `error: root defaults file missing`, select the suite directory with `apih`
+or `apih <directory>`. Add any regular `.yaml`/`.yml` file containing string
+`app: apihydra` and `kind: root`. Nested, malformed, wrongly typed, or
+differently classified documents do not qualify.
+
+### Invalid arguments
+
+Pass at most one directory and use parallelism `0`, `1`, or `2`. Check unknown
+flags and malformed values.
+
+### Invalid selected directory
+
+Pass an existing directory. Relative paths resolve from the current working
+directory; a YAML file itself is not a valid directory argument.
+
+### Invalid YAML definition
+
+Correct the reported file and YAML location. Use documented scalar and mapping
+shapes; quote numeric-looking values where a string is required.
+
+`error: kind: must be one of: <root|defaults|steps>` means an `app: apihydra`
+document has a missing, unspecified, empty, null, non-string, or unsupported
+kind. Set `kind` to `root`, `defaults`, or `steps`. This exact diagnostic uses
+exit `102` and omits file provenance.
+
+### Definition discovery error
+
+Check that suite directories and YAML files remain readable during discovery.
+The diagnostic identifies the failed path.
+
+### Missing or duplicate variable
+
+Define each interpolated variable before use and only once per invocation.
+Keep producer and consumer steps serial when ordering matters, and rename a
+duplicate variable or capture; the diagnostic identifies the affected name.
+
+### External tool failure
+
+Install `curl`, `jq`, and `git`, ensure they are on `PATH`, and check the
+reported command input. Curl performs requests, jq handles JSON selectors and
+formatting, and git renders unequal response bodies.
+
+### Capture error
+
+Check the named capture's jq selector against the actual response JSON. Ensure
+the response is valid JSON and choose a selector that returns the intended
+value.
+
+### Internal errors
+
+Review its provenance, check cache permissions, and retry. If it persists,
+report the diagnostic with a minimal reproducible suite.
 
 ## Agent checklist
 

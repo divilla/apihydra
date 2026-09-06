@@ -212,19 +212,19 @@ func TestReporterWritesChosenOutputBlocks(t *testing.T) {
 			call: func(report *Reporter) error {
 				return report.ValidationTypes(finalValidationContext(report), step, `{"selector":".id","actual":"null"}`)
 			},
-			want: "[\x1b[38;5;210m✗\x1b[0m] /suite/steps\n[\x1b[38;5;210m✗\x1b[0m] / GET \x1b[36mstep-4\x1b[0m\n    expected_types:\n        \x1b[38;5;15m.id:\x1b[0m \x1b[38;5;210m[string]\x1b[0m\n\n",
+			want: "[\x1b[38;5;210m✗\x1b[0m] /suite/steps\n[\x1b[38;5;210m✗\x1b[0m] / GET \x1b[38;5;117mline:unknown\x1b[0m\n    expected_types:\n        \x1b[38;5;15m.id:\x1b[0m \x1b[38;5;210m[string]\x1b[0m\n\n",
 		},
 		"status": {
 			call: func(report *Reporter) error {
 				return report.ValidationStatus(finalValidationContext(report), step, errors.New("validation error"))
 			},
-			want: "[\x1b[38;5;210m✗\x1b[0m] /suite/steps\n[\x1b[38;5;210m✗\x1b[0m] / GET \x1b[36mstep-4\x1b[0m\n    actual_status: \x1b[38;5;210m500\x1b[0m\n    expected_status: \x1b[38;5;10m201\x1b[0m\n\n",
+			want: "[\x1b[38;5;210m✗\x1b[0m] /suite/steps\n[\x1b[38;5;210m✗\x1b[0m] / GET \x1b[38;5;117mline:unknown\x1b[0m\n    expected_status: \x1b[38;5;10m201\x1b[0m\n    actual_status: \x1b[38;5;210m500\x1b[0m\n\n",
 		},
 		"body": {
 			call: func(report *Reporter) error {
 				return report.ValidationBody(finalValidationContext(report), step, "- actual\n+ expected")
 			},
-			want: "[\x1b[38;5;210m✗\x1b[0m] /suite/steps\n[\x1b[38;5;210m✗\x1b[0m] / GET \x1b[36mstep-4\x1b[0m\n    expected_body:\n        - actual\n        + expected\n\n",
+			want: "[\x1b[38;5;210m✗\x1b[0m] /suite/steps\n[\x1b[38;5;210m✗\x1b[0m] / GET \x1b[38;5;117mline:unknown\x1b[0m\n    expected_body:\n        - actual\n        + expected\n\n",
 		},
 		"debug": {
 			call: func(report *Reporter) error { return report.Debug(context.Background(), step) },
@@ -368,7 +368,7 @@ func TestReporterGroupsEveryValidationForOneStepUnderOneFailureHeader(t *testing
 	}
 
 	want := "[\x1b[38;5;210m✗\x1b[0m] /change/create\n" +
-		"[\x1b[38;5;210m✗\x1b[0m] /api/v1/change/create POST \x1b[36mstep-3\x1b[0m\n" +
+		"[\x1b[38;5;210m✗\x1b[0m] /api/v1/change/create POST \x1b[38;5;117mline:unknown\x1b[0m\n" +
 		"    expected_types:\n" +
 		"        \x1b[38;5;15m.version:\x1b[0m \x1b[38;5;210m[number, null]\x1b[0m\n" +
 		"        \x1b[38;5;15m.change_types:\x1b[0m \x1b[38;5;210m[array]\x1b[0m\n" +
@@ -1009,4 +1009,92 @@ func reporterDirectory(path string) *domain.Directory {
 	definition := &domain.StepsDefinition{File: file}
 	directory.StepsDefinitions = []*domain.StepsDefinition{definition}
 	return directory
+}
+
+func TestValidationLineUsesOriginalExpectationKey(t *testing.T) {
+	const source = `app: apihydra
+kind: steps
+spec:
+  steps:
+    - response: {expected_status: 200}
+    - request:
+        body: |
+          expected_status: 999
+      response:
+        "expected_status":
+          200
+        expected_types:
+          .id: [string]
+        expected_body: |
+          {"id": "expected"}
+`
+	file := &domain.File{Bytes: []byte(source)}
+	step := &domain.Step{Index: 1, Definition: &domain.StepsDefinition{File: file}}
+	for field, want := range map[string]string{
+		"expected_status": "10", "expected_types": "12", "expected_body": "14", "missing": "6",
+	} {
+		if got := validationLine(step, field); got != want {
+			t.Errorf("validationLine(%s) = %s, want %s", field, got, want)
+		}
+	}
+	step.Index = 0
+	if got := validationLine(step, "expected_status"); got != "5" {
+		t.Errorf("flow mapping line = %s, want 5", got)
+	}
+}
+
+func TestValidationLineHandlesUnavailableSources(t *testing.T) {
+	for _, step := range []*domain.Step{
+		nil,
+		{},
+		{Index: -1},
+		{Definition: &domain.StepsDefinition{}},
+		{Definition: &domain.StepsDefinition{File: &domain.File{}}},
+		{Definition: &domain.StepsDefinition{File: &domain.File{Bytes: []byte("spec: [")}}},
+		{Index: 2, Definition: &domain.StepsDefinition{File: &domain.File{Bytes: []byte("spec: {steps: []}")}}},
+	} {
+		if got := validationLine(step, "expected_status"); got != "unknown" {
+			t.Errorf("validationLine(%+v) = %s, want unknown", step, got)
+		}
+	}
+}
+
+func TestStatusFailureReportsLine65ExpectedThenActual(t *testing.T) {
+	step := reporterStep("change/create.yaml", 2)
+	step.Request.Defaults.BasePath = "/api/v1"
+	step.Request.Path = "/change/create"
+	step.Request.Method = "POST"
+	step.Response.ExpectedStatus = 200
+	step.Response.ActualStatus = 201
+	step.Definition.File.Bytes = []byte(strings.Repeat("# source comment\n", 54) + `app: apihydra
+kind: steps
+spec:
+  steps:
+    - response: {expected_status: 201}
+    - response: {expected_status: 200}
+    - request:
+        path: /change/create
+        method: POST
+      response:
+        expected_status: 200
+`)
+	for _, terminal := range []bool{false, true} {
+		t.Run(fmt.Sprint(terminal), func(t *testing.T) {
+			var output bytes.Buffer
+			report := NewReporter(&output, terminal)
+			if err := report.BeginStage(context.Background(), []*domain.Directory{step.Definition.File.Directory}); err != nil {
+				t.Fatal(err)
+			}
+			if err := report.ValidationStatus(finalValidationContext(report), step, ErrStatusValidation); err != nil {
+				t.Fatal(err)
+			}
+			if err := report.EndStage(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			want := "[✗] /change/create\n[✗] /api/v1/change/create POST line:65\n    expected_status: 200\n    actual_status: 201\n\n"
+			if got := ansiSequencePattern.ReplaceAllString(output.String(), ""); got != want {
+				t.Fatalf("output = %q, want %q", got, want)
+			}
+		})
+	}
 }

@@ -1,6 +1,7 @@
 package reporting
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +10,9 @@ import (
 
 	"github.com/divilla/apihydra/skeleton/internal/domain"
 	"github.com/divilla/apihydra/skeleton/pkg/errs"
+
+	"github.com/goccy/go-yaml"
+	"github.com/goccy/go-yaml/ast"
 )
 
 // ErrReporter classifies a failure to write execution output.
@@ -27,6 +31,13 @@ var ErrBodyValidation = errors.New("response body does not match expected")
 // os.Stdout and may be replaced by a buffer or another writer in tests.
 // Reporter never writes fatal diagnostics to standard error; reporting
 // failures are returned to the caller.
+// Validation output groups failures under one file header and one heading per
+// failing step: resolved request path, effective method, and light blue line:<N>
+// (terminal palette color 117, #87d7ff).
+// N is the one-based source line of the first reported failing expectation key
+// (expected_types, expected_status, or expected_body), read from File.Bytes.
+// If the key is absent, use the step's source line; if no source position can
+// be recovered, print line:unknown. Further failures share that step heading.
 type Reporter struct {
 	output   io.Writer
 	terminal bool
@@ -97,6 +108,8 @@ func (r *Reporter) ValidationTypes(ctx context.Context, step *domain.Step, faile
 // ValidationStatus writes one nonfatal response-status validation failure to
 // the injected standard-output writer. It returns only reporting failures; the
 // validation failure itself does not terminate execution.
+// It prints expected_status first (palette 10), then actual_status (palette
+// 210), each with four leading spaces and its original field name.
 func (r *Reporter) ValidationStatus(ctx context.Context, step *domain.Step, failure error) error {
 	// TODO: implement
 	return nil
@@ -137,4 +150,26 @@ func (r *Reporter) ValidationBody(ctx context.Context, step *domain.Step, diff s
 func (r *Reporter) Debug(ctx context.Context, step *domain.Step) error {
 	// TODO: implement
 	return nil
+}
+
+// validationLine resolves the expectation key against the original file bytes.
+// Missing keys fall back to the step position; unavailable sources stay explicit.
+func validationLine(step *domain.Step, field string) string {
+	if step == nil || step.Index < 0 || step.Definition == nil || step.Definition.File == nil {
+		return "unknown"
+	}
+	stepPath := fmt.Sprintf("$.spec.steps[%d]", step.Index)
+	// The nonnegative integer index makes this generated YAML path valid.
+	path, _ := yaml.PathString(stepPath)
+	node, err := path.ReadNode(bytes.NewReader(step.Definition.File.Bytes))
+	if err != nil || node == nil {
+		return "unknown"
+	}
+	for _, candidate := range ast.Filter(ast.MappingValueType, node) {
+		mapping := candidate.(*ast.MappingValueNode)
+		if mapping.Key.GetPath() == stepPath+".response."+field {
+			return fmt.Sprint(mapping.Key.GetToken().Position.Line)
+		}
+	}
+	return fmt.Sprint(node.GetToken().Position.Line)
 }

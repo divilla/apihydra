@@ -1,0 +1,14 @@
+app: apihydra
+kind: root
+metadata:
+  name: full-suite
+  labels: [example, full]
+spec:
+  base_url: http://127.0.0.1:18080
+  base_path: /api
+  headers:
+    Accept: application/json
+    X-Suite: full
+  disable_cookies: false
+  timeout: 10
+  retries: 3

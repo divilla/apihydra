@@ -19,7 +19,10 @@ func NewDecoder() *Decoder {
 
 // DecodeFiles traverses suite.Root, decoding each DefaultsFile and StepsFiles
 // entry into the corresponding Directory definition fields. It mutates only
-// Directory.DefaultsDefinition and Directory.StepsDefinitions.
+// Directory.DefaultsDefinition and Directory.StepsDefinitions. A malformed or
+// type-invalid file returns an ErrInvalidDefinition configuration error that
+// preserves the source file, the most specific available YAML path, and the
+// original YAML cause.
 func (l *Decoder) DecodeFiles(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -69,7 +72,8 @@ func (l *Decoder) DecodeFiles(
 }
 
 // ValidateDefaultsDefinitions traverses suite.Root and validates each
-// Directory.DefaultsDefinition, returning an error on failure.
+// Directory.DefaultsDefinition. A field validation failure returns an
+// ErrInvalidDefinition configuration error with file and YAML-path provenance.
 func (l *Decoder) ValidateDefaultsDefinitions(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -83,7 +87,8 @@ func (l *Decoder) ValidateDefaultsDefinitions(
 }
 
 // ValidateStepsDefinitions traverses suite.Root and validates every entry in
-// Directory.StepsDefinitions, returning an error on failure.
+// Directory.StepsDefinitions. A field validation failure returns an
+// ErrInvalidDefinition configuration error with file and YAML-path provenance.
 func (l *Decoder) ValidateStepsDefinitions(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -101,7 +106,7 @@ func (l *Decoder) ValidateStepsDefinitions(
 func decodeDefaultsDefinition(ctx context.Context, file *domain.File) (*domain.DefaultsDefinition, error) {
 	definition := &domain.DefaultsDefinition{File: file}
 	if err := yaml.UnmarshalContext(ctx, file.Bytes, definition); err != nil {
-		return nil, errs.DefaultsDefinitionError(definition, "", err, nil)
+		return nil, errs.DefaultsDefinitionError(definition, "", ErrInvalidDefinition, err)
 	}
 	return definition, nil
 }
@@ -109,7 +114,7 @@ func decodeDefaultsDefinition(ctx context.Context, file *domain.File) (*domain.D
 func decodeStepsDefinition(ctx context.Context, file *domain.File) (*domain.StepsDefinition, error) {
 	definition := &domain.StepsDefinition{File: file}
 	if err := yaml.UnmarshalContext(ctx, file.Bytes, definition); err != nil {
-		return nil, errs.StepDefinitionError(definition, "", err, nil)
+		return nil, errs.StepDefinitionError(definition, "", ErrInvalidDefinition, err)
 	}
 	for index := range definition.Spec.Steps {
 		definition.Spec.Steps[index].Definition = definition

@@ -2,6 +2,18 @@
 
 This directory contains maintained, user-owned helpers for working with the APIHydra repository. These files are intentional project tooling, not generated output or repository-hygiene candidates. Do not delete or relocate them without explicit user approval.
 
+## Run checks
+
+Run `make check` for application linting, vetting, race tests, and black-box
+integration tests. Run `make check-scripts` separately for the repository script
+tests. `make test` runs only short application tests; `make tooling-test` remains
+an alias for `make check-scripts`.
+
+Run `make install` from the repository root to execute `go install ./cmd/apih`.
+Go installs the binary into `GOBIN` when set or otherwise `$GOPATH/bin`
+(normally `~/go/bin`). Example suites and their run instructions are in
+[`docs/examples`](../docs/examples/README.md).
+
 ## Implement a specification or change
 
 Run the complete implementation and review workflow with:

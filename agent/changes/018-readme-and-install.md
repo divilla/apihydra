@@ -6,9 +6,10 @@ Create a compact repository-root `README.md` that introduces APIHydra and gives
 a new user a verified path to an installed `apih` command. The README is a
 landing page, not a second user manual.
 
-This is a documentation and installation-verification change. It does not
-authorize production behavior or API changes, a second user-manual document,
-or changes to `AGENTS.md` or any file below `skeleton/`.
+This change covers documentation, Makefile workflows, and installation
+verification. It does not authorize production behavior or API changes, a
+second user-manual document, or changes to `AGENTS.md` or any file below
+`skeleton/`.
 
 ## Authority and scope
 
@@ -32,7 +33,8 @@ Keep the finished README short and directly scannable. It must contain:
 - one opening paragraph that begins, “APIHydra is an ultra-fast, agent-first API
   integration tester.” and says that it discovers YAML suites, executes HTTP
   requests, and validates responses;
-- a descriptive repository-relative link to `docs/user-manual/apih.md`; and
+- descriptive repository-relative links to `docs/user-manual/apih.md` and the
+  basic/full example index at `docs/examples/README.md`; and
 - an `Installation` section containing the requirements and commands below.
 
 Do not add badges, roadmap material, contributor instructions, an exhaustive
@@ -66,10 +68,26 @@ Finish the installation instructions with this verification command:
 apih --help
 ```
 
-The command must exit successfully and display `apih` usage. The README may
-also mention `go install ./cmd/apih` for installation from an existing source
-checkout, but it must not make cloning the repository a prerequisite for the
-module-qualified installation.
+The command must exit successfully and display `apih` usage. The README also
+documents `make install` for an existing source checkout. This phony target
+executes exactly `go install ./cmd/apih`, using Go's normal destination rules
+above. It has no lint or test prerequisites. Cloning the repository is not a
+prerequisite for the module-qualified installation.
+
+## Repository check targets
+
+Keep application checks and repository script checks independently runnable:
+
+- `make check` remains the default and runs lint, vet, race, and black-box
+  integration tests, without script tests.
+- `make check-scripts` runs all repository script test commands previously
+  owned by `tooling-test`.
+- `make test` runs only short application tests.
+- `make tooling-test` remains a compatibility alias for `make check-scripts`.
+
+Document these workflows in the user manual and `scripts/README.md`. Verify
+their separation through the existing Makefile wiring tests. They do not add
+application flags or change runtime behavior.
 
 ## Required verification
 
@@ -79,22 +97,22 @@ At minimum, automated checks must prove that:
 
 - `README.md` exists, is compact, starts with one H1, and contains the required
   product-and-audience paragraph;
-- its manual link is repository-relative and resolves to the one canonical
-  manual;
+- its manual and example-index links are repository-relative and resolve to
+  the canonical manual and `docs/examples/README.md`;
 - its module-qualified install command agrees with the module path and
   `cmd/apih` command package in the current checkout;
 - it names the Go, `PATH`, `curl`, `jq`, and `git` requirements and the
   `apih --help` verification command; and
 - an isolated `GOBIN` installation from the current checkout produces an
   executable `apih` binary whose `--help` command exits successfully and shows
-  usage.
+  usage; verify `make install` uses the same command package and destination.
 
 The isolated source install is the deterministic acceptance check for the
 unmerged checkout. Do not make ordinary tests depend on network access or on
 the branch already being published as `@latest`.
 
-Run `go test ./...`, `go test -race ./...`, `make check`, and
-`git diff --check` before completion.
+Run `go test ./...`, `go test -race ./...`, `make check`, `make check-scripts`,
+and `git diff --check` before completion.
 
 ## Acceptance criteria
 
@@ -103,15 +121,19 @@ Run `go test ./...`, `go test -race ./...`, `make check`, and
    audience, and core purpose.
 2. The README links directly to `docs/user-manual/apih.md`, the link resolves,
    and no duplicate user-manual document or detailed parallel reference is
-   introduced.
+   introduced. It also links to the basic/full examples at
+   `docs/examples/README.md`.
 3. The README provides the exact module-qualified `go install` command, the Go
    and `PATH` requirements, accurate roles for `curl`, `jq`, and `git`, and the
    `apih --help` verification command without claiming an unsupported delivery
    channel.
 4. Installing `./cmd/apih` into an isolated `GOBIN` creates an executable named
    `apih`; running that executable with `--help` exits `0` and displays usage.
+   `make install` performs that installation with `go install ./cmd/apih` and
+   no lint or test prerequisites.
 5. Documentation-focused tests trace every criterion above and do not require
    network access or a published version of the current branch.
-6. Repository tests, race tests, required checks, and `git diff --check` all
-   pass, with no production, public-contract, `AGENTS.md`, or `skeleton/`
-   changes.
+6. Repository tests, race tests, both independent check targets, and
+   `git diff --check` all pass. `make test` runs short application tests only;
+   `make tooling-test` aliases `make check-scripts`. There are no production,
+   public API, `AGENTS.md`, or `skeleton/` changes.
