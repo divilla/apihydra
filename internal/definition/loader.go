@@ -225,7 +225,7 @@ func collectSelectedDirectoryFiles(
 		if err := ctx.Err(); err != nil {
 			return errs.Build(errs.ExitConfiguration, ErrDefinitionDiscovery, err, absoluteDirectoryPath)
 		}
-		if !entry.Type().IsRegular() || !isYAMLFile(entry.Name()) {
+		if !entry.Type().IsRegular() || !isRootYAMLFile(entry.Name()) {
 			continue
 		}
 
@@ -287,11 +287,6 @@ func directoryPath(relativePath string) string {
 
 func filePath(relativeDirectoryPath, name string) string {
 	return filepath.ToSlash(filepath.Join(relativeDirectoryPath, name))
-}
-
-func isYAMLFile(name string) bool {
-	extension := filepath.Ext(name)
-	return extension == ".yaml" || extension == ".yml"
 }
 
 func validateRootDefinition(ctx context.Context, workDir string) error {

@@ -544,6 +544,22 @@ exit 7
 	})
 }
 
+func TestExecuteInDirPreservesPartialOutputAndWorkingDirectoryOnFailure(t *testing.T) {
+	installCommand(t, "partial-output", `
+printf 'cwd=%s\n' "$PWD"
+printf 'arg=%s\n' "$@"
+/bin/cat
+printf 'partial stderr\n' >&2
+exit 7
+`)
+	directory := t.TempDir()
+	stdout, stderr, exitCode, err := executeInDir(context.Background(), directory, "partial-output", "request body\n", "first argument", "second\nargument")
+	want := "cwd=" + directory + "\narg=first argument\narg=second\nargument\nrequest body\n"
+	if stdout != want || stderr != "partial stderr\n" || exitCode != 7 || err == nil {
+		t.Fatalf("executeInDir() = (%q, %q, %d, %v), want (%q, partial stderr, 7, error)", stdout, stderr, exitCode, err, want)
+	}
+}
+
 func TestCurlCommandFailure(t *testing.T) {
 	installCommand(t, "curl", `
 printf 'connection failed' >&2

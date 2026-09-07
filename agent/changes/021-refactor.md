@@ -1,8 +1,9 @@
-# Refactor assessment and proposed iterations
+# Refactor assessment and implementation
 
-This is a plan, not an implementation specification or a record of completed
-refactors. The requested examination covers the entire local `master` codebase.
-Implementation and publication belong on `change/021-refactor`.
+The assessment covers the entire local `master` codebase. The user authorized
+implementing the findings one by one with the change-code skill. The tables
+below retain the assessed evidence and parity requirements; the implementation
+record at the end reports the completed passes on `change/021-refactor`.
 
 The examined baseline is `27abf1e298c227ed97c623aa8595c1a8387096d5`.
 At assessment time, `master`, `origin/master`, and `change/021-refactor` pointed
@@ -180,3 +181,42 @@ cross-package clone utility, replacing the Executor/Reporter validation-context
 protocol with a new API, or introducing shared tooling APIs would be separately
 scoped design work under the repository's skeleton-first authorization rules.
 This plan does not authorize protected-path changes.
+
+## Implementation record
+
+All named implementation passes were completed sequentially. The dead-code and
+legacy-pattern categories required no edits. The separately identified shared
+tooling and API design candidates remain deferred as described above.
+
+| Pass | Completed change | Acceptance evidence |
+| --- | --- | --- |
+| D1 | Removed duplicate `isYAMLFile`; loading reuses the skeleton-named `isRootYAMLFile`. | Existing loading/root/selection tests pass, covering extension rules and filesystem boundaries; definition race coverage 97.1%. |
+| D2 | `commit-user.pl` validates its arguments and delegates an explicit message to the existing agent script. Added `scripts/commit_test.pl` to the tooling target. | All 72 isolated assertions pass before and after the change: default/custom/empty/excess arguments, message bytes, cwd, detached/empty branches, exact diagnostics/statuses, command order, and fail-fast behavior. |
+| O1 | Extracted cookie storage, preparation, directory validation/planning, and stage scheduling into `cookies.go`, `prepare.go`, `directories.go`, and `stages.go`. | Executor race tests pass; declaration/body comparison confirmed pure moves before C1. |
+| O2 | Extracted private debug projection/coloring, terminal geometry/redraw, and validation formatting/source lookup into `debug.go`, `terminal.go`, and `validation.go`. | Reporter race tests pass at 96.8% coverage; integration including PTY scenarios passes; declaration/body comparison confirmed pure moves. |
+| O3 | Moved malformed-envelope recovery to `internal/definition/envelope.go`. | Definition race tests pass at 97.1% coverage; declaration/body comparison confirmed pure moves. |
+| O4 | Moved integration CLI/environment, fixture, and coverage helpers to focused tagged test files. Kept the shared server and ordered scenario sequence together. | Integration suite passes; all 62 declarations compare unchanged; test binaries compile for Darwin and Windows. |
+| S1 | Folded private `runCommand` into its sole caller `executeInDir`. | `TestExecuteInDirPreservesPartialOutputAndWorkingDirectoryOnFailure` passed before/after; Runner race suite passes at 96.5% coverage. |
+| C1 | Simplified forwarding in `Executor.Execute` and `dirsValidator.validateRoot` to direct returns. | Existing success, validation-status, fatal-error, and invalid-tree tests pass under the race detector. |
+
+Implementation-location notes are aligned in guides 003, 009, 010, and 012.
+Public declarations, protected references, dependencies, and fixture contents
+are unchanged. The scratch checkpoint is `/tmp/apih-refactor-checkpoint.md`.
+
+Final verification passed:
+
+- `STATICCHECK_CACHE=/tmp/apih-refactor-staticcheck make check` (formatting,
+  staticcheck, golint, vet, race tests, and integration tests).
+- `make check-scripts`, including the 72-assertion commit harness.
+- `go test -short -cover ./cmd/... ./internal/... ./pkg/... .`: CLI 95.3%,
+  definition 97.1%, domain 100%, execution 97.4%, reporting 96.8%, errs 100%,
+  and Runner 96.5%; every production package remains above 95%.
+- Darwin/amd64 and Windows/amd64 integration test binaries compile with
+  `go test -tags=integration -c`; execution on those platforms remains unverified.
+- Declaration/body comparison across affected packages confirms only the D1,
+  S1, and C1 function changes plus the new Runner test. Reporting and integration
+  declarations are identical to the implementation baseline.
+- `git diff --check` and explicit checks that `AGENTS.md`, `skeleton/`,
+  dependencies, and fixture contents remain unchanged.
+
+No API, dependency, or framework migration was performed.

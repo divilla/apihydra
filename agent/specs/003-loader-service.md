@@ -42,6 +42,8 @@ choices must not be promoted to requirements in this guide.
 - Production output: `internal/definition/loader.go` replaces every placeholder
   with directory discovery, YAML-file loading, and base classification against
   the binding `domain.Suite` tree.
+  Selection stays in `selection.go`; private malformed-envelope recovery
+  helpers live in `envelope.go` within the same package.
 - Test output: `internal/definition/loader_test.go` uses temporary directory
   trees and files to cover selection and all three loading phases, context/error paths, supported file
   extensions, nearest-root discovery, scoped traversal, and rejection cases, source links,

@@ -53,6 +53,7 @@ tooling-test: check-scripts
 
 check-scripts: ## Run repository script tests
 	@scripts/makefile_test.sh
+	@scripts/commit_test.pl
 	@scripts/create-change-branch_test.sh
 	@scripts/change-merge-direct_test.sh
 	@scripts/codex-code-spec_unit_test.pl
