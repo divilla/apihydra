@@ -34,10 +34,11 @@ YAML remains static and unchanged.
   separately through `make check-scripts`; they are outside this harness.
 - Temporary envelope matrices verify the exact invalid-kind diagnostic and
   footer for missing, unspecified, empty, null, unsupported, and non-string
-  kinds under `app: apihydra`. Both invocation forms cover top-level kind
-  failures before either root outcome and nested failures after qualification.
-  Other app values receive no kind error; nested invalid kinds do not mask a
-  missing root. These inputs require no HTTP requests.
+  kinds under `app: apihydra` within the selected scope after root discovery.
+  Missing roots take priority over unrelated kind errors. Selection scenarios
+  cover inner-directory and file execution, inclusive ranges, overlap unions,
+  common-root enforcement, inherited defaults, and zero requests on invalid
+  invocations in all parallelism modes.
 - Fixture output: `int-tests/input/test1/` contains a successful multi-step
   nested suite exercising variables, both placeholder forms,
   request/expected-body interpolation, inheritance, HTTP, response validation,
@@ -136,8 +137,8 @@ fatal diagnostic.
     step finishes last under controlled scheduling. Empty directories preserve
     incoming state, separate invocations exchange no cookies, and Debug shows
     the exact selected `--cookie` and `--cookie-jar` path.
-13. No-argument and explicit-directory runs require a qualifying root YAML
-    file directly in the selected directory. Missing, malformed, wrongly
+13. No-argument and explicit selections require a qualifying root YAML
+    file in the target directory or its nearest qualifying ancestor. Missing, malformed, wrongly
     typed/classified, unsupported-extension, directory, and nested-only
     candidates produce exact exit `102`, empty stdout, and the root-specific
     diagnostic before recursive decoding. An arbitrarily named qualifying

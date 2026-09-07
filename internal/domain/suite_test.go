@@ -53,6 +53,7 @@ func TestDomainSchemaMatchesReference(t *testing.T) {
 
 	assertFields(t, reflect.TypeOf(Suite{}), []fieldSchema{
 		{"WorkDir", reflect.TypeOf(""), ""},
+		{"Selections", reflect.TypeOf([]Selection{}), ""},
 		{"Root", reflect.TypeOf((*Directory)(nil)), ""},
 	})
 	assertFields(t, reflect.TypeOf(Directory{}), []fieldSchema{

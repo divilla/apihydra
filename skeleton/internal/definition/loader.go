@@ -12,9 +12,9 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// ErrRootDefinitionMissing classifies a selected suite directory without a
-// qualifying top-level root definition.
-var ErrRootDefinitionMissing = errors.New("root defaults file missing")
+// ErrRootDefinitionMissing classifies a selection without a
+// qualifying root definition in its directory or any ancestor.
+var ErrRootDefinitionMissing = errors.New("kind: root - file missing")
 
 // ErrDefinitionDiscovery classifies a failure to inspect or read definition
 // inputs from the selected suite directory tree.
@@ -36,16 +36,11 @@ func NewLoader() *Loader {
 	return &Loader{}
 }
 
-// LoadDirectoryStructure first requires a regular .yaml or .yml file directly
-// in suite.WorkDir whose string envelope values are app: apihydra and
-// kind: root. All parseable top-level apihydra documents must first have a
-// string kind equal to root, defaults, or steps; otherwise ErrInvalidKind takes
-// priority over a missing root, even when another file already qualifies.
-// Other app values do not receive kind validation. Malformed files and roots
-// in descendants do not satisfy the requirement. A missing qualifying file returns
-// ErrRootDefinitionMissing before recursive traversal. It then traverses
-// suite.WorkDir and builds suite.Root. Directory paths are relative to
-// suite.WorkDir, and the root path is "/".
+// LoadDirectoryStructure requires a qualifying root directly in suite.WorkDir,
+// as established by Select. It builds only selected subtrees and the ancestor
+// chains needed by selected files or directories. Paths are relative to the
+// discovered root, whose Path is "/" and Stage is 0. Root qualification ignores
+// unrelated invalid kinds; full validation follows within the selected scope.
 func (l *Loader) LoadDirectoryStructure(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -61,7 +56,11 @@ func (l *Loader) LoadDirectoryStructure(
 }
 
 // LoadDirectoryFiles traverses suite.Root and populates only each Directory.Files
-// slice with that directory's .yaml and .yml files. A traversal or file-read
+// slice with selected .yaml and .yml files plus applicable root/defaults files.
+// Ancestor-only directories exclude unselected steps and unrelated malformed
+// files. Recognizable malformed defaults remain in scope for decoding errors,
+// including uniformly indented top-level envelopes.
+// A traversal or file-read
 // failure returns an ErrDefinitionDiscovery configuration error with the
 // affected path and original cause.
 func (l *Loader) LoadDirectoryFiles(
@@ -114,9 +113,6 @@ func validateRootDefinition(ctx context.Context, workDir string) error {
 			return errs.Build(errs.ExitConfiguration, ErrDefinitionDiscovery, err, path)
 		}
 		isRoot, err := checkDefinitionKind(ctx, contents)
-		if errors.Is(err, ErrInvalidKind) {
-			return err
-		}
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return errs.Build(errs.ExitConfiguration, ErrDefinitionDiscovery, ctxErr, path)

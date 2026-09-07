@@ -134,7 +134,7 @@ const (
 
 ### Suite tree
 
-One run uses one `domain.Suite` containing `WorkDir` and `Root`. A `Directory`
+One run uses one `domain.Suite` containing `WorkDir`, `Selections`, and `Root`. A `Directory`
 contains:
 
 - `Stage`, `Path`, `Parent`, and `Children`;
@@ -143,10 +143,14 @@ contains:
 - `ResolvedDefaults`, `ResolvedSteps`, and `RuntimeSteps`.
 
 A `File` contains `Stage`, `Path`, `Kind`, `Bytes`, and its owning `Directory`.
-Directory paths are relative to `Suite.WorkDir`; the root path is `/`.
+Directory paths are relative to the discovered root in `Suite.WorkDir`; the
+root path is `/`. `domain.Selection` contains a normalized absolute `Path`, a
+`Directory` flag, and inclusive zero-based `First`/`Last` source indices.
+`Last == -1` selects every step in a file. An empty `Suite.Selections` selects
+the whole tree for service callers.
 
 One invocation also uses one `domain.Config`. `Parallelism` is the parsed
-execution mode, `Directory` is the optional positional suite directory, and
+execution mode, `Selections` contains the positional selection strings, and
 `TempRunDir` is the private per-run directory created below
 `os.UserCacheDir()/apih`. CLI, Validator, Executor, and other runtime consumers
 receive this value by dependency injection; package globals and process-wide
@@ -220,45 +224,57 @@ or empty values remain strings.
 
 ## Current reference CLI contract
 
-The reference CLI uses `pflag` with its native attached, equals, repeated,
-interspersed, and `--` parsing behavior. `-p` and `--parallelism` populate
-`domain.Config.Parallelism`; the last repeated value wins, the default is `1`,
-and values outside `0`, `1`, and `2` are rejected. At most one positional
-directory is accepted. Help prints pflag usage to stdout and exits successfully
-without starting a run. Other argument failures return configuration code
-`102`, write no application stdout, and end with the CLI-owned stderr
-diagnostic.
+The reference CLI uses native `pflag` attached, equals, repeated, interspersed,
+and `--` behavior. `-p`/`--parallelism` defaults to `1`, accepts `0..2`, and
+uses the last repeated value. Help writes usage to stdout and exits `0`.
 
-`skeleton/cmd/apih.run` starts with `os.Getwd()`. If `Config.Directory` is
-non-empty, it joins that value to the current directory and requires the result
-to be a directory. Invalid input returns configuration code `102` and an error
-matching CLI-owned `ErrInvalidPath`.
+Accept zero or more positional directory, steps-file, `file:N`, or `file:N-M`
+selections. No arguments select the current directory. Relative paths resolve
+from the invocation directory; absolute paths are accepted. `Loader.Select`
+parses suffixes only in the final path component, preserving colons in Unix
+parent directories. It resolves symlinks before parent components such as `..`
+and canonicalizes filesystem spelling before matching selections wherever parent
+listing is permitted. When listing is denied, it retains the accessible path
+component spelling; accessible suites do not require ancestor listing permission
+for canonicalization. It discovers the nearest qualifying root by searching from each selected
+directory or file's containing directory upward. All targets must share one root. Qualification requires a regular lowercase `.yaml`/`.yml`
+file with exact string `app: apihydra` and `kind: root`; filenames are arbitrary.
+Malformed documents and descendant roots do not qualify.
 
-Before creating run-local state or reporting output, Loader requires the
-selected directory itself to contain at least one regular lowercase `.yaml` or
-`.yml` file whose top-level envelope decodes with string `app: apihydra` and
-`kind: root`. The filename is arbitrary. First, every parseable top-level
-document with string `app: apihydra` must have string `kind` equal to `root`,
-`defaults`, or `steps`. Missing, unspecified, empty, null, non-string, and
-unsupported kinds return configuration-coded `ErrInvalidKind`, with exact
-fatal line `error: kind: must be one of: <root|defaults|steps>` and footer anchor
-`#invalid-yaml-definition`. This failure precedes root acceptance or rejection
-and stdout, including when another file qualifies. Other app values do not
-receive this check and retain existing decoding behavior.
+The discovered root anchors `Suite.WorkDir`, reported working-directory output,
+source paths, and stage numbers. Directory selections include their subtrees;
+file selections include only that file. Preserve ancestor chains for defaults,
+stages, and cookie inheritance without executing their unselected steps.
+Selections form a union in existing suite order. Overlaps run each source step
+once. Ranges are inclusive, use original zero-based indices, and preserve
+`Step.Index` and provenance. Negative, malformed, reversed, overflowing, and
+out-of-bounds selectors are configuration failures, even when subsumed by a
+broader valid selection. Never execute any request before checking every target.
 
-Invalid candidates and qualifying documents below the selected directory do
-not satisfy the root check. If kind validation passes and no file
-qualifies, the CLI returns configuration code `102`, empty stdout, and
-`ErrRootDefinitionMissing` with message `root defaults file missing`;
-recursive discovery and decoding have not begun. The fatal CLI line is
-`error: root defaults file missing`, and its manual anchor is
-`#root-defaults-file-missing`.
+Load and validate selected files in full, plus applicable root and ancestor
+defaults. Unselected steps files and unrelated branches do not block execution.
+Directory selections retain validation of all definitions in the selected
+subtree. Envelope inspection for root/default discovery does not reinstate
+whole-directory validation in ancestor-only directories. Recognizable malformed
+inherited defaults still fail decoding, including flow mappings and multiline
+envelope scalars with malformed bodies. Defaults retain existing precedence;
+skipped steps never supply variables, captures, or cookies.
 
-After root qualification, Loader applies the same kind validation before typed
-base decoding to all recursively discovered files, without partially committing
-classification on failure. A nested kind failure cannot supersede a missing
-root. Malformed YAML retains existing parser/root-check behavior. The kind
-diagnostic is exact; other definition errors retain file and YAML provenance.
+`ErrInvalidSelection` classifies invalid targets, selectors, and conflicting
+roots, returns configuration code `102`, identifies the offending selection,
+and uses the existing `#invalid-arguments` footer. Invalid required definitions
+retain their definition errors and provenance. Within selected scope, parseable
+`app: apihydra` documents require string kind `root`, `defaults`, or `steps`;
+violations retain exact diagnostic `error: kind: must be one of: <root|defaults|steps>`
+and the `#invalid-yaml-definition` footer. Root qualification itself ignores
+unrelated invalid kinds. Other app values retain existing decoding behavior.
+
+If no ancestor qualifies, return `ErrRootDefinitionMissing`, configuration code
+`102`, and empty stdout before cache creation or recursive discovery. Its exact
+fatal line is `error: kind: root - file missing`; its unchanged footer anchor is
+`#root-defaults-file-missing`. A selected root must subsequently pass complete
+definition validation. Multiple qualifying roots in one directory remain
+unspecified.
 
 For every valid run, CLI creates a private `run-*` directory below
 `os.UserCacheDir()/apih`, assigns it to `Config.TempRunDir`, and defers
@@ -273,10 +289,10 @@ leaves an older run directory behind.
 
 The reference CLI creates one Reporter for `os.Stdout`, explicitly identifying
 whether stdout is a terminal. `run` creates
-`domain.Suite{WorkDir: workDir}` and invokes
-`Loader.LoadDirectoryStructure` first so the root check precedes cache
-creation and output. After that succeeds, it creates the private run directory,
-reports the selected working directory, and continues with:
+`domain.Suite{WorkDir: workDir}`, calls `Loader.Select` with
+`Config.Selections`, then invokes `Loader.LoadDirectoryStructure` so root
+discovery and scope construction precede cache creation and output. After that succeeds, it creates the private run directory,
+reports the discovered suite root, and continues with:
 
 1. `Loader.LoadDirectoryFiles`
 2. `Loader.DecodeBaseDefinitions`
@@ -284,7 +300,8 @@ reports the selected working directory, and continues with:
 4. `Decoder.ValidateDefaultsDefinitions`
 5. `Decoder.ValidateStepsDefinitions`
 6. `Resolver.ResolveDefaults`
-7. `Resolver.ResolveSteps`
+7. `Resolver.ResolveSteps`, including explicit target/range validation and the
+   selected-step union before committing resolved groups
 
 After definition resolution, `run` creates one `KeyValueStore`, `Binder`, and
 Config-injected `Validator`, then creates a Config-injected `Executor` with
@@ -450,8 +467,8 @@ separate black-box integration suite.
 
 The following are not product requirements:
 
-- definition placement/cardinality rules beyond the required direct
-  qualifying root and behavior when multiple qualifying roots exist;
+- definition placement/cardinality rules beyond nearest-ancestor root discovery
+  and behavior when multiple qualifying roots exist in one directory;
 - deterministic file ordering or symlink/hidden-directory policy;
 - presence-sensitive default merging beyond the defined `DisableCookies`
   overlay and the timeout/retry fallbacks,
@@ -483,7 +500,7 @@ updated to match.
 
 1. Production packages compile against the exact reference names, types, and
    method signatures without adapters that create a competing API.
-2. The current CLI performs root qualification before cache creation, output,
+2. The current CLI resolves selections and their common nearest root before cache creation, output,
    and recursive discovery, then follows the remaining seven definition phases
    in order, validates the directory tree, prepares runtime steps, plans
    stages, and executes that plan in the order fixed by the skeleton.

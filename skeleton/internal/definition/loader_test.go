@@ -17,7 +17,7 @@ func TestDefinitionErrorClassifications(t *testing.T) {
 		err  error
 		want string
 	}{
-		"root missing": {ErrRootDefinitionMissing, "root defaults file missing"},
+		"root missing": {ErrRootDefinitionMissing, "kind: root - file missing"},
 		"discovery":    {ErrDefinitionDiscovery, "definition discovery error"},
 		"invalid":      {ErrInvalidDefinition, "invalid definition"},
 		"kind":         {ErrInvalidKind, "kind: must be one of: <root|defaults|steps>"},
@@ -60,7 +60,7 @@ func TestLoadDirectoryStructureRequiresTopLevelRootDefinition(t *testing.T) {
 		},
 		"non-string kind": {
 			files:   map[string]string{"root.yaml": "app: apihydra\nkind: []\nspec: {}\n"},
-			wantErr: ErrInvalidKind,
+			wantErr: ErrRootDefinitionMissing,
 		},
 		"wrong app": {
 			files:   map[string]string{"root.yaml": "app: another\nkind: root\nspec: {}\n"},

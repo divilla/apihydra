@@ -79,7 +79,7 @@ func troubleshootingAnchor(err error) string {
 	switch {
 	case errors.Is(err, definition.ErrRootDefinitionMissing):
 		return "root-defaults-file-missing"
-	case errors.Is(err, ErrInvalidArguments), errors.Is(err, execution.ErrInvalidParallelism):
+	case errors.Is(err, ErrInvalidArguments), errors.Is(err, execution.ErrInvalidParallelism), errors.Is(err, definition.ErrInvalidSelection):
 		return "invalid-arguments"
 	case errors.Is(err, ErrInvalidPath):
 		return "invalid-selected-directory"
@@ -101,7 +101,7 @@ func troubleshootingAnchor(err error) string {
 
 // parseConfig uses native pflag parsing. It accepts attached, equals, repeated,
 // and interspersed flag forms; the final repeated value wins, and -- terminates
-// flag parsing. It accepts at most one positional directory. Help returns
+// flag parsing. It accepts directory, file, and file:N[-M] selections. Help returns
 // pflag.ErrHelp after pflag writes usage to output. All other failures return a
 // configuration-coded ErrInvalidArguments.
 func parseConfig(args []string, output io.Writer) (domain.Config, error) {
@@ -115,6 +115,10 @@ func parseConfig(args []string, output io.Writer) (domain.Config, error) {
 
 	flags := pflag.NewFlagSet(name, pflag.ContinueOnError)
 	flags.SetOutput(output)
+	flags.Usage = func() {
+		_, _ = io.WriteString(output, "Usage: "+name+" [flags] [directory | steps-file[:N[-M]] ...]\nSelections must share a suite root; indices are zero-based and ranges inclusive.\n\n")
+		flags.PrintDefaults()
+	}
 	flags.IntVarP(&config.Parallelism, "parallelism", "p", 1, "execution parallelism mode: 0, 1, or 2")
 	if err := flags.Parse(values); err != nil {
 		if errors.Is(err, pflag.ErrHelp) {
@@ -122,15 +126,10 @@ func parseConfig(args []string, output io.Writer) (domain.Config, error) {
 		}
 		return domain.Config{}, errs.Build(errs.ExitConfiguration, ErrInvalidArguments, err)
 	}
-	if flags.NArg() > 1 {
-		return domain.Config{}, errs.Build(errs.ExitConfiguration, ErrInvalidArguments, nil, "expected at most one directory")
-	}
 	if config.Parallelism < 0 || config.Parallelism > 2 {
 		return domain.Config{}, errs.Build(errs.ExitConfiguration, ErrInvalidArguments, nil, "parallelism must be 0, 1, or 2")
 	}
-	if flags.NArg() == 1 {
-		config.Directory = flags.Arg(0)
-	}
+	config.Selections = flags.Args()
 	return config, nil
 }
 
@@ -140,23 +139,15 @@ func run(ctx context.Context, config domain.Config, reporter *reporting.Reporter
 		return errs.ExitInternal, errs.Build(errs.ExitInternal, ErrWorkingDirectory, err)
 	}
 
-	if config.Directory != "" {
-		path := filepath.Join(workDir, config.Directory)
-		info, err := os.Stat(path)
-		if err != nil {
-			return errs.ExitConfiguration, errs.Build(errs.ExitConfiguration, ErrInvalidPath, err, path)
-		}
-		if !info.IsDir() {
-			return errs.ExitConfiguration, errs.Build(errs.ExitConfiguration, ErrInvalidPath, nil, path)
-		}
-		workDir = path
-	}
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	suite := &domain.Suite{WorkDir: workDir}
 	loader := definition.NewLoader()
+	if err = loader.Select(ctx, suite, config.Selections); err != nil {
+		return errs.ExitConfiguration, err
+	}
+	workDir = suite.WorkDir
 	if err = loader.LoadDirectoryStructure(ctx, suite); err != nil {
 		return errs.ExitConfiguration, err
 	}

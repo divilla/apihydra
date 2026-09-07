@@ -21,12 +21,19 @@ It does not otherwise define scalar-zero overlay rules, map-copy behavior, or
 header collision semantics. The product fallback values below define the
 behavior when timeout and retries remain unset.
 
-It also does not define resolved-step ordering, header-map copy/alias policy,
+It does not define header-map copy/alias policy,
 other implicit request values, or URL normalization. It does define the
 defaults carrier at every level: directory resolution,
 `StepsDefinition.Spec.Defaults`, and `Step.Request.Defaults` all use
 `domain.Defaults` values rather than duplicated step fields or
 `*domain.Defaults` pointers.
+
+Resolver validates every explicit file target and source range, then retains
+only the selected union in `ResolvedSteps`, preserving existing suite order and
+original indices. Selected source files have already been decoded in full.
+Overlapping arguments never duplicate steps, and a broader selection cannot
+hide an invalid range. The binding helpers are in
+`skeleton/internal/definition/selection.go`.
 
 Resolver propagates effective defaults from directory defaults to each steps
 file's defaults and then to each individual step's request defaults. At each
@@ -81,3 +88,7 @@ errors.
    chain leaves automatic cookies enabled.
 8. No TODO or zero-value placeholder remains in Resolver production methods;
    its unit tests and `git diff --check` pass.
+
+9. File targets and ranges are validated before committing the selected union.
+   Original indices and provenance are retained; source definitions remain whole,
+   and skipped steps are absent from resolved execution groups.

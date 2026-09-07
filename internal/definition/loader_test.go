@@ -28,7 +28,7 @@ func TestLoaderContractAndConstructor(t *testing.T) {
 		t.Fatalf("Loader fields = %d, want stateless Loader", got)
 	}
 	for err, want := range map[error]string{
-		ErrRootDefinitionMissing: "root defaults file missing",
+		ErrRootDefinitionMissing: "kind: root - file missing",
 		ErrInvalidKind:           "kind: must be one of: <root|defaults|steps>",
 		ErrDefinitionDiscovery:   "definition discovery error",
 		ErrInvalidDefinition:     "invalid definition",
@@ -423,7 +423,7 @@ func TestLoadDirectoryStructureRequiresQualifyingTopLevelRoot(t *testing.T) {
 		"no yaml":             {wantErr: ErrRootDefinitionMissing},
 		"malformed":           {files: map[string]string{"root.yaml": "["}, wantErr: ErrRootDefinitionMissing},
 		"non-string app":      {files: map[string]string{"root.yaml": "app: []\nkind: root\n"}, wantErr: ErrRootDefinitionMissing},
-		"non-string kind":     {files: map[string]string{"root.yaml": "app: apihydra\nkind: []\n"}, wantErr: ErrInvalidKind},
+		"non-string kind":     {files: map[string]string{"root.yaml": "app: apihydra\nkind: []\n"}, wantErr: ErrRootDefinitionMissing},
 		"wrong app":           {files: map[string]string{"root.yaml": "app: other\nkind: root\n"}, wantErr: ErrRootDefinitionMissing},
 		"wrong kind":          {files: map[string]string{"root.yaml": "app: apihydra\nkind: defaults\n"}, wantErr: ErrRootDefinitionMissing},
 		"nested root":         {files: map[string]string{"nested/root.yaml": "app: apihydra\nkind: root\n"}, wantErr: ErrRootDefinitionMissing},

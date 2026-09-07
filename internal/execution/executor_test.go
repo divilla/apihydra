@@ -25,7 +25,7 @@ func TestExecutorExportedContractAndConstructorState(t *testing.T) {
 	config := domain.Config{Parallelism: 1}
 	executor := NewExecutor(binder, validator, reporter, config)
 
-	if executor.binder != binder || executor.val != validator || executor.report != reporter || executor.config != config {
+	if executor.binder != binder || executor.val != validator || executor.report != reporter || !reflect.DeepEqual(executor.config, config) {
 		t.Fatalf("NewExecutor() did not retain collaborators: %+v", executor)
 	}
 	if got, want := ErrInvalidDirectoryTree.Error(), "invalid directory tree"; got != want {

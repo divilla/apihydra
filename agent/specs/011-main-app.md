@@ -25,17 +25,17 @@ guide does not reproduce the reference code or control flow.
 Keeping composition in `cmd/apih` prevents definition, execution, and reporting
 packages from acquiring process-level responsibilities. CLI uses native
 `pflag` behavior to populate the binding `domain.Config`, validates the
-parallelism range and single optional directory, creates the per-run cache
+parallelism range and positional selections, creates the per-run cache
 directory, detects terminal stdout for Reporter, and injects Config into
-Validator and Executor. It adds no filters, debug-selection policy, exported
+Validator and Executor. It adds no name/label filters, debug-selection policy, exported
 helpers, configuration carriers, or alternate application constructors absent
 from the reference.
 
 Every valid run owns one private `run-*` directory below
 `os.UserCacheDir()/apih`. `run` defers best-effort removal of the entire
 directory and suppresses every cleanup failure. Abrupt termination may leave a
-run directory. Help, invalid invocations, and a missing qualifying direct root
-do not create one. Root qualification also precedes working-directory output
+run directory. Help, invalid invocations, and a missing qualifying ancestor root
+do not create one. Root discovery and scope construction also precede working-directory output
 and recursive discovery. Executor places all cookie jars in a namespaced child
 of this injected `Config.TempRunDir`; CLI adds no cookie-specific persistence
 or cleanup path. Removing the run directory removes its jars together with
@@ -54,8 +54,8 @@ Tests remain in `cmd/apih/*_test.go` and follow
 native pflag forms, help, invalid arguments and paths, cache creation and silent
 best-effort cleanup, successful main-flow completion, terminal detection,
 output failure handling, and final diagnostic ordering without adding
-production test seams absent from the skeleton. They also cover direct root
-qualification, exact missing-root output, category selection, and footer
+production test seams absent from the skeleton. They also cover nearest-root
+discovery, exact missing-root output, category selection, and footer
 cardinality.
 
 Black-box subprocess fixtures and application coverage belong to
@@ -84,19 +84,16 @@ The installation documentation and isolated verification belong to
    `github.com/divilla/apihydra/`.
 2. Native pflag attached, equals, repeated, interspersed, and `--` behavior is
    preserved. `-p`/`--parallelism` defaults to `1`, the last occurrence wins,
-   only `0..2` is valid, at most one directory is accepted, help exits `0` on
+   only `0..2` is valid, multiple selections are accepted, help exits `0` on
    stdout without a run, and other invocation errors exit `102` on stderr.
-3. Invalid selected paths return `errs.ExitConfiguration` and no working
-   directory output; a successful main flow returns `0` after reporting the
-   working directory. A selected directory without a qualifying direct root
-   returns `ErrRootDefinitionMissing` and exit `102` before reporting output or
-   creating its run cache. Its fatal line is `error: root defaults file missing`;
-   the manual footer uses `#root-defaults-file-missing`.
-   A top-level apihydra kind violation takes priority, producing exactly
-   `error: kind: must be one of: <root|defaults|steps>` with code `102`, empty
-   stdout, and the `#invalid-yaml-definition` footer. The same error found in a
-   descendant follows successful root qualification and working-directory
-   reporting. Only string `app: apihydra` triggers kind validation.
+3. Invalid selections return configuration code `102`; missing roots precede
+   output and cache creation with exact line `error: kind: root - file missing`
+   and unchanged `#root-defaults-file-missing` footer. Invalid targets, ranges,
+   and mixed roots use `ErrInvalidSelection` with `#invalid-arguments`. All
+   selections are checked before requests execute. Kind validation applies to
+   the selected definition scope after root qualification, retaining its exact
+   diagnostic and `#invalid-yaml-definition` footer. The working-directory
+   heading reports the discovered root.
 4. Every valid run uses a unique private directory below
    `os.UserCacheDir()/apih`, injects it as `Config.TempRunDir`, and attempts to
    remove it on every controlled return. Cleanup failures are silent and do not
@@ -117,3 +114,7 @@ The installation documentation and isolated verification belong to
    `git diff --check` pass.
 9. With guides `000` through `010` implemented, completing this guide produces
    a runnable `apih` application and enables the `012` black-box suite.
+
+10. Inner-directory, file, and zero-based range selections preserve inherited
+    defaults, deduplicate overlaps, and never run skipped prerequisites under
+    any parallelism mode. CLI help documents these forms.

@@ -60,3 +60,11 @@ underlying YAML cause.
    its unit tests and `git diff --check` pass.
 6. Malformed defaults and steps definitions match `ErrInvalidDefinition` and
    identify their source file without discarding the YAML cause.
+
+## Selection scope
+
+Decoder validates selected files in full, including unselected source steps in
+a partially selected file, plus all included ancestor defaults. Loader limits
+which files enter the tree; Resolver filters executable steps after decoding.
+The scope and original-index contracts are defined in change `020` and the
+binding Loader/Resolver references.

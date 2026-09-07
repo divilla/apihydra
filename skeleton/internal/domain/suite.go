@@ -8,10 +8,22 @@ const (
 	KindSteps    DocumentKind = "steps"
 )
 
-// Suite is the parsed tree anchored by the selected working directory.
+// Selection identifies a normalized absolute path in one suite. Directory
+// selections include descendants. Last == -1 selects every step in a file;
+// otherwise First and Last are inclusive original zero-based source indices.
+type Selection struct {
+	Path      string
+	Directory bool
+	First     int
+	Last      int
+}
+
+// Suite is the parsed tree anchored by the discovered suite root. Selections
+// restrict discovery and resolved steps; an empty slice selects the whole tree.
 type Suite struct {
-	WorkDir string
-	Root    *Directory
+	WorkDir    string
+	Selections []Selection
+	Root       *Directory
 }
 
 type Directory struct {

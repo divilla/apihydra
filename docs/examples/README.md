@@ -26,6 +26,16 @@ Alternatively, change into either group and run `apih` without a directory
 argument. Select `basic` or `full` directly: `docs/examples` itself is not a
 suite root.
 
+You can also run an inner directory or selected steps while inheriting defaults:
+
+```sh
+apih docs/examples/basic/health
+apih docs/examples/basic/health/steps.yaml:0
+```
+
+Overlapping selections run each source step once; selections from `basic` and `full` cannot
+be combined because they have different roots.
+
 Both examples expect a local HTTP service on `127.0.0.1:18080`:
 
 | Suite | Request | Required response |

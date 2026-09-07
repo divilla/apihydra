@@ -22,8 +22,10 @@ exactly after replacing the `github.com/divilla/apihydra/skeleton/` package
 location with `github.com/divilla/apihydra/`.
 
 `domain.Config` is the single injected invocation configuration. Its three
-untagged fields retain parsed parallelism, the optional positional directory,
-and the CLI-created private run directory. Packages do not duplicate this
+untagged fields retain parsed parallelism, the positional selection strings,
+and the CLI-created private run directory. `Suite.Selections` holds the
+normalized `Selection` values declared in the skeleton; `Suite.WorkDir` anchors
+the tree at the discovered root. Packages do not duplicate this
 carrier or replace it with global flags or temporary-directory state.
 
 `DefaultsDefinition.Spec`, `Directory.ResolvedDefaults`,

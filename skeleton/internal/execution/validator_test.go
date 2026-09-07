@@ -1,6 +1,7 @@
 package execution
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/divilla/apihydra/skeleton/internal/domain"
@@ -12,7 +13,7 @@ func TestNewValidatorRetainsConfig(t *testing.T) {
 	if validator == nil {
 		t.Fatal("NewValidator() = nil")
 	}
-	if validator.config != config {
+	if !reflect.DeepEqual(validator.config, config) {
 		t.Fatalf("NewValidator() config = %#v, want %#v", validator.config, config)
 	}
 }

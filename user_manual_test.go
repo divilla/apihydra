@@ -30,7 +30,7 @@ func TestUserManualAcceptanceCriterion1AgentFirstSingleDocument(t *testing.T) {
 	}
 
 	required := []string{
-		"This manual is written for coding agents first and humans too.",
+		"APIHydra is an ultra-fast, agent-first API integration tester.",
 		"## Contents",
 		"## Quick start",
 		"## YAML document reference",
@@ -46,7 +46,7 @@ func TestUserManualAcceptanceCriterion2QuickStartCLIAndExitCodes(t *testing.T) {
 	required := []string{
 		"go build -o ./bin/apih ./cmd/apih",
 		"go run ./cmd/apih",
-		"apih [flags] [directory]",
+		"apih [flags] [selection ...]",
 		"`-h`, `--help`",
 		"`-p`, `--parallelism`",
 		"`-p0`, `-p 0`",
@@ -54,7 +54,7 @@ func TestUserManualAcceptanceCriterion2QuickStartCLIAndExitCodes(t *testing.T) {
 		"`--` ends flag parsing",
 		"| `0` | Success",
 		"| `101` | One or more response validations failed.",
-		"| `102` | Invocation, selected-directory, YAML, definition, or other configuration failure.",
+		"| `102` | Invocation, selection, YAML, definition, or other configuration failure.",
 		"| `103` | Internal execution",
 		"Some terminal external-command paths preserve that command's nonzero exit code",
 		"curl",
@@ -125,7 +125,7 @@ func TestUserManualAcceptanceCriterion3CompleteConfigurationReference(t *testing
 		"Do not set these as suite input",
 		"Required for `app: apihydra`",
 		"error: kind: must be one of: <root|defaults|steps>",
-		"invalid kinds take priority over root",
+		"Unrelated invalid kinds cannot mask a missing root",
 		"Other app values receive no kind",
 	})
 }
@@ -233,7 +233,7 @@ func TestUserManualAcceptanceCriterion6TroubleshootingAndUnspecifiedBoundaries(t
 		"cross-file value",
 		"unexpected cookie in mode `2`",
 		"Debug exposed a secret",
-		"not a published contract",
+		"no published cardinality contract",
 		"not stable product\ncontracts",
 	}
 	assertContainsAll(t, manual, required)
@@ -295,8 +295,8 @@ func TestEveryFatalDiagnosticAnchorResolvesExactlyOnceInUserManual(t *testing.T)
 func TestUserManualAcceptanceCriterion7CompactStructure(t *testing.T) {
 	manual := readUserManual(t)
 	wordCount := len(strings.Fields(manual))
-	if wordCount < 3_000 || wordCount > 5_500 {
-		t.Fatalf("manual word count = %d, want exhaustive but compact range 3000..5500", wordCount)
+	if wordCount < 3_000 || wordCount > 6_000 {
+		t.Fatalf("manual word count = %d, want exhaustive but compact range 3000..6000", wordCount)
 	}
 	if strings.Contains(manual, "\n\n\n") {
 		t.Fatal("manual contains redundant consecutive blank lines")

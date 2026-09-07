@@ -41,22 +41,26 @@ func TestCheckDefinitionKind(t *testing.T) {
 	}
 }
 
-func TestTopLevelInvalidKindPrecedesRootResult(t *testing.T) {
+func TestRootQualificationIgnoresUnrelatedKinds(t *testing.T) {
 	for _, rootName := range []string{"", "a-root.yaml", "z-root.yaml"} {
 		t.Run(rootName, func(t *testing.T) {
 			dir := t.TempDir()
 			if rootName != "" {
-				if err := os.WriteFile(filepath.Join(dir, rootName), []byte("app: apihydra\nkind: root\n"), 0o600); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, rootName), []byte("app: apihydra\nkind: root\n"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := os.WriteFile(filepath.Join(dir, "invalid.yml"), []byte("app: apihydra\n"), 0o600); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "invalid.yml"), []byte("app: apihydra\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
 			suite := &domain.Suite{WorkDir: dir}
 			err := NewLoader().LoadDirectoryStructure(context.Background(), suite)
-			if !errors.Is(err, ErrInvalidKind) || suite.Root != nil {
-				t.Fatalf("root check = %v, root %v, want ErrInvalidKind before discovery", err, suite.Root)
+			if rootName == "" {
+				if !errors.Is(err, ErrRootDefinitionMissing) || suite.Root != nil {
+					t.Fatalf("missing root: %v", err)
+				}
+			} else if err != nil || suite.Root == nil {
+				t.Fatalf("qualified root: %v", err)
 			}
 		})
 	}

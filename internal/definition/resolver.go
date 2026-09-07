@@ -62,7 +62,12 @@ func (l *Resolver) ResolveDefaults(
 // ResolveSteps traverses suite.Root and populates each ResolvedSteps with values
 // merged from the directory's StepsDefinitions and DefaultsDefinition. It
 // applies the same DisableCookies presence-sensitive overlay from directory to
-// steps-file to individual-step defaults.
+// steps-file to individual-step defaults. Before committing, validate every
+// explicit file target and range against fully decoded source definitions,
+// returning ErrInvalidSelection for invalid targets or out-of-bounds indices.
+// Retain only the union of selected source steps in ResolvedSteps, preserving
+// original indices, definition pointers, and canonical order. Unselected
+// predecessors never run, while their source files are still validated in full.
 func (l *Resolver) ResolveSteps(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -97,6 +102,12 @@ func (l *Resolver) ResolveSteps(
 		return err
 	}
 
+	if err := filterSelectedSteps(suite, resolved); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	for directory, steps := range resolved {
 		directory.ResolvedSteps = steps
 	}

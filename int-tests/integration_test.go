@@ -186,7 +186,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		copyFixture(t, source, destination, server.URL)
 	}
 
-	wantMissingRoot := "error: root defaults file missing\n\nplease check user manual: " + manualReference + "#root-defaults-file-missing\n"
+	wantMissingRoot := "error: kind: root - file missing\n\nplease check user manual: " + manualReference + "#root-defaults-file-missing\n"
 	missingCurrentRoot := runCLIArguments(t, ctx, binary, runRoot, coverageDir, nil, io.Discard)
 	if missingCurrentRoot.exitCode != 102 || missingCurrentRoot.stdout != "" || missingCurrentRoot.stderr != wantMissingRoot {
 		t.Fatalf("current-directory missing root = code %d, stdout %q, stderr %q, want exact root diagnostic", missingCurrentRoot.exitCode, missingCurrentRoot.stdout, missingCurrentRoot.stderr)
@@ -276,13 +276,13 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 					var stdout strings.Builder
 					result := runCLIArguments(t, ctx, binary, cwd, coverageDir, args, &stdout)
 					want := wantInvalidKind
-					if placement == "nested-no-root" {
+					if placement == "nested-no-root" || placement == "no-root" {
 						want = wantMissingRoot
 					}
 					if result.exitCode != 102 || result.stderr != want {
 						t.Fatalf("current directory %v: code %d, stderr %q, want code 102 and %q", currentDirectory, result.exitCode, result.stderr, want)
 					}
-					if placement == "nested" {
+					if placement != "no-root" && placement != "nested-no-root" {
 						if !strings.Contains(stdout.String(), "Working Directory:") {
 							t.Fatalf("nested kind validation did not follow discovery: stdout %q", stdout.String())
 						}
@@ -322,7 +322,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if invalid.stdout != "" {
 		t.Fatalf("invalid path stdout = %q, want empty", invalid.stdout)
 	}
-	if !strings.Contains(invalid.stderr, "invalid path") {
+	if !strings.Contains(invalid.stderr, "invalid selection") {
 		t.Fatalf("invalid path stderr = %q, want invalid-path diagnostic", invalid.stderr)
 	}
 	assertFatalDiagnostic(t, invalid.stderr)
@@ -330,10 +330,10 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	if nondirectory.exitCode != 102 {
 		t.Fatalf("file path exit code = %d, want 102; stderr = %q", nondirectory.exitCode, nondirectory.stderr)
 	}
-	if nondirectory.stdout != "" {
-		t.Fatalf("file path stdout = %q, want empty", nondirectory.stdout)
+	if !strings.HasPrefix(nondirectory.stdout, "Working Directory: ") {
+		t.Fatalf("file path stdout = %q, want working-directory heading", nondirectory.stdout)
 	}
-	if !strings.Contains(nondirectory.stderr, "invalid path") {
+	if !strings.Contains(nondirectory.stderr, "invalid selection") {
 		t.Fatalf("file path stderr = %q, want invalid-path diagnostic", nondirectory.stderr)
 	}
 	assertFatalDiagnostic(t, nondirectory.stderr)
@@ -803,6 +803,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	}
 	assertFatalDiagnostic(t, commandFailure.stderr)
 
+	runSelectionScenarios(t, ctx, binary, runRoot, coverageDir, server.URL)
 	assertProductionCoverage(t, ctx, repoRoot, coverageDir, minimumCoverage)
 }
 

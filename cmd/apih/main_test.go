@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -100,35 +101,37 @@ func TestRunReturnsConfigurationExitCodeForInvalidPath(t *testing.T) {
 	t.Chdir(t.TempDir())
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), domain.Config{Directory: "path-that-does-not-exist", Parallelism: 1}, reporting.NewReporter(&output, false))
+	exitCode, err := run(context.Background(), domain.Config{Selections: []string{"path-that-does-not-exist"}, Parallelism: 1}, reporting.NewReporter(&output, false))
 	if exitCode != errs.ExitConfiguration {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
 	}
-	if !errors.Is(err, ErrInvalidPath) {
-		t.Fatalf("run() error = %v, want ErrInvalidPath", err)
+	if !errors.Is(err, definition.ErrInvalidSelection) {
+		t.Fatalf("run() error = %v, want ErrInvalidSelection", err)
 	}
 	if output.Len() != 0 {
 		t.Fatalf("run() output = %q, want empty output", output.String())
 	}
 }
 
-func TestRunRejectsSelectedFile(t *testing.T) {
+func TestRunRejectsFileWithoutStepsEnvelope(t *testing.T) {
+	setTestUserCacheDir(t, t.TempDir())
 	workDir := t.TempDir()
 	t.Chdir(workDir)
+	writeRootDefinition(t, workDir, "root.yaml")
 	if err := os.WriteFile(filepath.Join(workDir, "suite.yaml"), []byte("kind: steps\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), domain.Config{Directory: "suite.yaml", Parallelism: 1}, reporting.NewReporter(&output, false))
+	exitCode, err := run(context.Background(), domain.Config{Selections: []string{"suite.yaml"}, Parallelism: 1}, reporting.NewReporter(&output, false))
 	if exitCode != errs.ExitConfiguration {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
 	}
-	if !errors.Is(err, ErrInvalidPath) {
-		t.Fatalf("run() error = %v, want ErrInvalidPath", err)
+	if !errors.Is(err, definition.ErrInvalidSelection) {
+		t.Fatalf("run() error = %v, want ErrInvalidSelection", err)
 	}
-	if output.Len() != 0 {
-		t.Fatalf("run() output = %q, want empty output", output.String())
+	if !strings.HasPrefix(output.String(), "Working Directory: ") {
+		t.Fatalf("run() output = %q, want working-directory heading", output.String())
 	}
 }
 
@@ -143,7 +146,7 @@ func TestRunSelectsDirectoryAndCompletesDefinitionPipeline(t *testing.T) {
 	t.Chdir(workDir)
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), domain.Config{Directory: "suite", Parallelism: 1}, reporting.NewReporter(&output, false))
+	exitCode, err := run(context.Background(), domain.Config{Selections: []string{"suite"}, Parallelism: 1}, reporting.NewReporter(&output, false))
 	if err != nil {
 		t.Fatalf("run() error = %v", err)
 	}
@@ -304,6 +307,7 @@ func TestRunPropagatesCancellationFromLongDefinitionPhases(t *testing.T) {
 	}
 	t.Chdir(workDir)
 
+	assertRunCanceledInPhase(t, "definition.(*Loader).LoadDirectoryStructure")
 	assertRunCanceledInPhase(t, "definition.(*Resolver).ResolveDefaults")
 	assertRunCanceledInPhase(t, "definition.(*Loader).LoadDirectoryFiles")
 	if testing.CoverMode() != "" {
@@ -357,9 +361,6 @@ func assertRunCanceledInPhase(t *testing.T, phase string) {
 			continue
 		}
 		if !errors.Is(got.err, context.Canceled) {
-			continue
-		}
-		if testing.CoverMode() != "" && !coverageIncreased {
 			continue
 		}
 		if testing.CoverMode() != "" {
@@ -460,17 +461,18 @@ func TestParseConfigUsesNativePflagBehavior(t *testing.T) {
 	tests := map[string]struct {
 		args        []string
 		parallelism int
-		directory   string
+		selections  []string
 		wantErr     bool
 	}{
+		"path with spaces":     {args: []string{"apih", "suite with spaces"}, parallelism: 1, selections: []string{"suite with spaces"}},
 		"defaults":             {args: []string{"apih"}, parallelism: 1},
-		"attached shorthand":   {args: []string{"apih", "-p0", "suite"}, parallelism: 0, directory: "suite"},
-		"equals long":          {args: []string{"apih", "--parallelism=2", "suite"}, parallelism: 2, directory: "suite"},
-		"interspersed":         {args: []string{"apih", "suite", "-p", "2"}, parallelism: 2, directory: "suite"},
+		"attached shorthand":   {args: []string{"apih", "-p0", "suite"}, parallelism: 0, selections: []string{"suite"}},
+		"equals long":          {args: []string{"apih", "--parallelism=2", "suite"}, parallelism: 2, selections: []string{"suite"}},
+		"interspersed":         {args: []string{"apih", "suite", "-p", "2"}, parallelism: 2, selections: []string{"suite"}},
 		"repeated last wins":   {args: []string{"apih", "-p", "0", "--parallelism", "2"}, parallelism: 2},
-		"terminator":           {args: []string{"apih", "--", "-p2"}, parallelism: 1, directory: "-p2"},
+		"terminator":           {args: []string{"apih", "--", "-p2"}, parallelism: 1, selections: []string{"-p2"}},
 		"empty argv":           {args: nil, parallelism: 1},
-		"too many directories": {args: []string{"apih", "one", "two"}, wantErr: true},
+		"multiple selections":  {args: []string{"apih", "one", "two"}, parallelism: 1, selections: []string{"one", "two"}},
 		"invalid parallelism":  {args: []string{"apih", "-p", "3"}, wantErr: true},
 		"negative parallelism": {args: []string{"apih", "-p=-1"}, wantErr: true},
 		"malformed value":      {args: []string{"apih", "-p", "many"}, wantErr: true},
@@ -490,7 +492,7 @@ func TestParseConfigUsesNativePflagBehavior(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if config != (domain.Config{Parallelism: test.parallelism, Directory: test.directory}) {
+			if config.Parallelism != test.parallelism || !slices.Equal(config.Selections, test.selections) || config.TempRunDir != "" {
 				t.Fatalf("parseConfig() = %#v", config)
 			}
 		})
@@ -501,7 +503,7 @@ func TestParseConfigHelpUsesPflagOutput(t *testing.T) {
 	for _, help := range []string{"-h", "--help"} {
 		var output bytes.Buffer
 		config, err := parseConfig([]string{"apih", help}, &output)
-		if !errors.Is(err, pflag.ErrHelp) || config != (domain.Config{}) {
+		if !errors.Is(err, pflag.ErrHelp) || (config.Parallelism != 0 || len(config.Selections) != 0 || config.TempRunDir != "") {
 			t.Fatalf("parseConfig(%s) = (%#v, %v)", help, config, err)
 		}
 		if !strings.Contains(output.String(), "--parallelism") {
@@ -528,7 +530,7 @@ func TestRunRequiresRootInCurrentOrSelectedDirectory(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Chdir(parent)
-				return domain.Config{Directory: "suite", Parallelism: 1}
+				return domain.Config{Selections: []string{"suite"}, Parallelism: 1}
 			},
 		},
 	}
@@ -732,10 +734,10 @@ func TestMainLogsFatalErrorAndPreservesProductExitCode(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("main process stdout = %q, want empty output", stdout.String())
 	}
-	if !strings.Contains(stderr.String(), ErrInvalidPath.Error()) {
-		t.Fatalf("main process stderr = %q, want ErrInvalidPath", stderr.String())
+	if !strings.Contains(stderr.String(), definition.ErrInvalidSelection.Error()) {
+		t.Fatalf("main process stderr = %q, want ErrInvalidSelection", stderr.String())
 	}
-	if !strings.HasPrefix(stderr.String(), "error: ") || !strings.HasSuffix(stderr.String(), "#invalid-selected-directory\n") {
+	if !strings.HasPrefix(stderr.String(), "error: ") || !strings.HasSuffix(stderr.String(), "#invalid-arguments\n") {
 		t.Fatalf("main process stderr = %q, want prefixed anchored diagnostic", stderr.String())
 	}
 }
@@ -825,7 +827,7 @@ func TestMainReportsExactMissingRootDiagnostic(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("main process stdout = %q, want empty output", stdout.String())
 	}
-	want := "error: root defaults file missing\n\n" +
+	want := "error: kind: root - file missing\n\n" +
 		"please check user manual: " + userManualReference + "#root-defaults-file-missing\n"
 	if stderr.String() != want {
 		t.Fatalf("main process stderr = %q, want %q", stderr.String(), want)

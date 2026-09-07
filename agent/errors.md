@@ -87,7 +87,7 @@ Expected exit code:
 diagnostic using the canonical published manual URL:
 
 ```text
-error: root defaults file missing
+error: kind: root - file missing
 
 please check user manual: https://github.com/divilla/apihydra/blob/master/docs/user-manual/apih.md#root-defaults-file-missing
 ```
@@ -96,13 +96,13 @@ The final line ends with one newline. Remove the temporary directory after
 inspection.
 
 The same expected result applies when the selected directory has YAML only in
-descendants. In particular, after change 019, running `apih` from the APIHydra
+descendants and no ancestor qualifies. After change 020, running `apih` from the APIHydra
 repository root must produce this root-missing diagnostic without decoding
 `int-tests/input/scenarios/invalid-base/definition.yaml`.
 
 ### Required behavior with a directory argument
 
-From a fresh temporary parent directory, create an empty selected directory and
+With no qualifying root in any ancestor, create an empty selected directory and
 pass it as the sole positional argument:
 
 ```bash
@@ -120,7 +120,7 @@ root-missing diagnostic on stderr.
 ### Required success boundary
 
 The root filename is arbitrary. For either invocation form, add a file directly
-inside the selected suite directory, for example `suite.yml`:
+inside the selected directory or a searched ancestor, for example `suite.yml`:
 
 ```yaml
 app: apihydra
@@ -129,7 +129,7 @@ spec: {}
 ```
 
 This file satisfies the root-presence check. `apih` must continue into ordinary
-recursive discovery rather than return `root defaults file missing`.
+recursive discovery rather than return `kind: root - file missing`.
 
 The following do not satisfy the check when no other qualifying root exists:
 
@@ -163,6 +163,7 @@ directory-selection forms:
 ```bash
 kind_example_dir=$(mktemp -d)
 mkdir "$kind_example_dir/suite"
+printf 'app: apihydra\nkind: root\nspec: {}\n' >"$kind_example_dir/suite/root.yaml"
 printf 'app: apihydra\nkind: unknown\n' >"$kind_example_dir/suite/definition.yaml"
 (
   cd "$kind_example_dir"
@@ -174,7 +175,8 @@ printf 'app: apihydra\nkind: unknown\n' >"$kind_example_dir/suite/definition.yam
 )
 ```
 
-Both status files contain `102`, both stdout files are empty, and both stderr
+Both status files contain `102`, both stdout files contain the normal working-directory
+heading for the suite root, and both stderr
 files contain exactly this text ending with one newline:
 
 ```text
@@ -184,16 +186,23 @@ please check user manual: https://github.com/divilla/apihydra/blob/master/docs/u
 ```
 
 Repeat with `kind` omitted, `kind:`, `kind: ''`, `kind: null`, `kind: 1`,
-`kind: false`, `kind: []`, or `kind: {}` for the same result. Adding a valid
-top-level root file does not hide the kind error. Changing `app` to another
-value, including `apyhidra`, disables this kind check; without a qualifying
-root, the root-missing diagnostic applies instead.
+`kind: false`, `kind: []`, or `kind: {}` for the same result. Within a selected
+directory, the valid root does not hide a later kind error. Without a qualifying
+root in that directory or any ancestor, the missing-root diagnostic takes
+priority and stdout is empty. An explicit file selection excludes unrelated
+invalid-kind steps files while still validating its inherited root/defaults.
+Changing `app` to another value disables this kind check.
 
-If the invalid-kind file is moved into a child directory, it is checked only
-after a valid top-level root exists. That case includes normal working-directory
-stdout before the same fatal diagnostic. Without that root, only root-missing
-is reported. Cleanup with `rm -rf -- "$kind_example_dir"` after inspection.
-The commands require a POSIX shell and `apih` on `PATH`.
+Cleanup with `rm -rf -- "$kind_example_dir"` after inspection. The commands
+require a POSIX shell and `apih` on `PATH`.
+
+## Invalid selection
+
+Manual anchor: `#invalid-arguments`. Required behavior after change 020: in a
+valid suite, `apih steps.yaml:3-1` rejects the reversed range with code `102`
+and identifies the offending selection. `apih steps.yaml steps.yaml:999999`
+also rejects the whole invocation when that index is outside the source steps;
+no request may execute. The final diagnostic has exactly one manual footer.
 
 ## Adding another reproduction
 

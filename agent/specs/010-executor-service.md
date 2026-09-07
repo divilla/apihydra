@@ -156,3 +156,11 @@ goroutines are permitted.
     preserve incoming state, and concurrent workers never share or merge
     writable jars. Separate runs never exchange state, and storage failures
     return internal failure without silently omitting enabled cookies.
+
+## Selected execution
+
+Resolver supplies only the selected source-step union. Executor preserves those
+indices and provenance while preparing runtime copies. Ancestor directories
+retained for defaults may have no selected steps; their cookie state follows
+the existing empty-directory inheritance rules. Executor never runs omitted
+steps to supply variables, captures, or cookies.

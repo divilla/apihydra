@@ -93,3 +93,17 @@
 
 2026-01-09 17:04 019-fix-error-messages
 +1044 -141 code - +756 -30 tests --- change
+
+2026-06-09 21:58 020-select-tests
++1146 -260 code - +767 -74 tests --- change
++52 -12 code - +86 -9 tests --- review fixes 01
++16 -3 code - +29 -1 tests --- review fixes 02
++54 -8 code - +65 -0 tests --- review fixes 03
++103 -28 code - +160 -0 tests --- review fixes 04
++123 -4 code - +247 -0 tests --- review fixes 05
++33 -7 code - +126 -0 tests --- review fixes 06
++4 -4 code - +12 -0 tests --- review fixes 07
++6 -1 code - +15 -0 tests --- review fixes 08
++8 -0 code - +14 -0 tests --- review fixes 09
++4 -1 code - +18 -0 tests --- review fixes 10
+

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -39,12 +40,12 @@ func writeRootDefinition(t *testing.T, directory, name string) {
 func TestRunReturnsConfigurationExitCodeForInvalidPath(t *testing.T) {
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), domain.Config{Directory: "path-that-does-not-exist", Parallelism: 1}, reporting.NewReporter(&output, false))
+	exitCode, err := run(context.Background(), domain.Config{Selections: []string{"path-that-does-not-exist"}, Parallelism: 1}, reporting.NewReporter(&output, false))
 	if exitCode != errs.ExitConfiguration {
 		t.Fatalf("run() exit code = %d, want %d", exitCode, errs.ExitConfiguration)
 	}
-	if !errors.Is(err, ErrInvalidPath) {
-		t.Fatalf("run() error = %v, want ErrInvalidPath", err)
+	if !errors.Is(err, definition.ErrInvalidSelection) {
+		t.Fatalf("run() error = %v, want ErrInvalidSelection", err)
 	}
 	if output.Len() != 0 {
 		t.Fatalf("run() output = %q, want empty output", output.String())
@@ -81,7 +82,7 @@ func TestRunSelectsDirectoryContainingRootDefinition(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), domain.Config{Directory: "suite", Parallelism: 1}, reporting.NewReporter(&output, false))
+	exitCode, err := run(context.Background(), domain.Config{Selections: []string{"suite"}, Parallelism: 1}, reporting.NewReporter(&output, false))
 	if err != nil || exitCode != 0 {
 		t.Fatalf("run() = (%d, %v), want (0, nil)", exitCode, err)
 	}
@@ -111,7 +112,7 @@ func TestRunRejectsSelectedDirectoryMissingRootBeforeApplicationOutput(t *testin
 	t.Chdir(parent)
 	var output bytes.Buffer
 
-	exitCode, err := run(context.Background(), domain.Config{Directory: "suite", Parallelism: 1}, reporting.NewReporter(&output, false))
+	exitCode, err := run(context.Background(), domain.Config{Selections: []string{"suite"}, Parallelism: 1}, reporting.NewReporter(&output, false))
 	if exitCode != errs.ExitConfiguration || !errors.Is(err, definition.ErrRootDefinitionMissing) {
 		t.Fatalf("run() = (%d, %v), want (%d, ErrRootDefinitionMissing)", exitCode, err, errs.ExitConfiguration)
 	}
@@ -140,15 +141,16 @@ func TestParseConfigUsesNativePflagFormsAndRejectsInvalidApplicationValues(t *te
 	tests := map[string]struct {
 		args        []string
 		parallelism int
-		directory   string
+		selections  []string
 		wantErr     bool
 	}{
+		"path with spaces":       {args: []string{"apih", "suite with spaces"}, parallelism: 1, selections: []string{"suite with spaces"}},
 		"defaults":               {args: []string{"apih"}, parallelism: 1},
-		"attached shorthand":     {args: []string{"apih", "-p0", "suite"}, parallelism: 0, directory: "suite"},
-		"equals long":            {args: []string{"apih", "--parallelism=2", "suite"}, parallelism: 2, directory: "suite"},
-		"interspersed":           {args: []string{"apih", "suite", "-p", "2"}, parallelism: 2, directory: "suite"},
+		"attached shorthand":     {args: []string{"apih", "-p0", "suite"}, parallelism: 0, selections: []string{"suite"}},
+		"equals long":            {args: []string{"apih", "--parallelism=2", "suite"}, parallelism: 2, selections: []string{"suite"}},
+		"interspersed":           {args: []string{"apih", "suite", "-p", "2"}, parallelism: 2, selections: []string{"suite"}},
 		"repeated last wins":     {args: []string{"apih", "-p", "0", "--parallelism", "2"}, parallelism: 2},
-		"too many directories":   {args: []string{"apih", "one", "two"}, wantErr: true},
+		"multiple selections":    {args: []string{"apih", "one", "two"}, parallelism: 1, selections: []string{"one", "two"}},
 		"invalid parallelism":    {args: []string{"apih", "-p", "3"}, wantErr: true},
 		"nonnumeric parallelism": {args: []string{"apih", "-p", "many"}, wantErr: true},
 	}
@@ -166,8 +168,8 @@ func TestParseConfigUsesNativePflagFormsAndRejectsInvalidApplicationValues(t *te
 			if err != nil {
 				t.Fatalf("parseConfig() error = %v", err)
 			}
-			if config.Parallelism != test.parallelism || config.Directory != test.directory || config.TempRunDir != "" {
-				t.Fatalf("parseConfig() = %#v, want parallelism %d, directory %q", config, test.parallelism, test.directory)
+			if config.Parallelism != test.parallelism || !slices.Equal(config.Selections, test.selections) || config.TempRunDir != "" {
+				t.Fatalf("parseConfig() = %#v, want parallelism %d, selections %q", config, test.parallelism, test.selections)
 			}
 		})
 	}
@@ -186,7 +188,7 @@ func TestParseConfigHelpUsesPflag(t *testing.T) {
 
 func TestFatalDiagnosticUsesSpecificManualAnchor(t *testing.T) {
 	err := errs.Build(errs.ExitConfiguration, definition.ErrRootDefinitionMissing, nil)
-	want := "error: root defaults file missing\n\n" +
+	want := "error: kind: root - file missing\n\n" +
 		"please check user manual: " + userManualReference + "#root-defaults-file-missing\n"
 	if got := fatalDiagnostic(err); got != want {
 		t.Fatalf("fatalDiagnostic() = %q, want %q", got, want)
@@ -260,10 +262,10 @@ func TestMainLogsFatalErrorAndPreservesProductExitCode(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("main process stdout = %q, want empty output", stdout.String())
 	}
-	if !strings.HasPrefix(stderr.String(), "error: "+ErrInvalidPath.Error()+":") {
-		t.Fatalf("main process stderr = %q, want prefixed ErrInvalidPath", stderr.String())
+	if !strings.HasPrefix(stderr.String(), "error: "+definition.ErrInvalidSelection.Error()+":") {
+		t.Fatalf("main process stderr = %q, want prefixed ErrInvalidSelection", stderr.String())
 	}
-	wantFooter := "\n\nplease check user manual: " + userManualReference + "#invalid-selected-directory\n"
+	wantFooter := "\n\nplease check user manual: " + userManualReference + "#invalid-arguments\n"
 	if !strings.HasSuffix(stderr.String(), wantFooter) {
 		t.Fatalf("main process stderr = %q, want footer %q", stderr.String(), wantFooter)
 	}
@@ -289,7 +291,7 @@ func TestMainReportsExactMissingRootDiagnostic(t *testing.T) {
 	if stdout.Len() != 0 {
 		t.Fatalf("main process stdout = %q, want empty output", stdout.String())
 	}
-	want := "error: root defaults file missing\n\n" +
+	want := "error: kind: root - file missing\n\n" +
 		"please check user manual: " + userManualReference + "#root-defaults-file-missing\n"
 	if stderr.String() != want {
 		t.Fatalf("main process stderr = %q, want %q", stderr.String(), want)

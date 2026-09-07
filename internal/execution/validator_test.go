@@ -20,7 +20,7 @@ func TestValidatorExportedContract(t *testing.T) {
 	if validator == nil {
 		t.Fatal("NewValidator(domain.Config{}) = nil")
 	}
-	if validator.config != config {
+	if !reflect.DeepEqual(validator.config, config) {
 		t.Fatalf("NewValidator() config = %#v, want %#v", validator.config, config)
 	}
 	if got, want := ErrValidation.Error(), "validation error"; got != want {

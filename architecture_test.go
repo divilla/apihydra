@@ -52,6 +52,7 @@ func TestPackageBoundaries(t *testing.T) {
 func TestSharedDomainTypesHaveOneOwner(t *testing.T) {
 	sharedTypes := map[string]struct{}{
 		"Config":             {},
+		"Selection":          {},
 		"DocumentKind":       {},
 		"Suite":              {},
 		"Directory":          {},

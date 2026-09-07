@@ -13,7 +13,7 @@ func TestConfigSchema(t *testing.T) {
 	}
 	want := []field{
 		{name: "Parallelism", typ: reflect.TypeOf(0)},
-		{name: "Directory", typ: reflect.TypeOf("")},
+		{name: "Selections", typ: reflect.TypeOf([]string{})},
 		{name: "TempRunDir", typ: reflect.TypeOf("")},
 	}
 

@@ -4,9 +4,6 @@ APIHydra is an ultra-fast, agent-first API integration tester. An `apih` suite
 is a directory tree of YAML definitions: root and defaults documents configure
 requests, while steps documents send HTTP requests and validate responses.
 
-This manual is written for coding agents first and humans too.
-Reference tables are exhaustive; examples are copyable.
-
 ## Contents
 
 - [Quick start](#quick-start)
@@ -101,12 +98,55 @@ requirements.
 ### Synopsis
 
 ```text
-apih [flags] [directory]
+apih [flags] [selection ...]
 ```
 
-With no positional `directory`, `apih` uses the current working directory. A
-relative positional directory is joined to the current working directory and
-must resolve to a directory. At most one positional directory is accepted.
+### Selections
+
+| Selection | Executed work |
+| --- | --- |
+| `directory` | All steps in that directory and its descendants. |
+| `steps.yaml` | All steps in that file (`.yml` also works). |
+| `steps.yaml:N` | Step `N`, where `0` is the first entry in `spec.steps`. |
+| `steps.yaml:N-M` | Steps `N` through `M`, inclusive; `N-N` selects one step. |
+
+With no selections, `apih` selects the current directory and its descendants.
+Running inside a suite selects only that subtree while inheriting ancestor
+defaults. All selections must share the same nearest suite root.
+
+Paths may be absolute or relative to the invocation directory. Equivalent paths
+are combined using filesystem casing where listable, supplied spelling otherwise.
+File targets must be existing regular files with lowercase `.yaml`/`.yml`
+extensions, `app: apihydra`, and `kind: steps`.
+
+```sh
+apih suites/smoke/api
+apih suites/smoke/api/users.yaml:0
+apih suites/smoke/api/users.yaml:1-3 suites/smoke/health
+```
+
+Suffixes apply only to filenames (`suite:v1/child/steps.yaml:0`). Symlinks resolve
+before `..` and root discovery. Repeated or overlapping selections run each
+source step once. Argument order does not change suite execution order or
+parallelism. Selecting `users.yaml:1-3` retains indices `1`, `2`, and `3` in
+Debug and diagnostic `spec.steps[index]` locations.
+
+Indices are non-negative decimal integers. Malformed, negative, reversed,
+overflowing, open-ended, comma-separated, or out-of-bounds selectors are invalid,
+as are suffixes on directories and root/defaults file targets. Separate arguments
+express disjoint ranges. Every selection is checked before any request executes;
+one invalid argument fails the entire invocation with exit `102`, even if another
+selection covers it. Ranges are never clamped.
+
+Selected files are validated in full, including skipped steps, plus the root and
+all applicable ancestor defaults. A directory selection validates supported
+definitions throughout its subtree. Invalid unselected steps files and unrelated
+branches do not block execution. Ancestors retained for defaults do not select
+their steps or sibling subtrees. Skipped steps supply no variables, captures, or
+cookies. Select required producers explicitly; missing values still cause runtime
+errors.
+
+### Flags
 
 | Flag | Default | Effect |
 | --- | ---: | --- |
@@ -117,25 +157,12 @@ Argument parsing uses native pflag behavior:
 
 - short attached and separate forms work: `-p0`, `-p 0`;
 - long equals and separate forms work: `--parallelism=2`, `--parallelism 2`;
-- flags may be interspersed with the positional directory;
+- flags may be interspersed with positional selections;
 - a repeated flag uses its final value; and
 - `--` ends flag parsing, so `apih -- -suite` treats `-suite` as the directory.
 
-Examples:
-
-```sh
-apih
-apih suites/smoke
-apih -p0 suites/stateful
-apih suites/smoke --parallelism=2
-apih -p1 --parallelism 0 suites/stateful  # final value, 0, wins
-apih -- -suite
-```
-
-Unknown flags, malformed values, parallelism outside `0..2`, and extra
-positional arguments are configuration failures. They produce no application
-stdout; the CLI writes the fatal diagnostic to stderr. Every fatal diagnostic
-uses this lowercase form and links to its specific troubleshooting section:
+Invalid flags or parallelism produce configuration errors on stderr, without
+application stdout. Fatal diagnostics use this lowercase form:
 
 ```text
 error: <message>
@@ -152,7 +179,7 @@ and validation-only exit `101` do not print it.
 | ---: | --- | --- |
 | `0` | Success, including a successful Debug breakpoint. | No error. |
 | `101` | One or more response validations failed. Eligible work completed and validation details were reported to stdout. | No final fatal error. |
-| `102` | Invocation, selected-directory, YAML, definition, or other configuration failure. | Fatal diagnostic on stderr. |
+| `102` | Invocation, selection, YAML, definition, or other configuration failure. | Fatal diagnostic on stderr. |
 | `103` | Internal execution, command, storage, validation-tool, or reporting failure without a more specific nonzero code. | Fatal diagnostic on stderr. |
 
 Some terminal external-command paths preserve that command's nonzero exit code
@@ -161,18 +188,21 @@ use the final stderr diagnostic to identify the failed operation.
 
 ## Suites, stages, and parallelism
 
-Before recursion, `apih` checks regular lowercase `.yaml`/`.yml` files directly
-in the selected directory. Parseable `app: apihydra` documents require string
-kind `root`, `defaults`, or `steps`; invalid kinds take priority over root
-selection, regardless of filename order. Other app values receive no kind
-check. If none qualifies as `app: apihydra`, `kind: root`, execution stops with
-`102` before discovery, cache creation, or stdout; see
+Root discovery starts in each selected directory or steps file's containing
+directory, then searches parents through the filesystem root. It stops at the
+nearest directory containing a regular lowercase `.yaml`/`.yml` document with
+exact string `app: apihydra` and `kind: root`; the filename is arbitrary.
+More distant roots supply no defaults. Selections with different nearest roots
+fail, even when one root is an ancestor of another. Descendant roots do not
+satisfy an ancestor's search. No qualifying root means exit `102` before recursive
+discovery, cache creation, or stdout; see
 [Root defaults file missing](#root-defaults-file-missing).
 
-After root qualification, recursive decoding repeats kind validation.
-Malformed files retain parser diagnostics; nested files cannot mask a missing
-root. Directory depth determines stage: the selected directory is `0`, children
-are `1`, and so on.
+Unrelated invalid kinds cannot mask a missing root. After qualification,
+validate selected files and inherited defaults. Other app values receive no kind
+check. Malformed selected files retain parser diagnostics. The discovered root
+anchors working-directory output, relative source paths, and stage `0`; children
+are stage `1`, and so on, even when only descendant steps are selected.
 
 Only steps documents contain executable requests. Root and defaults documents
 provide defaults inherited by steps in their directory and descendants.
@@ -189,10 +219,8 @@ suite/                              stage 0
         └── refund-steps.yaml       executable steps file
 ```
 
-Use a qualifying root document directly in the suite root and a defaults
-document for a nested directory. Both have the same defaults shape. Behavior
-with multiple qualifying root documents, and cardinality when multiple
-default-bearing documents coexist, is not a published contract.
+Root/defaults share a schema. Multiple root/defaults documents
+per directory have no published cardinality contract.
 
 ### Stage and parallelism rules
 
@@ -325,7 +353,8 @@ Every defaults mapping—directory `spec`, steps-file `spec.defaults`, and step
 
 Do not set these as suite input:
 
-- `index` is the zero-based runtime step index and appears in Debug JSON;
+- `index` is the original zero-based source step index, retained in Debug JSON
+  when only part of a file is selected;
 - `response.actual_status` and `response.actual_body` are assigned from curl's
   response;
 - the raw Curl statement is created only for Debug; and
@@ -936,6 +965,20 @@ apih path/to/suite           # selected directory
 apih -p0 path/to/suite       # deterministic serial mode
 ```
 
+### Run selected steps with their dependencies
+
+Using the [complete runnable suite](#complete-runnable-suite) above:
+
+```sh
+apih manual-suite/health-steps.yml             # whole independent file
+apih manual-suite/session-steps.yaml:0-1       # create and confirm session
+apih manual-suite/session-steps.yaml:0 manual-suite/items
+```
+
+The last command selects the capture producer before its child-stage consumer.
+Running only `manual-suite/items` still inherits root defaults, but fails because
+the skipped session step never supplies `item_id` or session cookies.
+
 ### Minimal GET
 
 ```yaml
@@ -1003,16 +1046,16 @@ Debug cannot redact them. See [Debug breakpoints](#debug-breakpoints).
 | `curl` command error or executable not found | `curl` is required for requests. Install it and ensure it is on `PATH`. |
 | `jq` selector/pretty error or executable not found | `jq` is required during step validation and JSON operations. Check `PATH`, selectors, and actual/expected JSON. |
 | `git` diff error or executable not found after a body mismatch | `git` is required to render unequal expected and actual bodies. Install it and ensure the run cache is writable. |
-| Invalid selected directory | Pass zero or one existing directory. Relative paths resolve from the current working directory. Exit is `102`. |
+| Invalid selection | Use existing directories or steps files with valid zero-based selectors, all sharing one nearest root. Exit is `102` before any request executes. |
 | Malformed YAML or a scalar type error | Correct the reported file/YAML location. Body, variable, capture, metadata, header, path, query, and URL values are strings; quote numeric-looking variable values. |
-| Missing variable | Define it before interpolation. Keep dependent steps serial. The fatal diagnostic identifies the affected variable. |
+| Missing variable | Select its producer and execute it before interpolation. Skipped steps supply no values. The fatal diagnostic identifies the affected variable. |
 | Duplicate variable or capture | The store is run-wide and write-once. Rename the later key; the first value is preserved. |
 | Invalid jq selector | Test it against the actual response with `jq`. Capture and type selectors delegate to jq; selector failure is terminal. |
 | Invalid expected or actual JSON during body validation | Supply a valid nonempty JSON expected body and ensure the service returns JSON. Omit `expected_body` only when body validation is intentionally skipped. |
 | Exit `101` | One or more configured type, status, or body expectations mismatched. Review stdout; eligible work still completed. |
 | Exit `102` | Arguments, selected path, YAML, or definitions were invalid. Review the final stderr diagnostic. |
 | Exit `103` | An internal command, storage, validation-tool, cookie-jar, temporary-data, or reporting operation failed. Review stderr and prerequisite/cache access. |
-| A consumer cannot find a cross-file value | Parallel scheduling may let it run before the producer. Put the steps in one file, separate them by directory stage, or use `-p0`. |
+| A consumer cannot find a cross-file value | Include its producer. Ensure execution order using one file, separate directory stages, or `-p0`; argument order does not schedule work. |
 | A child sees an unexpected cookie in mode `2` | The last parent step completion selects inheritance, so concurrent parent files make the source nondeterministic. Use mode `0`/`1` or redesign ownership. |
 | Cookies still arrive with `disable_cookies: true` | An explicit `Cookie` header is unaffected. Remove that header if it is not wanted. |
 | A later request lost cookie updates | A disabled request leaves the owning jar unchanged; parallel modes also isolate writable jars. Check scope overlays and the selected mode. |
@@ -1021,20 +1064,34 @@ Debug cannot redact them. See [Debug breakpoints](#debug-breakpoints).
 
 ### Root defaults file missing
 
-For `error: root defaults file missing`, select the suite directory with `apih`
-or `apih <directory>`. Add any regular `.yaml`/`.yml` file containing string
-`app: apihydra` and `kind: root`. Nested, malformed, wrongly typed, or
-differently classified documents do not qualify.
+When upward discovery finds no root, exit is `102`, stdout is empty, no run cache
+is created, and stderr is exactly:
+
+```text
+error: kind: root - file missing
+
+please check user manual: https://github.com/divilla/apihydra/blob/master/docs/user-manual/apih.md#root-defaults-file-missing
+```
+
+Add a regular lowercase `.yaml`/`.yml` document with string `app: apihydra` and
+`kind: root` in the selected directory, steps file's containing directory, or an
+ancestor. Filenames are arbitrary. Descendant-only, malformed, or wrongly
+classified documents do not qualify; a qualifying root must still pass full
+definition validation.
 
 ### Invalid arguments
 
-Pass at most one directory and use parallelism `0`, `1`, or `2`. Check unknown
-flags and malformed values.
+Use parallelism `0..2`; check unknown flags and malformed values.
+`invalid selection` identifies an invalid target, range, or combination of roots.
+Every argument must be valid, even when another covers the same work. Use
+existing directories or steps files and zero-based indices within their step
+count, all under one nearest root.
 
 ### Invalid selected directory
 
-Pass an existing directory. Relative paths resolve from the current working
-directory; a YAML file itself is not a valid directory argument.
+Check the selected path. Directories and steps files are supported; relative
+paths start from the invocation directory. Selection failures use
+[invalid arguments](#invalid-arguments).
 
 ### Invalid YAML definition
 
@@ -1078,12 +1135,12 @@ report the diagnostic with a minimal reproducible suite.
 
 Before creating or editing a suite:
 
-1. Identify the selected suite directory and expected directory stages.
+1. Identify selected directories, files, or indices and their common nearest root.
 2. Choose parallelism `0`, `1`, or `2` from dependency and cookie needs.
 3. Put shared request defaults in a root/defaults document.
 4. Keep every narrower override inside the same six-field defaults shape.
 5. Quote values that must decode as strings, especially `vars` values.
-6. Keep producer/consumer steps serial or separated by a completed stage.
+6. Select required producers; keep dependencies serial or separated by a completed stage.
 7. Define each variable or capture name only once per invocation.
 8. Set response type, status, and body expectations independently.
 9. Decide whether automatic cookies should inherit, disable, or explicitly

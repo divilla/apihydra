@@ -128,7 +128,7 @@ func TestREADMEAcceptanceCriterion4IsolatedSourceInstall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("installed apih --help: %v\n%s", err, output)
 	}
-	if !strings.Contains(string(output), "Usage of ") {
+	if !strings.Contains(string(output), "Usage: ") {
 		t.Fatalf("installed apih --help output = %q, want usage", output)
 	}
 }

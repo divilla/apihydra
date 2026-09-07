@@ -4,6 +4,6 @@ package domain
 // directory created by cmd/apih. It is passed by value to runtime services.
 type Config struct {
 	Parallelism int
-	Directory   string
+	Selections  []string
 	TempRunDir  string
 }

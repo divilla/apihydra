@@ -13,9 +13,9 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// ErrRootDefinitionMissing classifies a selected suite directory without a
-// qualifying top-level root definition.
-var ErrRootDefinitionMissing = errors.New("root defaults file missing")
+// ErrRootDefinitionMissing classifies a selection without a
+// qualifying root definition in its directory or any ancestor.
+var ErrRootDefinitionMissing = errors.New("kind: root - file missing")
 
 // ErrDefinitionDiscovery classifies a failure to inspect or read definition
 // inputs from the selected suite directory tree.
@@ -37,16 +37,11 @@ func NewLoader() *Loader {
 	return &Loader{}
 }
 
-// LoadDirectoryStructure first requires a regular .yaml or .yml file directly
-// in suite.WorkDir whose string envelope values are app: apihydra and
-// kind: root. All parseable top-level apihydra documents must first have a
-// string kind equal to root, defaults, or steps; otherwise ErrInvalidKind takes
-// priority over a missing root, even when another file already qualifies.
-// Other app values do not receive kind validation. Malformed files and roots
-// in descendants do not satisfy the requirement. A missing qualifying file returns
-// ErrRootDefinitionMissing before recursive traversal. It then traverses
-// suite.WorkDir and builds suite.Root. Directory paths are relative to
-// suite.WorkDir, and the root path is "/".
+// LoadDirectoryStructure requires a qualifying root directly in suite.WorkDir,
+// as established by Select. It builds only selected subtrees and the ancestor
+// chains needed by selected files or directories. Paths are relative to the
+// discovered root, whose Path is "/" and Stage is 0. Root qualification ignores
+// unrelated invalid kinds; full validation follows within the selected scope.
 func (l *Loader) LoadDirectoryStructure(
 	ctx context.Context,
 	suite *domain.Suite,
@@ -54,7 +49,7 @@ func (l *Loader) LoadDirectoryStructure(
 	if err := validateRootDefinition(ctx, suite.WorkDir); err != nil {
 		return err
 	}
-	root, err := loadDirectory(ctx, suite.WorkDir, "", nil, 0)
+	root, err := loadSelectedDirectory(ctx, suite.WorkDir, "", nil, 0, suite.Selections)
 	if err != nil {
 		return err
 	}
@@ -66,7 +61,10 @@ func (l *Loader) LoadDirectoryStructure(
 }
 
 // LoadDirectoryFiles traverses suite.Root and populates only each Directory.Files
-// slice with that directory's .yaml and .yml files. A traversal or file-read
+// slice with selected .yaml and .yml files plus applicable root/defaults files.
+// Ancestor-only directories exclude unselected steps and unrelated malformed
+// files. Recognizable malformed defaults remain in scope for decoding errors.
+// A traversal or file-read
 // failure returns an ErrDefinitionDiscovery configuration error with the
 // affected path and original cause.
 func (l *Loader) LoadDirectoryFiles(
@@ -74,7 +72,7 @@ func (l *Loader) LoadDirectoryFiles(
 	suite *domain.Suite,
 ) error {
 	files := make(map[*domain.Directory][]*domain.File)
-	if err := collectDirectoryFiles(ctx, suite.WorkDir, suite.Root, files); err != nil {
+	if err := collectSelectedDirectoryFiles(ctx, suite.WorkDir, suite.Root, files, suite.Selections); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
@@ -167,12 +165,13 @@ func (l *Loader) DecodeBaseDefinitions(
 	return nil
 }
 
-func loadDirectory(
+func loadSelectedDirectory(
 	ctx context.Context,
 	workDir string,
 	relativePath string,
 	parent *domain.Directory,
 	stage int,
+	selections []domain.Selection,
 ) (*domain.Directory, error) {
 	absolutePath := filepath.Join(workDir, relativePath)
 	if err := ctx.Err(); err != nil {
@@ -189,11 +188,11 @@ func loadDirectory(
 		Parent: parent,
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || !directoryNeeded(selections, filepath.Join(absolutePath, entry.Name())) {
 			continue
 		}
 		childRelativePath := filepath.Join(relativePath, entry.Name())
-		child, err := loadDirectory(ctx, workDir, childRelativePath, directory, stage+1)
+		child, err := loadSelectedDirectory(ctx, workDir, childRelativePath, directory, stage+1, selections)
 		if err != nil {
 			return nil, err
 		}
@@ -202,11 +201,12 @@ func loadDirectory(
 	return directory, nil
 }
 
-func collectDirectoryFiles(
+func collectSelectedDirectoryFiles(
 	ctx context.Context,
 	workDir string,
 	directory *domain.Directory,
 	files map[*domain.Directory][]*domain.File,
+	selections []domain.Selection,
 ) error {
 	if directory == nil {
 		return nil
@@ -234,6 +234,9 @@ func collectDirectoryFiles(
 		if err != nil {
 			return errs.Build(errs.ExitConfiguration, ErrDefinitionDiscovery, err, absoluteFilePath)
 		}
+		if !fileSelected(selections, absoluteFilePath) && !inheritedDefinition(contents) {
+			continue
+		}
 		files[directory] = append(files[directory], &domain.File{
 			Stage:     directory.Stage,
 			Path:      filePath(relativeDirectoryPath, entry.Name()),
@@ -246,7 +249,7 @@ func collectDirectoryFiles(
 	}
 
 	for _, child := range directory.Children {
-		if err := collectDirectoryFiles(ctx, workDir, child, files); err != nil {
+		if err := collectSelectedDirectoryFiles(ctx, workDir, child, files, selections); err != nil {
 			return err
 		}
 	}
@@ -315,9 +318,6 @@ func validateRootDefinition(ctx context.Context, workDir string) error {
 			return errs.Build(errs.ExitConfiguration, ErrDefinitionDiscovery, err, path)
 		}
 		isRoot, err := checkDefinitionKind(ctx, contents)
-		if errors.Is(err, ErrInvalidKind) {
-			return err
-		}
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return errs.Build(errs.ExitConfiguration, ErrDefinitionDiscovery, ctxErr, path)

@@ -84,13 +84,12 @@ is defined by the applicable skeleton code and comments.
 - [`Resolver`](specs/005-resolver-service.md)
 
 The current CLI composition order is owned by the PRD.
-Loader validates kinds for top-level `app: apihydra` documents before root
-qualification and recursive discovery, then applies the same check before
-base decoding in descendants. `ErrInvalidKind` preserves the exact configured
-diagnostic and configuration code; CLI maps it to the invalid-YAML footer.
-Other discovery and decoding errors retain the
-affected filesystem or YAML provenance through the shared definition error
-identities.
+Loader resolves CLI selections to one nearest suite root, retains selected
+subtrees and ancestor chains, and loads selected files plus applicable defaults.
+Kind validation occurs within that scope after root qualification. Resolver
+validates explicit file targets and ranges, then filters resolved steps while
+preserving source indices. `ErrInvalidSelection` uses the invalid-arguments
+footer; definition errors retain their existing identities and provenance.
 
 ## Execution services
 
