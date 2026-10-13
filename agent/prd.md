@@ -156,6 +156,41 @@ execution mode, `Selections` contains the positional selection strings, and
 receive this value by dependency injection; package globals and process-wide
 temporary-directory overrides are not used.
 
+### Request and response variable replacement
+
+The quoting and single-pass replacement contract is defined by
+[`Binder.InterpolateRequestBody`](../skeleton/internal/execution/binder.go)
+and its reference tests. Request and expected-response bodies use the same
+rules. `$var` inserts a complete JSON value, quoting literal non-JSON strings;
+`${var}` omits a JSON string's outer quotes while preserving its escaping.
+Captured values remain compact JSON in the injected store. Existing body
+examples with quoted `$var` must use unquoted `$var` or quoted `${var}`.
+
+In effective `request.defaults.headers` values, `request.query`, and
+`request.path`, both `$name` and `${name}` insert text. JSON strings in storage
+are decoded, including their escapes; non-string values are inserted verbatim. Headers
+receive no JSON quoting or URL encoding. Query replacements use
+`url.QueryEscape`: spaces become `+`, and reserved characters, Unicode bytes,
+and percent signs are escaped. Only inserted text is encoded: literal
+`fixed=%2F&auth=` remains unchanged, while a variable containing `%2F`
+contributes `%252F`. Empty values and repeated placeholders are supported;
+replacement text is never recursively expanded. Path replacements use the same
+encoding with `%20` for spaces instead of `+`; literal path slashes and percent
+escapes stay unchanged. A slash within a variable becomes `%2F`.
+
+Headers inherited from root, directory, or steps-file defaults resolve at
+runtime for each consuming step, after its variables load and earlier serial
+captures complete. Resolution and preparation preserve placeholders. Header
+names, methods, base URLs, base paths, selectors, and other defaults
+fields are not interpolated. Missing variables preserve their affected name
+and store error; a failed request interpolation leaves body, headers,
+query, and path unchanged and stops execution before Curl runs.
+
+Inside any defaults mapping, `Authorization: $bearer` with literal `bearer`
+equal to `Bearer: 123-some-token`, or `Authorization: "Bearer: ${token}"`
+with literal or captured token `123-some-token`, yields
+`Bearer: 123-some-token` without JSON quotes.
+
 ### Defaults and steps
 
 `Defaults` has exactly `BaseURL`, `BasePath`, `Headers`, `DisableCookies`,
@@ -475,8 +510,7 @@ The following are not product requirements:
   implicit HTTP methods, URL
   normalization, or header canonicalization;
 - variable-name grammar within the documented `$var` and `${var}` forms,
-  escaping, serialization, replacement precedence, or scope beyond the
-  injected Binder store;
+  YAMLString serialization, or scope beyond the injected Binder store;
 - response-type tokens/modifiers, type-filter or projection-selector
   construction, status rules beyond the documented `ExpectedStatus`
   comparison, or body-validation rules beyond the documented normalized

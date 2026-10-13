@@ -110,3 +110,13 @@
 2026-07-09 08:43 021-refactor
 +1171 -1100 code - +496 -343 tests --- change
 
+2026-13-10 08:54 022-request-header-vars
++165 -85 code - +329 -0 tests --- change
+
+
+2026-13-10 022-request-header-vars — approved path interpolation follow-up
+Reused query variable decoding and encoding for request.path, with %20 spaces.
+Aligned Binder reference/tests, runtime/CLI tests, product docs, user manual,
+and global apih-build skill; annotated the path extension dated 2026-10-13.
+Verified make check, Binder reference tests, and skill validation; unit coverage
+97.1% overall, 97.6% execution, and 100% Binder. git diff --check passed.

@@ -17,7 +17,7 @@ spec:
       request:
         path: /items
         query: source=integration
-        body: '{"name":"$name"}'
+        body: '{"name":$name}'
         defaults:
           headers:
             X-Step: local
@@ -31,10 +31,11 @@ spec:
           .ok: [boolean]
         capture:
           item_id: .id
+          item_state: .metadata.state
     - request:
         method: POST
         path: /items/captured
-        body: '{"id":${item_id}}'
+        body: '{"id":${item_id},"state":$item_state,"message":"bearer: ${item_state}"}'
       response:
         expected_body: '{"id":7,"ok":true}'
     - request:

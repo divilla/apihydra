@@ -1,0 +1,22 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        method: GET
+        path: /auth/token
+      response:
+        expected_status: 200
+        capture:
+          token: .token
+    - request:
+        method: GET
+        path: /auth/resource
+        defaults:
+          headers:
+            Authorization: "Bearer ${token}"
+            X-Token: $token
+        query: "fixed=%2F&auth=${token}&again=$token"
+      response:
+        expected_status: 200
+        expected_body: '{"ok":true}'

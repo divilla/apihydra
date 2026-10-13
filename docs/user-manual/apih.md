@@ -282,7 +282,7 @@ spec:
 | --- | --- | --- | --- |
 | `spec.base_url` | String | Every defaults scope; empty inherits | First part of the request URL. |
 | `spec.base_path` | String | Every defaults scope; empty inherits | Middle part of the request URL. |
-| `spec.headers` | Map of string to string | Every defaults scope; keys merge; narrower keys replace inherited keys | Supplies HTTP request headers. |
+| `spec.headers` | Map of string to string | Every defaults scope; keys merge; narrower keys replace inherited keys | Supplies HTTP request headers; values support runtime variable interpolation. |
 | `spec.disable_cookies` | Boolean | Every defaults scope; absent inherits; globally absent leaves automatic cookies enabled | `true` disables curl's automatic cookie engine; `false` explicitly enables or re-enables it. |
 | `spec.timeout` | Integer seconds | Every defaults scope; zero inherits; initial fallback `10` | Passed to curl as its maximum request time. |
 | `spec.retries` | Integer | Every defaults scope; zero inherits; initial fallback `3` | Passed to curl as its retry count. |
@@ -314,7 +314,7 @@ spec:
         method: POST
         path: /items
         query: source=manual
-        body: '{"name":"$item_name"}'
+        body: '{"name":$item_name}'
         defaults:
           headers:
             Content-Type: application/json
@@ -334,9 +334,9 @@ spec:
 | `spec.defaults` | Defaults mapping | Steps file; inherits directory defaults | Overlays the complete defaults shape for all steps in this file. |
 | `spec.steps` | Ordered list of step mappings | Steps file; empty if omitted | Requests execute serially in this order within the file. |
 | `spec.steps[].vars` | Map of string to string | Step; empty if omitted; names enter the run-wide write-once store | Loads literal values before interpolation. Quote numeric and Boolean-looking values so YAML decodes them as strings. |
-| `spec.steps[].request.path` | String | Step; empty if omitted | Final path portion of the request URL. |
+| `spec.steps[].request.path` | String | Step; empty if omitted | Final URL path; placeholders insert URL-encoded text (`%20` spaces). |
 | `spec.steps[].request.method` | String | Step; empty lets curl infer its method | Selects the HTTP method. `HEAD` uses curl's header-only mode. |
-| `spec.steps[].request.query` | String such as `a=1&b=2` | Step; empty if omitted | Appended as the URL query. Supply a valid query fragment. |
+| `spec.steps[].request.query` | String such as `a=1&b=2` | Step; empty if omitted | Appended as the URL query; placeholders insert URL-encoded text. Literal query text stays unchanged. |
 | `spec.steps[].request.body` | String | Step; empty sends no data argument | Request body; `$name` and `${name}` placeholders are interpolated. Use a quoted scalar or block scalar for JSON. |
 | `spec.steps[].request.defaults` | Defaults mapping | Step; inherits steps-file defaults | Final defaults overlay for this request. |
 | `spec.steps[].response.expected_status` | Integer | Step; zero or omitted means any status | Requires exact equality when nonzero. |
@@ -445,67 +445,120 @@ resolved base_url + resolved base_path + request.path
 `request.query` is then added as the query portion. Supply slashes and query
 encoding deliberately; `apih` does not define a URL-normalization contract.
 
-An empty method lets curl infer the method: with no body curl selects `GET`,
-and with body data it selects `POST`. An explicit `HEAD` uses curl's header-only
-mode and returns an empty response body to validation. Other nonempty methods
-are passed as the requested method.
+An empty method lets curl infer `GET` without a body or `POST` with one.
+`HEAD` uses header-only mode and returns an empty validation body. Other
+methods pass through.
 
-Resolved headers become curl headers. An empty body adds no curl data argument.
-A nonempty body is always supplied as request standard input; its Debug
-presentation also follows the inline/`@-` rules described under
-[Debug breakpoints](#debug-breakpoints).
+Resolved headers become curl headers. Nonempty bodies use standard input;
+empty bodies omit data arguments. See [Debug breakpoints](#debug-breakpoints)
+for body presentation.
 
 ## Variables and captures
 
-One invocation has one concurrent, write-once string store. Variable phases
-for each step are:
+One invocation has one concurrent, write-once string store. Each step:
 
-1. Load every `vars` entry.
-2. Interpolate `$name` and `${name}` in `request.body`.
-3. Interpolate the same forms in `response.expected_body`.
-4. Execute the request and all response validations.
-5. Evaluate each `response.capture` jq selector against
-   `response.actual_body` and store its compact result.
+1. Loads `vars`.
+2. Interpolates `$name` and `${name}` in `request.body`, effective
+   `request.defaults.headers` values, `request.query`, and `request.path`.
+3. Interpolates `response.expected_body`.
+4. Executes the request and response validations.
+5. Stores compact jq results from `response.capture` against the actual body.
 
-Interpolation is textual and applies only to the request body and expected
-body—not URLs, query strings, headers, selectors, or defaults. A captured JSON
-number such as `7` is stored as `7`; a captured JSON string such as `"open"` is
-stored with its JSON quotes because capture uses compact jq output.
+Request and expected-response bodies use JSON rules:
 
-The store rejects a second write to an existing name and preserves the first
-value. Define a variable before use, use unique names across `vars` and
-captures, and use parallelism `0` for deterministic cross-file dependencies.
-The exact missing-variable diagnostic, variable-name grammar beyond the two
-placeholder forms, escaping, and replacement precedence are not stable product
+| Form | Use | Replacement |
+|---|---|---|
+| `$name` | Unquoted JSON value | Preserves JSON; JSON-encodes other literals. |
+| `${name}` | JSON string content | Omits outer quotes, retains escapes; preserves non-string JSON. |
+
+With token `123-some-token`, these bodies become
+`{"auth":"123-some-token"}` and `{"auth":"bearer: 123-some-token"}`:
+
+```yaml
+request:
+  body: '{"auth":$token}'
+```
+
+```yaml
+request:
+  body: '{"auth":"bearer: ${token}"}'
+```
+
+Bodies preserve escaping, whitespace, and non-string JSON. Migrate quoted
+`$name` to unquoted `$name` or quoted `${name}`.
+
+Header values, queries, and paths use text rules: both forms decode stored JSON
+strings, including escapes; other values remain verbatim. Headers receive no
+JSON quoting or URL encoding. Query replacements use `url.QueryEscape`:
+spaces become `+`; reserved characters, percent signs, and Unicode bytes are
+escaped. Literal query text stays unchanged: `fixed=%2F` remains as written;
+a variable containing `%2F` contributes `%252F`.
+
+Inherited root, directory, and steps-file headers resolve when consumed,
+after variable loading or earlier serial captures. Header names, methods,
+base URLs/paths, selectors, and other defaults fields are unchanged.
+Empty values and repeated placeholders work; expansion is single-pass.
+Missing variables identify the name and underlying store error, leave body,
+headers, query, and path unchanged, and stop execution before Curl.
+
+`Authorization: $bearer` with literal `Bearer: 123-some-token` and
+`Authorization: "Bearer: ${token}"` with literal or captured `123-some-token`
+yield identical text.
+
+Duplicate names fail, preserving the first value; invocations share no state.
+Use mode `0` for cross-file dependencies. Grammar and exact diagnostics are not stable product
 contracts.
+
+### Path variables (added 2026-10-13)
+
+`request.path` accepts both forms. Only inserted values are encoded: spaces
+`%20`, plus `%2B`, slashes `%2F`, percent `%25`. Literal text stays unchanged.
+
+```yaml
+vars:
+  path: "a b+c/d?e#%ž"
+request:
+  method: GET
+  path: "api/v1/${path}"
+```
+
+Result: `api/v1/a%20b%2Bc%2Fd%3Fe%23%25%C5%BE`. Earlier captures also work.
 
 ### Capture and reuse in two serial steps
 
-The following steps are in one steps file, so their order is serial:
+Run with `apih --parallelism 0 ./apih-tests`; define `base_url` in the root.
+The service returns `{"token":"a b+c&d=e/?#%"}`:
 
 ```yaml
+app: apihydra
+kind: steps
 spec:
   steps:
     - request:
-        method: POST
-        path: /items
-        body: '{"name":"demo"}'
-      response:
-        expected_status: 201
-        capture:
-          item_id: .id
-
-    - request:
-        method: POST
-        path: /items/confirm
-        body: '{"id":${item_id}}'
+        method: GET
+        path: /auth/token
       response:
         expected_status: 200
-        expected_body: '{"id":$item_id,"confirmed":true}'
+        capture:
+          token: .token
+    - request:
+        method: GET
+        path: /auth/resource
+        defaults:
+          headers:
+            Authorization: "Bearer ${token}"
+            X-Token: $token
+        query: "fixed=%2F&auth=${token}&again=$token"
+      response:
+        expected_status: 200
+        expected_body: '{"ok":true}'
 ```
 
-If the first response body is `{"id":7}`, the second request body becomes
-`{"id":7}` and its expected body becomes `{"id":7,"confirmed":true}`.
+Authorization becomes `Bearer a b+c&d=e/?#%`; the query becomes
+`fixed=%2F&auth=a+b%2Bc%26d%3De%2F%3F%23%25&again=a+b%2Bc%26d%3De%2F%3F%23%25`.
+Both query parameters decode to the token. Use query authentication only
+when required. Capture reuse supplies no general secret-input facility.
+Debug exposes complete request values.
 
 ## Response validation
 
@@ -843,7 +896,7 @@ spec:
         method: POST
         query: source=manual
         body: |
-          {"name":"$session_name"}
+          {"name":$session_name}
         defaults:
           base_url: http://127.0.0.1:18080
           base_path: /api
@@ -975,9 +1028,9 @@ apih manual-suite/session-steps.yaml:0-1       # create and confirm session
 apih manual-suite/session-steps.yaml:0 manual-suite/items
 ```
 
-The last command selects the capture producer before its child-stage consumer.
-Running only `manual-suite/items` still inherits root defaults, but fails because
-the skipped session step never supplies `item_id` or session cookies.
+The last command selects the capture producer before its child consumer.
+`manual-suite/items` alone inherits defaults but lacks the skipped producer's
+`item_id` and cookies.
 
 ### Minimal GET
 
@@ -995,19 +1048,8 @@ spec:
 
 ### Headers, query, and JSON body
 
-Headers belong under a defaults mapping:
-
-```yaml
-request:
-  method: POST
-  path: /items
-  query: notify=true&source=agent
-  body: '{"name":"demo"}'
-  defaults:
-    headers:
-      Content-Type: application/json
-      Authorization: Bearer replace-me
-```
+See [Variables and captures](#variables-and-captures) for headers, queries,
+and JSON bodies.
 
 ### Inherit and override defaults
 
@@ -1019,13 +1061,8 @@ example](#worked-inheritance-example).
 
 ### Variables, captures, and validation
 
-Use `vars` for literal run values, `$name`/`${name}` only in bodies, and
-`response.capture` for jq extraction. Keep a dependent flow in one steps file
-or use mode `0`; see [Variables and captures](#variables-and-captures).
-
-Set any combination of `expected_types`, `expected_status`, and
-`expected_body`. Omit a phase to accept any status or skip body comparison as
-described in [Response validation](#response-validation).
+Use [Variables and captures](#variables-and-captures) for serial reuse and
+[Response validation](#response-validation) for expectations.
 
 ### Cookie safety
 

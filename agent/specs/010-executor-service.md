@@ -20,6 +20,12 @@ and preserves resolved definitions while runtime steps are mutated.
 
 ## Boundaries
 
+Effective inherited headers, query values, and paths are interpolated by Binder
+after variable loading at runtime, through the existing request phase.
+Resolved and sibling runtime steps remain isolated, and normal and Debug
+Curl paths receive the same interpolated values. Missing request variables
+stop execution before Curl runs.
+
 Executor coordinates its collaborators. It does not own variable syntax,
 validation algorithms, command implementation, output layout, or contextual
 error formatting. Those contracts remain with their owning skeleton packages.

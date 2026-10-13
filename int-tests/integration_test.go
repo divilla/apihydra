@@ -34,22 +34,24 @@ type observedRequests struct {
 }
 
 type observedRequest struct {
-	method   string
-	path     string
-	rawQuery string
-	headers  http.Header
-	body     string
+	method      string
+	path        string
+	escapedPath string
+	rawQuery    string
+	headers     http.Header
+	body        string
 }
 
 func (o *observedRequests) add(request *http.Request, body string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.requests = append(o.requests, observedRequest{
-		method:   request.Method,
-		path:     request.URL.Path,
-		rawQuery: request.URL.RawQuery,
-		headers:  request.Header.Clone(),
-		body:     body,
+		method:      request.Method,
+		path:        request.URL.Path,
+		escapedPath: request.URL.EscapedPath(),
+		rawQuery:    request.URL.RawQuery,
+		headers:     request.Header.Clone(),
+		body:        body,
 	})
 }
 
@@ -58,6 +60,9 @@ func (o *observedRequests) contains(want observedRequest) bool {
 	defer o.mu.Unlock()
 	for _, request := range o.requests {
 		if request.method != want.method || request.path != want.path || request.rawQuery != want.rawQuery || request.body != want.body {
+			continue
+		}
+		if want.escapedPath != "" && request.escapedPath != want.escapedPath {
 			continue
 		}
 		matches := true
@@ -99,6 +104,33 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 		}
 		requests.add(r, requestBody)
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/path/value" {
+			_, _ = w.Write([]byte(`{"path":"a b+c/d?e#%ž"}`))
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/api/v1/") {
+			const value = "a b+c/d?e#%ž"
+			const escaped = "a%20b%2Bc%2Fd%3Fe%23%25%C5%BE"
+			if r.URL.EscapedPath() != "/api/v1/"+escaped+"/%2F/"+escaped+"/"+escaped || r.URL.Query().Get("path") != value || r.URL.Query().Get("fixed") != "/" {
+				http.Error(w, "incorrect interpolated path", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true}`))
+			return
+		}
+		if r.URL.Path == "/auth/token" {
+			_, _ = w.Write([]byte(`{"token":"a b+c&d=e/?#%"}`))
+			return
+		}
+		if r.URL.Path == "/auth/resource" {
+			const token = "a b+c&d=e/?#%"
+			if r.Header.Get("Authorization") != "Bearer "+token || r.Header.Get("X-Token") != token || r.URL.Query().Get("auth") != token || r.URL.Query().Get("again") != token || r.URL.Query().Get("fixed") != "/" {
+				http.Error(w, "incorrect interpolated authentication", http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"ok":true}`))
+			return
+		}
 		if r.URL.Path == "/cookies" {
 			query := r.URL.Query()
 			if delayText := query.Get("delay_ms"); delayText != "" {
@@ -498,6 +530,33 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 	// normalization behavior part of the black-box contract.
 	runCLI(t, ctx, binary, runRoot, coverageDir, filepath.Join("scenarios", "curl-options"))
 
+	headerVariables := runCLIArguments(t, ctx, binary, runRoot, coverageDir,
+		[]string{"--parallelism", "0", filepath.Join("scenarios", "request-header-vars")}, io.Discard)
+	if headerVariables.exitCode != 0 || headerVariables.stderr != "" {
+		t.Fatalf("header/query capture reuse = %+v", headerVariables)
+	}
+	if !requests.contains(observedRequest{method: "GET", path: "/auth/resource",
+		rawQuery: "fixed=%2F&auth=a+b%2Bc%26d%3De%2F%3F%23%25&again=a+b%2Bc%26d%3De%2F%3F%23%25",
+		headers:  http.Header{"Authorization": {"Bearer a b+c&d=e/?#%"}, "X-Token": {"a b+c&d=e/?#%"}},
+	}) {
+		t.Fatal("server did not receive captured token in headers and query")
+	}
+
+	pathVariables := runCLIArguments(t, ctx, binary, runRoot, coverageDir,
+		[]string{"--parallelism", "0", filepath.Join("scenarios", "request-path-vars")}, io.Discard)
+	if pathVariables.exitCode != 0 || pathVariables.stderr != "" {
+		t.Fatalf("path capture reuse = %+v", pathVariables)
+	}
+	const pathValue = "a b+c/d?e#%ž"
+	const escapedPathValue = "a%20b%2Bc%2Fd%3Fe%23%25%C5%BE"
+	if !requests.contains(observedRequest{method: "GET",
+		path:        "/api/v1/" + pathValue + "///" + pathValue + "/" + pathValue,
+		escapedPath: "/api/v1/" + escapedPathValue + "/%2F/" + escapedPathValue + "/" + escapedPathValue,
+		rawQuery:    "fixed=%2F&path=a+b%2Bc%2Fd%3Fe%23%25%C5%BE",
+	}) {
+		t.Fatal("server did not receive encoded captured and literal path values")
+	}
+
 	validationSuite := "test2"
 	validation := runCLI(t, ctx, binary, runRoot, coverageDir, validationSuite)
 	if validation.exitCode != 101 {
@@ -689,7 +748,7 @@ func TestApplicationScenariosAndCoverage(t *testing.T) {
 			},
 			body: `{"name":"alpha"}`,
 		},
-		{method: http.MethodPost, path: "/api/items/captured", body: `{"id":7}`},
+		{method: http.MethodPost, path: "/api/items/captured", body: `{"id":7,"state":"ready","message":"bearer: ready"}`},
 		{method: http.MethodHead, path: "/api/head"},
 		{method: http.MethodGet, path: "/child-api/inherited"},
 	}

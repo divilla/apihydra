@@ -1,0 +1,20 @@
+app: apihydra
+kind: steps
+spec:
+  steps:
+    - request:
+        method: GET
+        path: /path/value
+      response:
+        expected_status: 200
+        capture:
+          path: .path
+    - vars:
+        literal: "a b+c/d?e#%ž"
+      request:
+        method: GET
+        path: "/api/v1/${path}/%2F/$path/${literal}"
+        query: "fixed=%2F&path=${path}"
+      response:
+        expected_status: 200
+        expected_body: '{"ok":true}'

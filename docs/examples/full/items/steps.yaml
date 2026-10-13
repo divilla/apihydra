@@ -22,7 +22,7 @@ spec:
         path: /items
         query: source=example&limit=20
         body: |
-          {"title":"$item_title"}
+          {"title":$item_title}
         defaults:
           base_url: http://127.0.0.1:18080
           base_path: /api
@@ -35,7 +35,7 @@ spec:
       response:
         expected_status: 201
         expected_body: |
-          {"id":$expected_id,"title":"$item_title","ok":true}
+          {"id":$expected_id,"title":$item_title,"ok":true}
         expected_types:
           .id: [int, zero]
           .title: [string]

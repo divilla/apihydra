@@ -14,14 +14,17 @@
 The binding skeleton defines Binder's API, collaborator, and phase
 contracts. This guide does not reproduce them. The Executor skeleton contract
 defines when the phases run, while KeyValueStore defines duplicate-storage
-behavior and Runner defines capture extraction.
+behavior and Runner defines capture extraction. The reference implementation
+and tests also bind distinct JSON-value and string-content replacement rules
+for the two placeholder forms in bodies, and text replacement in effective
+header values, query strings, and paths, including URL encoding, atomic request
+mutation, and single-pass expansion.
 
 ## Deliberately unspecified
 
 The skeleton does not define:
 
 - variable-name grammar within the two documented placeholder forms;
-- escaping or replacement precedence;
 - variable scope or lifetime beyond the injected Binder store;
 - YAMLString serialization;
 - capture iteration order or selector syntax beyond delegation to
@@ -47,7 +50,8 @@ does not replace the shared field with a parallel `string` carrier.
   zero-value TODO bodies with the four binding variable phases while retaining
   the exact constructor and method signatures.
 - Test output: `internal/execution/binder_test.go` covers loading, both
-  placeholder forms in request and expected-response bodies, missing and
+  placeholder forms in request and expected-response bodies, effective header
+  values, queries, and paths, missing and
   duplicate variables, capture extraction/storage, context/command failures,
   affected names, preserved identities/codes, and mutation boundaries under
   the chosen unspecified policies.
@@ -67,3 +71,23 @@ does not replace the shared field with a parallel `string` carrier.
    binding `ErrVariable` and `ErrCapture` classifications retain underlying
    store or Runner errors and identify the affected name.
 6. Package tests, race tests, and `git diff --check` pass.
+7. `$var` inserts stored JSON unchanged and JSON-encodes non-JSON literal
+   strings, including empty strings, for both body phases.
+8. `${var}` omits JSON string outer quotes while retaining escapes and literal
+   whitespace; non-string JSON values retain their stored representation.
+9. Both forms preserve numeric, Boolean, null, array, and object values without
+   double-encoding captured JSON strings.
+10. Substitution is single-pass, and missing variables leave the affected body
+    unchanged even after an earlier replacement succeeded. A request failure
+    leaves its body, headers, query, and path unchanged.
+
+11. Header/query replacement follows the revised Binder reference for literal
+    and captured strings, decoded escapes, empty and non-string values, query
+    encoding, repeated placeholders, and single-pass replacement. See
+    [`022-request-header-vars.md`](../changes/022-request-header-vars.md).
+
+12. Both forms resolve in request paths using query text decoding and escaping,
+    with `%20` for spaces; literal path text stays unchanged. Missing path
+    variables leave all request fields unchanged and prevent Curl. This
+    extension was approved on 2026-10-13; see the path follow-up in
+    [`022-request-header-vars.md`](../changes/022-request-header-vars.md).

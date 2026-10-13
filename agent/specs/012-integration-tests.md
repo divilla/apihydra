@@ -54,7 +54,9 @@ YAML remains static and unchanged.
   resolved `request.defaults` value with its 10-second timeout and 3 retries,
   a complete authorization header, the raw Curl statement, and latest runtime
   response values, plus a terminal-error debug scenario; these scenarios must
-  not affect either top-level fixture. Cookie scenarios exercise
+  not affect either top-level fixture. The `request-header-vars` scenario verifies serial capture-to-Authorization
+  and query reuse with both forms and reserved characters using synthetic
+  tokens, including decoded server query assertions. Cookie scenarios exercise
   `disable_cookies` inheritance and explicit re-enabling, real local-server
   `Set-Cookie`/`Cookie` traffic, the three parallelism ownership modes,
   parent-child stage inheritance, controlled mode-2 completion selection, and

@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	definitionservice "github.com/divilla/apihydra/internal/definition"
 	"github.com/divilla/apihydra/internal/domain"
 	"github.com/divilla/apihydra/internal/reporting"
 	"github.com/divilla/apihydra/pkg/errs"
@@ -850,7 +851,7 @@ esac
 	first.Request.Defaults.BaseURL = "https://example.test"
 	first.Request.Defaults.BasePath = "/api"
 	first.Request.Path = "/first"
-	first.Request.Body = `{"token":"$request"}`
+	first.Request.Body = `{"token":$request}`
 	first.Response.ExpectedStatus = 201
 	first.Response.ExpectedBody = `{"token":"${request}"}`
 	first.Response.Capture = map[string]domain.YAMLString{"captured": ".token"}
@@ -862,7 +863,7 @@ esac
 	second.Request.Path = "/second"
 	second.Request.Body = `{"token":$captured}`
 	second.Response.ExpectedStatus = 201
-	second.Response.ExpectedBody = `{"token":${captured}}`
+	second.Response.ExpectedBody = `{"token":"${captured}"}`
 	second.Debug = true
 	third := executorStep("steps.yaml", 2)
 	third.Request.Method = "GET"
@@ -1429,4 +1430,138 @@ func readExecutorFile(t *testing.T, path string) string {
 		t.Fatalf("ReadFile(%s) error = %v", path, err)
 	}
 	return string(contents)
+}
+
+// Change 022 criteria 5–6: inherited headers are bound only in runtime copies,
+// after loading or capturing, and both execution paths receive the same values.
+func TestRequestVariablesReachCurlAfterResolutionAndCapture(t *testing.T) {
+	commandDir := newExecutorCommandDir(t)
+	logPath := filepath.Join(commandDir, "arguments")
+	t.Setenv("APIH_EXECUTOR_LOG", logPath)
+	installExecutorCommand(t, commandDir, "curl", `
+/bin/cat >/dev/null
+printf '%s\n' "$@" >> "$APIH_EXECUTOR_LOG"
+printf '{"token":"a b+c&d=e/?#%%"}'
+printf 'http-code:200' >&2
+`)
+	installExecutorCommand(t, commandDir, "jq", `
+input=$(/bin/cat)
+last=
+for argument do last=$argument; done
+case "$last" in
+  .token) printf '"a b+c&d=e/?#%%"\n' ;;
+  *'.[]'*) ;;
+  *) printf '%s\n' "$input" ;;
+esac
+`)
+	producer := executorStep("steps.yaml", 0)
+	dir := producer.Definition.File.Directory
+	root := &domain.Directory{Path: "/", Children: []*domain.Directory{dir}}
+	dir.Parent = root
+	root.DefaultsDefinition = &domain.DefaultsDefinition{Spec: domain.Defaults{
+		BaseURL: "https://example.test", Headers: map[string]string{"X-Root": "$literal"},
+	}}
+	dir.DefaultsDefinition = &domain.DefaultsDefinition{Spec: domain.Defaults{
+		Headers: map[string]string{"X-Directory": "${literal}"},
+	}}
+	producer.Vars = map[string]domain.YAMLString{"literal": "123-some-token"}
+	producer.Request.Method = "GET"
+	producer.Request.Path = "/login"
+	producer.Response.Capture = map[string]domain.YAMLString{"token": ".token"}
+	consumer := producer
+	consumer.Index = 1
+	consumer.Vars = nil
+	consumer.Response.Capture = nil
+	consumer.Request.Path = "/resource/${token}/%2F/$literal"
+	consumer.Request.Defaults.Headers = map[string]string{"Authorization": "Bearer ${token}"}
+	consumer.Request.Query = "fixed=%2F&auth=$token&again=${token}"
+	debug := consumer
+	debug.Index = 2
+	debug.Debug = true
+	sibling := consumer
+	sibling.Index = 3
+	definition := producer.Definition
+	definition.Spec.Defaults.Headers = map[string]string{"X-File": "Bearer: ${literal}"}
+	definition.Spec.Steps = []domain.Step{producer, consumer, debug, sibling}
+	suite := &domain.Suite{Root: root}
+	resolver := definitionservice.NewResolver()
+	ctx := context.Background()
+	if err := resolver.ResolveDefaults(ctx, suite); err != nil {
+		t.Fatal(err)
+	}
+	if err := resolver.ResolveSteps(ctx, suite); err != nil {
+		t.Fatal(err)
+	}
+	config := domain.Config{TempRunDir: t.TempDir()}
+	var output bytes.Buffer
+	executor := NewExecutor(NewBinder(NewKeyValueStore()), NewValidator(config), reporting.NewReporter(&output, false), config)
+	executor.Prepare(suite)
+	if err := executor.cookies.prepareStage([]*domain.Directory{dir}); err != nil {
+		t.Fatal(err)
+	}
+	code, err := executor.processDir(ctx, discardResult, dir)
+	if code != 0 || !errors.Is(err, errDebugStop) {
+		t.Fatalf("execution = (%d, %v), want debug stop", code, err)
+	}
+	wantPath := "/resource/a%20b%2Bc%26d%3De%2F%3F%23%25/%2F/123-some-token"
+	wantQuery := "fixed=%2F&auth=a+b%2Bc%26d%3De%2F%3F%23%25&again=a+b%2Bc%26d%3De%2F%3F%23%25"
+	for _, index := range []int{1, 2} {
+		step := dir.RuntimeSteps[0][index]
+		if step.Request.Defaults.Headers["Authorization"] != "Bearer a b+c&d=e/?#%" || step.Request.Query != wantQuery || step.Request.Path != wantPath {
+			t.Fatalf("runtime request = %+v", step.Request)
+		}
+	}
+	for _, step := range dir.ResolvedSteps[0][1:] {
+		if step.Request.Defaults.Headers["Authorization"] != "Bearer ${token}" || step.Request.Defaults.Headers["X-Root"] != "$literal" || step.Request.Defaults.Headers["X-Directory"] != "${literal}" || step.Request.Defaults.Headers["X-File"] != "Bearer: ${literal}" || step.Request.Query != consumer.Request.Query || step.Request.Path != consumer.Request.Path {
+			t.Fatalf("resolved request mutated: %+v", step.Request)
+		}
+	}
+	if dir.RuntimeSteps[0][3].Request.Defaults.Headers["Authorization"] != "Bearer ${token}" || dir.RuntimeSteps[0][3].Request.Path != consumer.Request.Path {
+		t.Fatal("sibling runtime request mutated")
+	}
+	arguments := readExecutorFile(t, logPath)
+	for _, want := range []string{"Authorization: Bearer a b+c&d=e/?#%", "https://example.test" + wantPath + "?" + wantQuery} {
+		if strings.Count(arguments, want+"\n") != 2 || !strings.Contains(dir.RuntimeSteps[0][2].RawCurl, want) {
+			t.Fatalf("normal/Debug Curl did not receive %q: %s", want, arguments)
+		}
+	}
+	for _, want := range []string{"X-Root: 123-some-token", "X-Directory: 123-some-token", "X-File: Bearer: 123-some-token"} {
+		if strings.Count(arguments, want+"\n") != 3 {
+			t.Fatalf("inherited header missing: %q in %s", want, arguments)
+		}
+	}
+}
+
+func TestMissingRequestVariablesPreventCurl(t *testing.T) {
+	for _, field := range []string{"body", "header", "query", "path"} {
+		for _, debug := range []bool{false, true} {
+			t.Run(field+"/debug-"+strconv.FormatBool(debug), func(t *testing.T) {
+				commandDir := newExecutorCommandDir(t)
+				logPath := filepath.Join(commandDir, "curl-ran")
+				t.Setenv("APIH_EXECUTOR_LOG", logPath)
+				installExecutorCommand(t, commandDir, "curl", `printf ran > "$APIH_EXECUTOR_LOG"; exit 99`)
+				installPassthroughExecutorJQ(t, commandDir)
+				step := executorStep("steps.yaml", 0)
+				step.Debug = debug
+				switch field {
+				case "body":
+					step.Request.Body = "$missing"
+				case "header":
+					step.Request.Defaults.Headers = map[string]string{"Authorization": "Bearer ${missing}"}
+				case "query":
+					step.Request.Query = "auth=$missing"
+				case "path":
+					step.Request.Path = "/api/v1/${missing}"
+				}
+				executor := executorForStep(t, NewBinder(NewKeyValueStore()), step, &bytes.Buffer{})
+				code, err := executor.processDir(context.Background(), discardResult, step.Definition.File.Directory)
+				if code != errs.ExitInternal || !errors.Is(err, ErrVariable) || !errors.Is(err, ErrNotFound) || !strings.Contains(err.Error(), "missing") {
+					t.Fatalf("execution = (%d, %v), want named missing-variable error", code, err)
+				}
+				if _, err := os.Stat(logPath); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("Curl ran: %v", err)
+				}
+			})
+		}
+	}
 }
