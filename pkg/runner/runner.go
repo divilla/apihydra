@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -258,22 +257,16 @@ func execute(ctx context.Context, name, input string, args ...string) (string, s
 }
 
 func executeInDir(ctx context.Context, dir, name, input string, args ...string) (string, string, int, error) {
-	var stdout bytes.Buffer
-	stderr, exitCode, err := runCommand(ctx, dir, name, input, &stdout, args...)
-	return stdout.String(), stderr, exitCode, err
-}
-
-func runCommand(ctx context.Context, dir, name, input string, stdout io.Writer, args ...string) (string, int, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(input)
-	var stderr bytes.Buffer
-	cmd.Stdout = stdout
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
 	if err == nil {
-		return stderr.String(), 0, nil
+		return stdout.String(), stderr.String(), 0, nil
 	}
 	exitCode := -1
 	if cmd.ProcessState != nil {
@@ -282,7 +275,7 @@ func runCommand(ctx context.Context, dir, name, input string, stdout io.Writer, 
 	if ctx.Err() != nil {
 		err = ctx.Err()
 	}
-	return stderr.String(), exitCode, err
+	return stdout.String(), stderr.String(), exitCode, err
 }
 
 type commandFailure struct {

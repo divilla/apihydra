@@ -32,6 +32,10 @@ YAML remains static and unchanged.
   `make integration-test` runs it directly, and `make check` includes it with
   application lint, vet, and race checks. Repository script tests run
   separately through `make check-scripts`; they are outside this harness.
+  Private helpers are grouped in `cli_test.go` for command execution and
+  environment setup, `fixtures_test.go` for fixture and tool preparation, and
+  `coverage_test.go` for coverage aggregation. All retain the `integration`
+  build tag; the main scenario sequence stays in `integration_test.go`.
 - Temporary envelope matrices verify the exact invalid-kind diagnostic and
   footer for missing, unspecified, empty, null, unsupported, and non-string
   kinds under `app: apihydra` within the selected scope after root discovery.

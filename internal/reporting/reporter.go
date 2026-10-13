@@ -1,26 +1,17 @@
 package reporting
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
-	"regexp"
-	"slices"
 	"strings"
 	"sync"
 
 	"github.com/divilla/apihydra/internal/domain"
 	"github.com/divilla/apihydra/pkg/errs"
 	"github.com/divilla/apihydra/pkg/runner"
-
-	"github.com/goccy/go-yaml"
-	"github.com/goccy/go-yaml/ast"
-	"github.com/mattn/go-runewidth"
-	"golang.org/x/term"
 )
 
 // ErrReporter classifies a failure to write execution output.
@@ -34,10 +25,6 @@ var ErrStatusValidation = errors.New("response status does not match expected")
 
 // ErrBodyValidation labels a reported response-body mismatch.
 var ErrBodyValidation = errors.New("response body does not match expected")
-
-var getTerminalSize = term.GetSize
-
-var ansiSequencePattern = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]`)
 
 // Reporter owns all human-readable execution output. The writer is normally
 // os.Stdout and may be replaced by a buffer or another writer in tests.
@@ -76,31 +63,6 @@ type fileOutput struct {
 	block       strings.Builder
 	failed      bool
 	failedSteps map[int]struct{}
-}
-
-type debugStep struct {
-	Index    int                          `json:"index"`
-	Vars     map[string]domain.YAMLString `json:"vars"`
-	Request  debugRequest                 `json:"request"`
-	Response debugResponse                `json:"response"`
-	Debug    bool                         `json:"debug"`
-}
-
-type debugRequest struct {
-	Path     string          `json:"path"`
-	Method   string          `json:"method"`
-	Query    string          `json:"query"`
-	Body     any             `json:"body"`
-	Defaults domain.Defaults `json:"defaults"`
-}
-
-type debugResponse struct {
-	ExpectedStatus int                          `json:"expected_status"`
-	ActualStatus   int                          `json:"actual_status"`
-	ExpectedBody   any                          `json:"expected_body"`
-	ActualBody     any                          `json:"actual_body"`
-	ExpectedTypes  map[string][]string          `json:"expected_types"`
-	Capture        map[string]domain.YAMLString `json:"capture"`
 }
 
 // NewReporter returns a Reporter that serializes writes to output. terminal
@@ -243,73 +205,6 @@ func (r *Reporter) ValidationBody(ctx context.Context, step *domain.Step, diff s
 	return r.writeValidation(ctx, step, "expected_body", formatExpectedBody(diff))
 }
 
-func formatExpectedTypes(step *domain.Step, failed string) string {
-	expectedTypes := map[string][]string(nil)
-	if step != nil {
-		expectedTypes = step.Response.ExpectedTypes
-	}
-
-	selectors := failedTypeSelectors(failed)
-	if len(selectors) == 0 {
-		selectors = make([]string, 0, len(expectedTypes))
-		for selector := range expectedTypes {
-			selectors = append(selectors, selector)
-		}
-		slices.Sort(selectors)
-	}
-
-	var block strings.Builder
-	block.WriteString("    expected_types:\n")
-	for _, selector := range selectors {
-		expected, ok := expectedTypes[selector]
-		if !ok {
-			continue
-		}
-		fmt.Fprintf(
-			&block,
-			"        \x1b[38;5;15m%s:\x1b[0m \x1b[38;5;210m[%s]\x1b[0m\n",
-			selector,
-			strings.Join(expected, ", "),
-		)
-	}
-	return block.String()
-}
-
-func failedTypeSelectors(failed string) []string {
-	decoder := json.NewDecoder(strings.NewReader(failed))
-	selectors := make([]string, 0)
-	for {
-		var declaration struct {
-			Selector string `json:"selector"`
-		}
-		err := decoder.Decode(&declaration)
-		if errors.Is(err, io.EOF) {
-			return selectors
-		}
-		if err != nil {
-			return nil
-		}
-		if declaration.Selector != "" {
-			selectors = append(selectors, declaration.Selector)
-		}
-	}
-}
-
-func formatExpectedBody(diff string) string {
-	var block strings.Builder
-	block.WriteString("    expected_body:\n")
-	trimmed := strings.TrimRight(diff, "\r\n")
-	if trimmed == "" {
-		return block.String()
-	}
-	for _, line := range strings.Split(trimmed, "\n") {
-		block.WriteString("        ")
-		block.WriteString(line)
-		block.WriteByte('\n')
-	}
-	return block.String()
-}
-
 // Debug records the latest runtime state of a selected debug step with exactly
 // these fields and blank lines:
 //
@@ -379,133 +274,6 @@ func (r *Reporter) Debug(ctx context.Context, step *domain.Step) error {
 	}
 	r.stopped = true
 	return nil
-}
-
-func debugStepValue(step *domain.Step) any {
-	if step == nil {
-		return nil
-	}
-	return debugStep{
-		Index: step.Index,
-		Vars:  step.Vars,
-		Request: debugRequest{
-			Path:     step.Request.Path,
-			Method:   step.Request.Method,
-			Query:    step.Request.Query,
-			Body:     debugBodyValue(step.Request.Body),
-			Defaults: step.Request.Defaults,
-		},
-		Response: debugResponse{
-			ExpectedStatus: step.Response.ExpectedStatus,
-			ActualStatus:   step.Response.ActualStatus,
-			ExpectedBody:   debugBodyValue(step.Response.ExpectedBody),
-			ActualBody:     debugBodyValue(step.Response.ActualBody),
-			ExpectedTypes:  step.Response.ExpectedTypes,
-			Capture:        step.Response.Capture,
-		},
-		Debug: step.Debug,
-	}
-}
-
-func debugBodyValue(body domain.YAMLString) any {
-	if json.Valid([]byte(body)) {
-		return json.RawMessage(body)
-	}
-	return body
-}
-
-func colorizeJQJSON(input string) string {
-	const (
-		reset       = "\x1b[0m"
-		punctuation = "\x1b[1;39m"
-		key         = "\x1b[1;34m"
-		stringValue = "\x1b[0;32m"
-		scalar      = "\x1b[0;39m"
-		nullValue   = "\x1b[0;90m"
-	)
-
-	var colored strings.Builder
-	for index := 0; index < len(input); {
-		switch input[index] {
-		case ' ', '\t', '\r', '\n':
-			colored.WriteByte(input[index])
-			index++
-		case '"':
-			end := index + 1
-			for end < len(input) {
-				if input[end] == '\\' {
-					end += 2
-					continue
-				}
-				end++
-				if input[end-1] == '"' {
-					break
-				}
-			}
-			next := end
-			for next < len(input) && (input[next] == ' ' || input[next] == '\t') {
-				next++
-			}
-			color := stringValue
-			if next < len(input) && input[next] == ':' {
-				color = key
-			}
-			colored.WriteString(color)
-			colored.WriteString(input[index:end])
-			colored.WriteString(reset)
-			index = end
-		case '{', '}', '[', ']', ',', ':':
-			colored.WriteString(punctuation)
-			colored.WriteByte(input[index])
-			colored.WriteString(reset)
-			index++
-		default:
-			end := index
-			for end < len(input) && !strings.ContainsRune(" \t\r\n,]}:", rune(input[end])) {
-				end++
-			}
-			color := scalar
-			if input[index:end] == "null" {
-				color = nullValue
-			}
-			colored.WriteString(color)
-			colored.WriteString(input[index:end])
-			colored.WriteString(reset)
-			index = end
-		}
-	}
-	return colored.String()
-}
-
-func (r *Reporter) writeValidation(ctx context.Context, step *domain.Step, field, validation string) error {
-	var definition *domain.StepsDefinition
-	if step != nil {
-		definition = step.Definition
-	}
-	stepIndex := 0
-	if step != nil {
-		stepIndex = step.Index
-	}
-	return r.updateFile(ctx, definition, func(file *fileOutput) {
-		if !file.failed {
-			fmt.Fprintf(&file.block, "[\x1b[38;5;210m✗\x1b[0m] %s\n", definitionReference(definition))
-			file.failed = true
-		}
-		if _, reported := file.failedSteps[stepIndex]; !reported {
-			fmt.Fprintf(
-				&file.block,
-				"[\x1b[38;5;210m✗\x1b[0m] %s %s \x1b[38;5;117mline:%s\x1b[0m\n",
-				calculatedPath(step),
-				effectiveMethod(step),
-				validationLine(step, field),
-			)
-			file.failedSteps[stepIndex] = struct{}{}
-		}
-		file.block.WriteString(validation)
-		if final, _ := ctx.Value(r).(bool); final {
-			file.block.WriteByte('\n')
-		}
-	})
 }
 
 func newFileOutput() *fileOutput {
@@ -580,88 +348,6 @@ func (r *Reporter) ensureStageLocked() *stageOutput {
 	return r.stage
 }
 
-func (r *Reporter) redrawLocked() error {
-	stage := r.ensureStageLocked()
-	r.refreshTerminalDimensionsLocked()
-	content := stage.render()
-	var redraw strings.Builder
-	if stage.rendered {
-		previousRows := stage.renderedRows
-		if stage.renderedWidth != r.terminalWidth || stage.renderedHeight != r.terminalHeight {
-			previousRows = r.visibleRowsToCursor(stage.renderedContent)
-		}
-		if previousRows > 0 {
-			fmt.Fprintf(&redraw, "\x1b[%dA", previousRows)
-		}
-		redraw.WriteString("\r\x1b[J")
-	}
-	redraw.WriteString(content)
-	if err := r.writeLocked(redraw.String()); err != nil {
-		return err
-	}
-	stage.renderedContent = content
-	stage.renderedRows = r.visibleRowsToCursor(content)
-	stage.renderedWidth = r.terminalWidth
-	stage.renderedHeight = r.terminalHeight
-	stage.rendered = true
-	return nil
-}
-
-func (r *Reporter) refreshTerminalDimensionsLocked() {
-	if descriptor, ok := r.output.(interface{ Fd() uintptr }); ok {
-		width, height, err := getTerminalSize(int(descriptor.Fd()))
-		if err == nil && width > 0 && height > 0 {
-			r.terminalWidth = width
-			r.terminalHeight = height
-		}
-	}
-}
-
-func (r *Reporter) visibleRowsToCursor(content string) int {
-	rows := visualRowsToCursor(content, r.terminalWidth)
-	if r.terminalHeight > 0 && rows >= r.terminalHeight {
-		return r.terminalHeight - 1
-	}
-	return rows
-}
-
-func visualRowsToCursor(content string, width int) int {
-	if content == "" || width <= 0 {
-		return 0
-	}
-
-	content = ansiSequencePattern.ReplaceAllString(content, "")
-	rows := 0
-	columns := 0
-	textStart := 0
-	for index := 0; index < len(content); index++ {
-		switch content[index] {
-		case '\n':
-			columns += runewidth.StringWidth(content[textStart:index])
-			rows += wrappedRows(columns, width) + 1
-			columns = 0
-			textStart = index + 1
-		case '\r':
-			columns += runewidth.StringWidth(content[textStart:index])
-			rows, columns = rows+wrappedRows(columns, width), 0
-			textStart = index + 1
-		case '\t':
-			columns += runewidth.StringWidth(content[textStart:index])
-			columns += 8 - columns%8
-			textStart = index + 1
-		}
-	}
-	columns += runewidth.StringWidth(content[textStart:])
-	if !strings.HasSuffix(content, "\n") {
-		rows += wrappedRows(columns, width)
-	}
-	return rows
-}
-
-func wrappedRows(columns, width int) int {
-	return max(1, (columns+width-1)/width) - 1
-}
-
 func (r *Reporter) writeLocked(content string) error {
 	written, err := io.WriteString(r.output, content)
 	if err == nil && written != len(content) {
@@ -685,63 +371,4 @@ func (r *Reporter) contextError(ctx context.Context) error {
 		return errs.Build(errs.ExitInternal, ErrReporter, err)
 	}
 	return nil
-}
-
-func definitionReference(definition *domain.StepsDefinition) string {
-	reference := "<unknown definition>"
-	if definition != nil && definition.File != nil && definition.File.Path != "" {
-		reference = filepath.ToSlash(definition.File.Path)
-		reference = strings.TrimSuffix(reference, filepath.Ext(reference))
-		if !strings.HasPrefix(reference, "/") {
-			reference = "/" + reference
-		}
-	}
-	return reference
-}
-
-func calculatedPath(step *domain.Step) string {
-	path := "<unknown path>"
-	if step != nil {
-		path = step.Request.Defaults.BasePath + step.Request.Path
-		if path == "" {
-			path = "/"
-		}
-	}
-	return path
-}
-
-func effectiveMethod(step *domain.Step) string {
-	method := "<unknown method>"
-	if step != nil {
-		method = step.Request.Method
-		if method == "" {
-			method = "GET"
-			if step.Request.Body != "" {
-				method = "POST"
-			}
-		}
-	}
-	return method
-}
-
-// validationLine resolves the expectation key against the original file bytes.
-// Missing keys fall back to the step position; unavailable sources stay explicit.
-func validationLine(step *domain.Step, field string) string {
-	if step == nil || step.Index < 0 || step.Definition == nil || step.Definition.File == nil {
-		return "unknown"
-	}
-	stepPath := fmt.Sprintf("$.spec.steps[%d]", step.Index)
-	// The nonnegative integer index makes this generated YAML path valid.
-	path, _ := yaml.PathString(stepPath)
-	node, err := path.ReadNode(bytes.NewReader(step.Definition.File.Bytes))
-	if err != nil || node == nil {
-		return "unknown"
-	}
-	for _, candidate := range ast.Filter(ast.MappingValueType, node) {
-		mapping := candidate.(*ast.MappingValueNode)
-		if mapping.Key.GetPath() == stepPath+".response."+field {
-			return fmt.Sprint(mapping.Key.GetToken().Position.Line)
-		}
-	}
-	return fmt.Sprint(node.GetToken().Position.Line)
 }

@@ -156,6 +156,9 @@ Canonical zero-value TODO bodies are not acceptable production implementations.
   working-directory implementation and replaces all remaining TODO bodies with
   serialized per-file buffering, terminal redraw, and non-terminal stage
   commit behavior through the injected writer.
+  Private debug projection and color helpers live in `debug.go`, terminal
+  geometry and redraw helpers in `terminal.go`, and validation formatting and
+  source lookup in `validation.go`, all within `internal/reporting`.
 - Test output: `internal/reporting/reporter_test.go` covers every method,
   byte-exact working-directory and terminal output, stage initialization,
   deterministic per-file buffering, active-region clear/redraw controls,

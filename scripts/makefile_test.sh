@@ -111,6 +111,7 @@ grep -Fxq 'golint:github.com/divilla/apihydra/pkg/runner' "$log"
 
 script_tests=(
 	makefile_test.sh
+	commit_test.pl
 	create-change-branch_test.sh
 	change-merge-direct_test.sh
 	codex-code-spec_unit_test.pl

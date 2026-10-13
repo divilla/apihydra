@@ -74,12 +74,14 @@ goroutines are permitted.
 
 ## Required implementation and tests
 
-- Production output: `internal/execution/executor.go` retains the implemented
-  tree validation and mode-aware directory/file schedulers and replaces the
-  `Prepare` and `processFile` TODO bodies with the binding deep-copy and
-  execution behavior, including the Debug-specific
+- Production output: `internal/execution/executor.go` owns the public Executor
+  entry points and per-step execution behavior, including the Debug-specific
   `CurlBuild`/`CurlRaw`/`CurlExecute` branch and the Config-scoped cookie-jar
   ownership, inheritance, and completion tracking above.
+  Package-private helpers live in `directories.go` for tree validation and
+  planning, `stages.go` for scheduling, `prepare.go` for runtime copies, and
+  `cookies.go` for cookie storage and inheritance. State ownership and package
+  boundaries remain unchanged.
 - Test output: `internal/execution/executor_test.go` retains the reference tests
   and adds coverage for deep-copy isolation, every phase and mutation, all
   validation-reporting paths, collaborator failures, success/debug reporting

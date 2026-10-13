@@ -3,28 +3,23 @@
 package inttests
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/goccy/go-yaml"
 )
 
 const (
@@ -818,19 +813,6 @@ func assertFatalDiagnostic(t *testing.T, stderr string) {
 	}
 }
 
-func TestTotalCoverage(t *testing.T) {
-	percentage, err := totalCoverage("github.com/divilla/apihydra/pkg\tcoverage: 91.2% of statements\ntotal:\t(statements)\t91.2%\n")
-	if err != nil {
-		t.Fatalf("totalCoverage() error = %v", err)
-	}
-	if percentage != 91.2 {
-		t.Fatalf("totalCoverage() = %.1f, want 91.2", percentage)
-	}
-	if _, err := totalCoverage("no total"); err == nil {
-		t.Fatal("totalCoverage() error = nil for malformed summary")
-	}
-}
-
 func TestCoveredCLIBuildDisablesVCSStamping(t *testing.T) {
 	for _, argument := range coveredCLIBuildArguments("apih") {
 		if argument == "-buildvcs=false" {
@@ -849,40 +831,6 @@ func TestPermissionDenialScenariosSupported(t *testing.T) {
 	}
 }
 
-func TestStaticFixturesAreYAML(t *testing.T) {
-	inputRoot := filepath.Join(repositoryRoot(t), "int-tests", "input")
-	files := 0
-	err := filepath.WalkDir(inputRoot, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || (filepath.Ext(path) != ".yaml" && filepath.Ext(path) != ".yml") {
-			return nil
-		}
-		files++
-		contents, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		var document map[string]any
-		if err := yaml.Unmarshal(contents, &document); err != nil {
-			return fmt.Errorf("decode %s: %w", path, err)
-		}
-		for _, key := range []string{"app", "kind", "spec"} {
-			if _, ok := document[key]; !ok {
-				return fmt.Errorf("%s has no %q field", path, key)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if files == 0 {
-		t.Fatal("no integration YAML fixtures found")
-	}
-}
-
 func readRequestBody(r *http.Request) (string, error) {
 	defer r.Body.Close()
 	contents, err := io.ReadAll(r.Body)
@@ -890,295 +838,4 @@ func readRequestBody(r *http.Request) (string, error) {
 		return "", err
 	}
 	return string(contents), nil
-}
-
-func repositoryRoot(t *testing.T) string {
-	t.Helper()
-	workDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("working directory: %v", err)
-	}
-	return filepath.Dir(workDir)
-}
-
-func buildCoveredCLI(t *testing.T, ctx context.Context, repoRoot, binary string) {
-	t.Helper()
-	cmd := exec.CommandContext(ctx, "go", coveredCLIBuildArguments(binary)...)
-	cmd.Dir = repoRoot
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("build covered CLI: %v\n%s", err, output)
-	}
-}
-
-func coveredCLIBuildArguments(binary string) []string {
-	return []string{"build", "-buildvcs=false", "-cover", "-covermode=atomic", "-coverpkg=github.com/divilla/apihydra/...", "-o", binary, "./cmd/apih"}
-}
-
-type cliResult struct {
-	exitCode int
-	stdout   string
-	stderr   string
-}
-
-func runCLI(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string) cliResult {
-	t.Helper()
-	var stdout strings.Builder
-	result := runCLICommand(t, ctx, binary, workDir, coverageDir, suite, &stdout)
-	result.stdout = stdout.String()
-	return result
-}
-
-func runCLIWithEnv(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string, env ...string) cliResult {
-	t.Helper()
-	var stdout strings.Builder
-	result := runCLICommand(t, ctx, binary, workDir, coverageDir, suite, &stdout, env...)
-	result.stdout = stdout.String()
-	return result
-}
-
-func runCLIWithOutput(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string, output io.Writer) cliResult {
-	t.Helper()
-	return runCLICommand(t, ctx, binary, workDir, coverageDir, suite, output)
-}
-
-func runCLICommand(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string, output io.Writer, env ...string) cliResult {
-	t.Helper()
-	return runCLIArguments(t, ctx, binary, workDir, coverageDir, []string{suite}, output, env...)
-}
-
-func runCLIArguments(t *testing.T, ctx context.Context, binary, workDir, coverageDir string, args []string, output io.Writer, env ...string) cliResult {
-	t.Helper()
-	cmd := exec.CommandContext(ctx, binary, args...)
-	cmd.Dir = workDir
-	cmd.Env = cliEnvironment(coverageDir, env...)
-	var stderr strings.Builder
-	cmd.Stdout = output
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-
-	exitCode := 0
-	if err != nil {
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) {
-			t.Fatalf("run %v: %v", args, err)
-		}
-		exitCode = exitErr.ExitCode()
-	}
-	return cliResult{exitCode: exitCode, stderr: stderr.String()}
-}
-
-func runCLICombined(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string) (cliResult, string) {
-	t.Helper()
-	cmd := exec.CommandContext(ctx, binary, suite)
-	cmd.Dir = workDir
-	cmd.Env = cliEnvironment(coverageDir)
-	var combined bytes.Buffer
-	cmd.Stdout = &combined
-	cmd.Stderr = &combined
-	err := cmd.Run()
-	exitCode := 0
-	if err != nil {
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) {
-			t.Fatalf("run combined %s: %v", suite, err)
-		}
-		exitCode = exitErr.ExitCode()
-	}
-	return cliResult{exitCode: exitCode}, combined.String()
-}
-
-func runCLIWithDelayedOutput(t *testing.T, ctx context.Context, binary, workDir, coverageDir, suite string, delay time.Duration) cliResult {
-	t.Helper()
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("create delayed-output pipe: %v", err)
-	}
-	defer reader.Close()
-
-	cmd := exec.CommandContext(ctx, binary, suite)
-	cmd.Dir = workDir
-	cmd.Env = cliEnvironment(coverageDir)
-	var stdout strings.Builder
-	var stderr strings.Builder
-	cmd.Stdout = writer
-	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
-		_ = writer.Close()
-		t.Fatalf("start delayed-output %s: %v", suite, err)
-	}
-
-	drained := make(chan error, 1)
-	go func() {
-		time.Sleep(delay)
-		_, copyErr := io.Copy(&stdout, reader)
-		drained <- copyErr
-	}()
-	err = cmd.Wait()
-	if closeErr := writer.Close(); closeErr != nil {
-		t.Fatalf("close delayed-output writer: %v", closeErr)
-	}
-	if copyErr := <-drained; copyErr != nil {
-		t.Fatalf("drain delayed output: %v", copyErr)
-	}
-
-	exitCode := 0
-	if err != nil {
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) {
-			t.Fatalf("run delayed-output %s: %v", suite, err)
-		}
-		exitCode = exitErr.ExitCode()
-	}
-	return cliResult{exitCode: exitCode, stdout: stdout.String(), stderr: stderr.String()}
-}
-
-func cliEnvironment(coverageDir string, overrides ...string) []string {
-	environment := os.Environ()
-	environment = setEnvironmentValue(environment, "GOCOVERDIR="+coverageDir)
-	for _, value := range userCacheEnvironment(filepath.Join(filepath.Dir(coverageDir), "cache")) {
-		environment = setEnvironmentValue(environment, value)
-	}
-	for _, override := range overrides {
-		environment = setEnvironmentValue(environment, override)
-	}
-	return environment
-}
-
-func userCacheDirectory(root string) string {
-	if runtime.GOOS == "darwin" {
-		return filepath.Join(root, "Library", "Caches")
-	}
-	return root
-}
-
-func userCacheEnvironment(root string) []string {
-	switch runtime.GOOS {
-	case "darwin":
-		return []string{"HOME=" + root}
-	case "windows":
-		return []string{"LocalAppData=" + root}
-	default:
-		return []string{"XDG_CACHE_HOME=" + root}
-	}
-}
-
-func unavailableUserCacheEnvironment() []string {
-	switch runtime.GOOS {
-	case "darwin":
-		return []string{"HOME="}
-	case "windows":
-		return []string{"LocalAppData="}
-	default:
-		return []string{"XDG_CACHE_HOME=", "HOME="}
-	}
-}
-
-func setEnvironmentValue(environment []string, value string) []string {
-	key, _, found := strings.Cut(value, "=")
-	if !found {
-		return append(environment, value)
-	}
-	prefix := key + "="
-	filtered := environment[:0]
-	for _, existing := range environment {
-		if !strings.HasPrefix(existing, prefix) {
-			filtered = append(filtered, existing)
-		}
-	}
-	return append(filtered, value)
-}
-
-func permissionDenialScenariosSupported(effectiveUserID int) bool {
-	return effectiveUserID != 0
-}
-
-func requirePermissionDenialScenarios(t *testing.T) {
-	t.Helper()
-	if !permissionDenialScenariosSupported(effectiveUserID()) {
-		t.Skip("permission-denial scenarios require an unprivileged user")
-	}
-}
-
-func createToolDirectory(t *testing.T, scripts map[string]string, links []string) string {
-	t.Helper()
-	directory := t.TempDir()
-	for name, contents := range scripts {
-		if err := os.WriteFile(filepath.Join(directory, name), []byte(contents), 0o700); err != nil {
-			t.Fatalf("write fake %s: %v", name, err)
-		}
-	}
-	for _, name := range links {
-		path, err := exec.LookPath(name)
-		if err != nil {
-			t.Fatalf("locate %s: %v", name, err)
-		}
-		if err := os.Symlink(path, filepath.Join(directory, name)); err != nil {
-			t.Fatalf("link %s: %v", name, err)
-		}
-	}
-	return directory
-}
-
-func copyFixture(t *testing.T, source, destination, serverURL string) {
-	t.Helper()
-	err := filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		relative, err := filepath.Rel(source, path)
-		if err != nil {
-			return err
-		}
-		target := filepath.Join(destination, relative)
-		if entry.IsDir() {
-			return os.MkdirAll(target, 0o755)
-		}
-		contents, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		contents = []byte(strings.ReplaceAll(string(contents), serverMarker, serverURL))
-		return os.WriteFile(target, contents, 0o644)
-	})
-	if err != nil {
-		t.Fatalf("copy fixture %s: %v", filepath.Base(source), err)
-	}
-}
-
-func assertProductionCoverage(t *testing.T, ctx context.Context, repoRoot, coverageDir string, minimum float64) {
-	t.Helper()
-	profile := filepath.Join(t.TempDir(), "integration.cover")
-	textfmt := exec.CommandContext(ctx, "go", "tool", "covdata", "textfmt", "-i="+coverageDir, "-o="+profile)
-	textfmt.Dir = repoRoot
-	if output, err := textfmt.CombinedOutput(); err != nil {
-		t.Fatalf("format integration coverage: %v\n%s", err, output)
-	}
-
-	cover := exec.CommandContext(ctx, "go", "tool", "cover", "-func="+profile)
-	cover.Dir = repoRoot
-	output, err := cover.CombinedOutput()
-	if err != nil {
-		t.Fatalf("summarize integration coverage: %v\n%s", err, output)
-	}
-	percentage, err := totalCoverage(string(output))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if percentage < minimum {
-		t.Fatalf("integration production coverage = %.1f%%, want at least %.1f%%\n%s", percentage, minimum, output)
-	}
-}
-
-func totalCoverage(output string) (float64, error) {
-	pattern := regexp.MustCompile(`(?m)^total:\s+\(statements\)\s+([0-9]+(?:\.[0-9]+)?)%$`)
-	match := pattern.FindStringSubmatch(output)
-	if match == nil {
-		return 0, fmt.Errorf("coverage summary has no total line: %q", output)
-	}
-	percentage, err := strconv.ParseFloat(match[1], 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse total coverage %q: %w", match[1], err)
-	}
-	return percentage, nil
 }
