@@ -65,9 +65,12 @@ func (l *Resolver) ResolveDefaults(
 // steps-file to individual-step defaults. Before committing, validate every
 // explicit file target and range against fully decoded source definitions,
 // returning ErrInvalidSelection for invalid targets or out-of-bounds indices.
-// Retain only the union of selected source steps in ResolvedSteps, preserving
-// original indices, definition pointers, and canonical order. Unselected
-// predecessors never run, while their source files are still validated in full.
+// Retain the union of selected source steps and all steps in strict ancestor
+// directories through the suite root, preserving original indices, definition
+// pointers, and ascending filename order. File targets do not include other
+// files or skipped predecessors in their containing directory, while selected
+// source files are still validated in full. Explicit targets are validated even
+// when an ancestor or directory selection subsumes them.
 func (l *Resolver) ResolveSteps(
 	ctx context.Context,
 	suite *domain.Suite,

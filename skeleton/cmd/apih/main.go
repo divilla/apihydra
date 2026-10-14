@@ -116,7 +116,7 @@ func parseConfig(args []string, output io.Writer) (domain.Config, error) {
 	flags := pflag.NewFlagSet(name, pflag.ContinueOnError)
 	flags.SetOutput(output)
 	flags.Usage = func() {
-		_, _ = io.WriteString(output, "Usage: "+name+" [flags] [directory | steps-file[:N[-M]] ...]\nSelections must share a suite root; indices are zero-based and ranges inclusive.\n\n")
+		_, _ = io.WriteString(output, "Usage: "+name+" [flags] [directory | steps-file[:N[-M]] ...]\nSelections must share a suite root; indices are zero-based and ranges inclusive.\nAncestor steps through the suite root run first. Mode 1 runs each directory's files in ascending filename order.\n\n")
 		flags.PrintDefaults()
 	}
 	flags.IntVarP(&config.Parallelism, "parallelism", "p", 1, "execution parallelism mode: 0, 1, or 2")

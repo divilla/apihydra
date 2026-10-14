@@ -30,10 +30,10 @@ func loadSelectionPipeline(ctx context.Context, suite *domain.Suite, targets []s
 func TestSelectionPipelinePreservesAncestorsAndValidatesOnlyApplicableFiles(t *testing.T) {
 	root := selectionFixture(t, map[string]string{
 		"root.yaml":           "app: apihydra\nkind: root\nspec:\n  base_url: http://example.test\n  headers: {Root: inherited}\n",
-		"unselected.yaml":     "app: apihydra\nkind: bad\n",
+		"sibling/kind.yaml":   "app: apihydra\nkind: bad\n",
 		"sibling/broken.yaml": "[",
 		"a/defaults.yaml":     "app: apihydra\nkind: defaults\nspec:\n  base_path: /ancestor\n  disable_cookies: true\n",
-		"a/unselected.yaml":   "app: apihydra\nkind: steps\nspec: [",
+		"a/b/unselected.yaml": "app: apihydra\nkind: steps\nspec: [",
 		"a/b/steps.yml":       "app: apihydra\nkind: steps\nspec:\n  defaults:\n    headers: {File: inherited}\n  steps:\n    - request: {path: /zero}\n    - request: {path: /one, defaults: {disable_cookies: false}}\n    - request: {path: /two}\n",
 	})
 	suite := &domain.Suite{WorkDir: filepath.Join(root, "a/b")}
@@ -70,6 +70,41 @@ func TestSelectionPipelinePreservesAncestorsAndValidatesOnlyApplicableFiles(t *t
 	}
 	if err := loadSelectionPipeline(context.Background(), &domain.Suite{WorkDir: root}, []string{"a/b/steps.yml:1"}); !errors.Is(err, ErrInvalidDefinition) || !strings.Contains(err.Error(), "steps.yml") {
 		t.Fatalf("unselected source step validation = %v", err)
+	}
+}
+
+func TestSelectionPipelineDefaultScopeStopsAtNearestRoot(t *testing.T) {
+	outer := selectionFixture(t, map[string]string{
+		"root.yaml":            "app: apihydra\nkind: root\nspec: {}",
+		"broken.yaml":          "[",
+		"inner/root.yml":       "app: apihydra\nkind: root\nspec: {}",
+		"inner/setup.yaml":     "app: apihydra\nkind: steps\nspec: {steps: [{}]}",
+		"inner/api/steps.yaml": "app: apihydra\nkind: steps\nspec: {steps: [{}, {}]}",
+		"inner/other/bad.yaml": "[",
+	})
+	suite := &domain.Suite{WorkDir: filepath.Join(outer, "inner/api")}
+	if err := loadSelectionPipeline(context.Background(), suite, nil); err != nil {
+		t.Fatal(err)
+	}
+	if suite.WorkDir != filepath.Join(outer, "inner") || len(suite.Root.Children) != 1 || len(suite.Root.ResolvedSteps) != 1 || len(suite.Root.ResolvedSteps[0]) != 1 {
+		t.Fatalf("default selection = %+v", suite)
+	}
+	if child := suite.Root.Children[0]; child.Path != "/api" || len(child.ResolvedSteps[0]) != 2 {
+		t.Fatalf("default target = %+v", child)
+	}
+}
+
+func TestSelectionPipelineRejectsInvalidAncestorDefinitions(t *testing.T) {
+	for _, contents := range []string{"[", "app: apihydra\nkind: bad\n", "app: apihydra\nkind: steps\nspec: ["} {
+		root := selectionFixture(t, map[string]string{
+			"root.yaml":       "app: apihydra\nkind: root\nspec: {}",
+			"a/required.yaml": contents,
+			"a/b/steps.yaml":  "app: apihydra\nkind: steps\nspec: {steps: [{}]}",
+		})
+		err := loadSelectionPipeline(context.Background(), &domain.Suite{WorkDir: root}, []string{"a/b/steps.yaml:0"})
+		if (!errors.Is(err, ErrInvalidDefinition) && !errors.Is(err, ErrInvalidKind)) || errs.Code(err, 0) != 102 {
+			t.Fatalf("required ancestor definition = %v", err)
+		}
 	}
 }
 

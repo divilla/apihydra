@@ -115,7 +115,8 @@ goroutines are permitted.
 4. `PlanStages` groups a successfully validated tree by stage, and all stages
    execute serially with complete barriers. Config mode `0` runs directories
    and files serially; mode `1` overlaps same-stage directories but serializes
-   each directory's files; mode `2` also overlaps files within each directory.
+   each directory's files in ascending filename order; mode `2` also overlaps
+   files within each directory.
    Task sets are unbounded, file steps remain serial, and invalid modes return
    configuration `ErrInvalidParallelism`.
 5. Executor brackets each stage with Reporter `BeginStage` and `EndStage`, using
@@ -167,8 +168,10 @@ goroutines are permitted.
 
 ## Selected execution
 
-Resolver supplies only the selected source-step union. Executor preserves those
-indices and provenance while preparing runtime copies. Ancestor directories
-retained for defaults may have no selected steps; their cookie state follows
-the existing empty-directory inheritance rules. Executor never runs omitted
-steps to supply variables, captures, or cookies.
+Resolver supplies the selected source-step union including all steps in strict
+ancestor directories through the suite root. Executor preserves those indices
+and provenance while preparing runtime copies. Parent stages complete before
+child stages, so ancestor captures and cookie state reach descendants through
+the existing runtime contracts. Directories with no steps retain the existing
+empty-directory inheritance rules. Executor never adds omitted source
+predecessors to supply variables, captures, or cookies.

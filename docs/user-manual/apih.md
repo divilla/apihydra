@@ -105,19 +105,21 @@ apih [flags] [selection ...]
 
 | Selection | Executed work |
 | --- | --- |
-| `directory` | All steps in that directory and its descendants. |
-| `steps.yaml` | All steps in that file (`.yml` also works). |
-| `steps.yaml:N` | Step `N`, where `0` is the first entry in `spec.steps`. |
-| `steps.yaml:N-M` | Steps `N` through `M`, inclusive; `N-N` selects one step. |
+| `directory` | Ancestor steps, then all steps in that directory and its descendants. |
+| `steps.yaml` | Ancestor steps, then all steps in that file (`.yml` also works). |
+| `steps.yaml:N` | Ancestor steps, then source step `N` (zero-based). |
+| `steps.yaml:N-M` | Ancestor steps, then source steps `N` through `M`, inclusive; `N-N` selects one. |
 
-With no selections, `apih` selects the current directory and its descendants.
-Running inside a suite selects only that subtree while inheriting ancestor
-defaults. All selections must share the same nearest suite root.
+With no selections, `apih` selects the current directory, its descendants, and
+all steps in its strict ancestor directories through the nearest suite root.
+For file selections, ancestors start above the file's containing directory;
+other files in that directory remain excluded unless selected separately.
+No work above the discovered root is included. All selections must share that
+same nearest suite root.
 
-Paths may be absolute or relative to the invocation directory. Equivalent paths
-are combined using filesystem casing where listable, supplied spelling otherwise.
-File targets must be existing regular files with lowercase `.yaml`/`.yml`
-extensions, `app: apihydra`, and `kind: steps`.
+Paths resolve from the invocation directory; absolute paths work. Files require
+regular lowercase `.yaml`/`.yml` documents with `app: apihydra`, `kind: steps`.
+Equivalent paths use filesystem spelling where listable, supplied spelling otherwise.
 
 ```sh
 apih suites/smoke/api
@@ -126,25 +128,21 @@ apih suites/smoke/api/users.yaml:1-3 suites/smoke/health
 ```
 
 Suffixes apply only to filenames (`suite:v1/child/steps.yaml:0`). Symlinks resolve
-before `..` and root discovery. Repeated or overlapping selections run each
-source step once. Argument order does not change suite execution order or
-parallelism. Selecting `users.yaml:1-3` retains indices `1`, `2`, and `3` in
-Debug and diagnostic `spec.steps[index]` locations.
+before `..` and root discovery. Overlaps execute once, regardless of argument
+order. Source indices remain unchanged in Debug and `spec.steps[index]` diagnostics.
 
-Indices are non-negative decimal integers. Malformed, negative, reversed,
-overflowing, open-ended, comma-separated, or out-of-bounds selectors are invalid,
-as are suffixes on directories and root/defaults file targets. Separate arguments
-express disjoint ranges. Every selection is checked before any request executes;
-one invalid argument fails the entire invocation with exit `102`, even if another
-selection covers it. Ranges are never clamped.
+Indices are non-negative decimal integers; `0` is the first source step.
+Malformed, negative, reversed,
+overflowing, open-ended, comma-separated, or out-of-bounds selectors fail, as do
+directory suffixes and root/defaults targets. Every target is checked before
+requests; invalid arguments fail with `102` even when subsumed. Ranges never clamp.
+Use separate arguments for disjoint ranges.
 
-Selected files are validated in full, including skipped steps, plus the root and
-all applicable ancestor defaults. A directory selection validates supported
-definitions throughout its subtree. Invalid unselected steps files and unrelated
-branches do not block execution. Ancestors retained for defaults do not select
-their steps or sibling subtrees. Skipped steps supply no variables, captures, or
-cookies. Select required producers explicitly; missing values still cause runtime
-errors.
+Validate selected files in full, including skipped steps, applicable defaults,
+and all supported ancestor definitions. Directory selections validate their
+subtrees. Unselected same-directory files and sibling branches remain excluded.
+Ancestor steps supply variables, captures, and cookies; skipped source
+predecessors supply none.
 
 ### Flags
 
@@ -188,39 +186,30 @@ use the final stderr diagnostic to identify the failed operation.
 
 ## Suites, stages, and parallelism
 
-Root discovery starts in each selected directory or steps file's containing
-directory, then searches parents through the filesystem root. It stops at the
-nearest directory containing a regular lowercase `.yaml`/`.yml` document with
-exact string `app: apihydra` and `kind: root`; the filename is arbitrary.
-More distant roots supply no defaults. Selections with different nearest roots
-fail, even when one root is an ancestor of another. Descendant roots do not
-satisfy an ancestor's search. No qualifying root means exit `102` before recursive
-discovery, cache creation, or stdout; see
+Root discovery searches upward from each target directory or file's containing
+directory. The nearest regular lowercase `.yaml`/`.yml` document with exact
+string `app: apihydra` and `kind: root` qualifies; filenames are arbitrary.
+Different nearest roots fail. Descendant roots do not qualify. No root means
+exit `102` before cache creation or stdout; see
 [Root defaults file missing](#root-defaults-file-missing).
 
-Unrelated invalid kinds cannot mask a missing root. After qualification,
-validate selected files and inherited defaults. Other app values receive no kind
-check. Malformed selected files retain parser diagnostics. The discovered root
-anchors working-directory output, relative source paths, and stage `0`; children
-are stage `1`, and so on, even when only descendant steps are selected.
-
-Only steps documents contain executable requests. Root and defaults documents
-provide defaults inherited by steps in their directory and descendants.
+Unrelated invalid kinds cannot mask a missing root. Other app values receive no kind
+check. Required definitions are validated after qualification. Root/defaults
+provide inherited defaults; only steps documents execute requests. The root
+anchors working-directory output, relative paths, and stage `0`.
 
 ```text
-suite/                              stage 0
-├── root.yaml                       root defaults
-├── auth-steps.yaml                 executable steps file
-├── health-steps.yml                executable steps file
-└── billing/                        stage 1; inherits stage 0 defaults
-    ├── defaults.yaml               directory override
-    ├── invoice-steps.yaml          executable steps file
-    └── refunds/                    stage 2; inherits billing defaults
-        └── refund-steps.yaml       executable steps file
+suite/                      stage 0
+├── root.yaml               defaults
+├── auth-steps.yaml         requests
+└── billing/                stage 1
+    ├── defaults.yaml       overrides
+    ├── invoice-steps.yaml  requests
+    └── refunds/            stage 2
+        └── refund-steps.yaml
 ```
 
-Root/defaults share a schema. Multiple root/defaults documents
-per directory have no published cardinality contract.
+Multiple root/defaults documents have no published cardinality contract.
 
 ### Stage and parallelism rules
 
@@ -233,15 +222,25 @@ stage starts.
 | `1` (default) | Concurrent | Serial | Serial | One jar per directory. |
 | `2` | Concurrent | Concurrent | Serial | One jar per steps file. |
 
-Directory and file task sets have no worker-count limit. All modes share one
-concurrent, write-once variable store. Use mode `0` when a producer and
-consumer in different files or directories must execute in deterministic
-order. A parent-stage capture is available to a child stage after the barrier,
-provided no competing write uses the same name.
+All modes share one concurrent, write-once variable store and unbounded tasks.
+In default mode `1`, each directory runs its steps files serially in ascending
+filename order. Root runs first, then children, then grandchildren; every stage
+joins before the next. Same-stage directories, including siblings, run
+concurrently. Use mode `0` to serialize directories. Parent captures reach
+children after the barrier; competing writes still fail.
 
-The order in which concurrently eligible files reach Debug is unspecified.
-Do not build a suite whose correct result depends on which concurrent Debug
-step wins.
+### Designing a suite layout
+
+Place authentication steps in the suite root; descendants use captured tokens
+through variables. Group APIs into directories: `shop/products` for
+`api/products`, or `admin`, `user`, and `unauthenticated`. Directory names are
+layout choices. Authentication-free work can use a separate suite root.
+
+Keep scenarios in one steps file: product create, get by ID, update, get again,
+and delete. Describe the scenario with `metadata.description`. Filename
+prefixes order files in mode `1`; parent stages order dependent children.
+Avoid dependencies between concurrent siblings. Concurrent Debug winners are
+unspecified.
 
 ## YAML document reference
 
@@ -254,6 +253,7 @@ Definitions use the following envelope. `spec` changes shape by document kind.
 | `app` | String; use `apihydra` | Document; empty if omitted | Identifies the APIHydra definition vocabulary. |
 | `kind` | `root`, `defaults`, or `steps` | Required for `app: apihydra` | Selects the `spec` shape and whether the document configures or executes. |
 | `metadata.name` | String | Root, defaults, or steps document; empty if omitted | Descriptive definition name and reporting identity where applicable. |
+| `metadata.description` | String | Root, defaults, or steps document; empty if omitted | Describes the scenario; it does not affect selection or execution. |
 | `metadata.labels` | List of strings | Root, defaults, or steps document; empty if omitted | Descriptive labels. No CLI name/label filter is currently defined. |
 | `spec` | Mapping | Document | Contains defaults for `root`/`defaults`, or defaults plus steps for `steps`. |
 
@@ -301,6 +301,7 @@ app: apihydra
 kind: steps
 metadata:
   name: item-flow
+  description: Create and validate an item.
   labels: [items, smoke]
 spec:
   defaults:
@@ -876,6 +877,7 @@ app: apihydra
 kind: steps
 metadata:
   name: session-flow
+  description: Create an item and confirm the captured ID.
   labels: [manual, session]
 spec:
   defaults:
@@ -1028,9 +1030,10 @@ apih manual-suite/session-steps.yaml:0-1       # create and confirm session
 apih manual-suite/session-steps.yaml:0 manual-suite/items
 ```
 
-The last command selects the capture producer before its child consumer.
-`manual-suite/items` alone inherits defaults but lacks the skipped producer's
-`item_id` and cookies.
+`manual-suite/items` alone runs all root steps first, including the session
+producer, and inherits its `item_id` and cookies. The explicit root-file
+selection in the last command overlaps that automatic work; every source step
+still executes once.
 
 ### Minimal GET
 

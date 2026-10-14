@@ -26,7 +26,8 @@ Alternatively, change into either group and run `apih` without a directory
 argument. Select `basic` or `full` directly: `docs/examples` itself is not a
 suite root.
 
-You can also run an inner directory or selected steps while inheriting defaults:
+You can also run an inner directory or selected steps. Both forms inherit
+defaults and execute strict ancestor steps through the nearest suite root:
 
 ```sh
 apih docs/examples/basic/health

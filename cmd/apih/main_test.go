@@ -509,6 +509,11 @@ func TestParseConfigHelpUsesPflagOutput(t *testing.T) {
 		if !strings.Contains(output.String(), "--parallelism") {
 			t.Fatalf("help output = %q", output.String())
 		}
+		for _, required := range []string{"Ancestor steps through the suite root run first", "ascending filename order"} {
+			if !strings.Contains(output.String(), required) {
+				t.Fatalf("help does not document %q: %s", required, output.String())
+			}
+		}
 	}
 }
 

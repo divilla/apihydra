@@ -11,8 +11,10 @@ const (
 )
 
 // Selection identifies a normalized absolute path in one suite. Directory
-// selections include descendants. Last == -1 selects every step in a file;
-// otherwise First and Last are inclusive original zero-based source indices.
+// selections include descendants. Every selection also includes all steps in
+// strict ancestors of its directory (or file's containing directory), bounded
+// by Suite.WorkDir. Last == -1 selects every step in a file; otherwise First and
+// Last are inclusive original zero-based source indices in that file.
 type Selection struct {
 	Path      string
 	Directory bool
@@ -81,10 +83,11 @@ type StepsDefinition struct {
 	File *File `yaml:"-" json:"-"`
 }
 
-// Metadata describes a named definition and its labels.
+// Metadata describes a named definition, its scenario, and its labels.
 type Metadata struct {
-	Name   string   `yaml:"name" json:"name"`
-	Labels []string `yaml:"labels" json:"labels"`
+	Name        string   `yaml:"name" json:"name"`
+	Description string   `yaml:"description" json:"description"`
+	Labels      []string `yaml:"labels" json:"labels"`
 }
 
 // Defaults contains request values inherited across definition scopes.

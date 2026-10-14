@@ -87,6 +87,11 @@ or other PRD-unspecified choices into assertions. Other scenarios check only
 stable output fragments needed to identify the selected work directory or a
 fatal diagnostic.
 
+Selection fixtures follow [change 023](../changes/023-revert-selections.md):
+strict ancestor steps through the suite root execute before target work, with
+all required definitions validated before requests. File targets continue to
+exclude other files in their containing directory and unrelated branches.
+
 ## Acceptance criteria
 
 1. The integration command builds and executes the production `apih` CLI

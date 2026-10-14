@@ -28,6 +28,66 @@ func selectionFixture(t *testing.T, files map[string]string) string {
 	return dir
 }
 
+func TestSelectionAncestorsRetainStepsAndExcludeFileSiblings(t *testing.T) {
+	root := t.TempDir()
+	for _, test := range []struct {
+		name    string
+		targets []domain.Selection
+		want    map[string][]int
+		fail    bool
+	}{
+		{"directory", []domain.Selection{{Path: filepath.Join(root, "a/b"), Directory: true, Last: -1}}, map[string][]int{"root.yaml": {0, 1}, "a/setup.yml": {0, 1}, "a/b/one.yaml": {0, 1}, "a/b/two.yaml": {0, 1}, "a/b/c/deep.yaml": {0, 1}}, false},
+		{"file", []domain.Selection{{Path: filepath.Join(root, "a/b/one.yaml"), Last: -1}}, map[string][]int{"root.yaml": {0, 1}, "a/setup.yml": {0, 1}, "a/b/one.yaml": {0, 1}}, false},
+		{"index", []domain.Selection{{Path: filepath.Join(root, "a/b/one.yaml"), First: 1, Last: 1}}, map[string][]int{"root.yaml": {0, 1}, "a/setup.yml": {0, 1}, "a/b/one.yaml": {1}}, false},
+		{"range", []domain.Selection{{Path: filepath.Join(root, "a/b/one.yaml"), First: 0, Last: 1}}, map[string][]int{"root.yaml": {0, 1}, "a/setup.yml": {0, 1}, "a/b/one.yaml": {0, 1}}, false},
+		{"ancestor overlap", []domain.Selection{{Path: filepath.Join(root, "a/b/one.yaml"), Last: 0}, {Path: filepath.Join(root, "a/setup.yml"), Last: 0}, {Path: filepath.Join(root, "a/b/one.yaml"), Last: 0}}, map[string][]int{"root.yaml": {0, 1}, "a/setup.yml": {0, 1}, "a/b/one.yaml": {0}}, false},
+		{"invalid ancestor range", []domain.Selection{{Path: filepath.Join(root, "a/b/one.yaml"), Last: 0}, {Path: filepath.Join(root, "a/setup.yml"), First: 2, Last: 2}}, nil, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			groups := make(map[*domain.Directory][][]domain.Step)
+			for _, name := range []string{"root.yaml", "a/setup.yml", "a/b/one.yaml", "a/b/two.yaml", "a/b/c/deep.yaml", "a/other/sibling.yaml"} {
+				definition := &domain.StepsDefinition{App: "apihydra", Kind: domain.KindSteps, File: &domain.File{Path: name}}
+				for index := 0; index < 2; index++ {
+					definition.Spec.Steps = append(definition.Spec.Steps, domain.Step{Index: index, Definition: definition})
+				}
+				directory := &domain.Directory{StepsDefinitions: []*domain.StepsDefinition{definition}}
+				groups[directory] = [][]domain.Step{definition.Spec.Steps}
+			}
+			err := filterSelectedSteps(&domain.Suite{WorkDir: root, Selections: test.targets}, groups)
+			if test.fail {
+				if !errors.Is(err, ErrInvalidSelection) {
+					t.Fatalf("invalid ancestor range = %v", err)
+				}
+				for _, steps := range groups {
+					if len(steps[0]) != 2 {
+						t.Fatal("invalid ancestor range partially changed groups")
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := make(map[string][]int)
+			for directory, steps := range groups {
+				definition := directory.StepsDefinitions[0]
+				for _, step := range steps[0] {
+					got[definition.File.Path] = append(got[definition.File.Path], step.Index)
+					if step.Definition != definition {
+						t.Fatal("lost source provenance")
+					}
+				}
+				if len(definition.Spec.Steps) != 2 {
+					t.Fatal("mutated source definition")
+				}
+			}
+			if !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("selected groups = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestSelectNearestRootAndAtomicFailure(t *testing.T) {
 	dir := selectionFixture(t, map[string]string{
 		"outer.yml":                 "app: apihydra\nkind: root\n",
@@ -100,7 +160,7 @@ func TestSelectionScopeAndMalformedDefaults(t *testing.T) {
 	for _, test := range []struct {
 		path             string
 		needed, selected bool
-	}{{root, true, false}, {filepath.Join(root, "a"), true, false}, {filepath.Join(root, "c"), true, true}, {filepath.Join(root, "c/d"), true, true}, {filepath.Join(root, "cat"), false, false}} {
+	}{{root, true, true}, {filepath.Join(root, "a"), true, false}, {filepath.Join(root, "c"), true, true}, {filepath.Join(root, "c/d"), true, true}, {filepath.Join(root, "cat"), false, false}} {
 		if directoryNeeded(selections, test.path) != test.needed || directorySelected(selections, test.path) != test.selected {
 			t.Fatalf("scope %s", test.path)
 		}

@@ -174,3 +174,39 @@ func TestDefaultsDisableCookiesJSONPreservesPresence(t *testing.T) {
 func boolPointer(value bool) *bool {
 	return &value
 }
+
+func TestMetadataDescriptionRoundTrips(t *testing.T) {
+	for _, kind := range []string{"root", "defaults", "steps"} {
+		t.Run(kind, func(t *testing.T) {
+			input := []byte("app: apihydra\nkind: " + kind + "\nmetadata:\n  name: product-flow\n  description: Create, read, update, and delete a product.\n  labels: [products]\n")
+			var definition StepsDefinition
+			if err := yaml.Unmarshal(input, &definition); err != nil {
+				t.Fatal(err)
+			}
+			want := "Create, read, update, and delete a product."
+			if definition.Metadata.Description != want || definition.Metadata.Name != "product-flow" || len(definition.Metadata.Labels) != 1 {
+				t.Fatalf("metadata = %+v", definition.Metadata)
+			}
+			yamlBytes, err := yaml.Marshal(definition.Metadata)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var yamlRoundTrip Metadata
+			if err := yaml.Unmarshal(yamlBytes, &yamlRoundTrip); err != nil || yamlRoundTrip.Description != want {
+				t.Fatalf("YAML round trip = %+v, %v", yamlRoundTrip, err)
+			}
+			jsonBytes, err := json.Marshal(definition.Metadata)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var jsonFields map[string]any
+			if err := json.Unmarshal(jsonBytes, &jsonFields); err != nil || jsonFields["description"] != want {
+				t.Fatalf("JSON fields = %v, %v", jsonFields, err)
+			}
+			var omitted Metadata
+			if err := yaml.Unmarshal([]byte("name: no-description"), &omitted); err != nil || omitted.Description != "" {
+				t.Fatalf("omitted description = %+v, %v", omitted, err)
+			}
+		})
+	}
+}

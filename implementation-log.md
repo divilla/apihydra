@@ -120,3 +120,11 @@ Aligned Binder reference/tests, runtime/CLI tests, product docs, user manual,
 and global apih-build skill; annotated the path extension dated 2026-10-13.
 Verified make check, Binder reference tests, and skill validation; unit coverage
 97.1% overall, 97.6% execution, and 100% Binder. git diff --check passed.
+
+2026-14-10 05:07 023-revert-selections
++0 -0 code - +40 -7 tests --- change
+
+Verified the existing implementation plus regression tests: make check,
+make check-scripts, go test -coverprofile=/tmp/apih-change-023-unit.cover ./...,
+go test -race ./..., and affected skeleton package tests passed.
+Production unit coverage: 97.2%; every production package exceeds 95%.

@@ -1,5 +1,9 @@
 # Select directories, steps files, and individual steps
 
+Ancestor execution and validation scope are superseded by
+[`023-revert-selections.md`](023-revert-selections.md). The remaining selection
+syntax, root discovery, and validation requirements remain applicable.
+
 ## Outcome
 
 Allow one `apih` invocation to select directories, complete steps files, and

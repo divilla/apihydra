@@ -130,7 +130,9 @@ const (
 
 `BaseDefinition` contains `App`, `Kind`, and raw `Spec`.
 `DefaultsDefinition` and `StepsDefinition` contain `App`, `Kind`, `Metadata`,
-`Spec`, and source `File`. `Metadata` contains `Name` and `Labels`.
+`Spec`, and source `File`. `Metadata` contains `Name`, `Description`, and `Labels`.
+The optional `metadata.description` string describes a scenario and is empty
+when omitted; it has no selection or execution effect.
 
 ### Suite tree
 
@@ -277,20 +279,22 @@ file with exact string `app: apihydra` and `kind: root`; filenames are arbitrary
 Malformed documents and descendant roots do not qualify.
 
 The discovered root anchors `Suite.WorkDir`, reported working-directory output,
-source paths, and stage numbers. Directory selections include their subtrees;
-file selections include only that file. Preserve ancestor chains for defaults,
-stages, and cookie inheritance without executing their unselected steps.
+source paths, and stage numbers. Directory selections include their subtrees.
+Every selection also includes all steps in strict ancestor directories through
+the suite root. For file selections, these ancestors are above the containing
+directory; other files in that directory and its descendants remain excluded.
+No ancestor work above the discovered root is included.
 Selections form a union in existing suite order. Overlaps run each source step
 once. Ranges are inclusive, use original zero-based indices, and preserve
 `Step.Index` and provenance. Negative, malformed, reversed, overflowing, and
 out-of-bounds selectors are configuration failures, even when subsumed by a
 broader valid selection. Never execute any request before checking every target.
 
-Load and validate selected files in full, plus applicable root and ancestor
-defaults. Unselected steps files and unrelated branches do not block execution.
+Load and validate selected files in full, plus applicable root/defaults files
+and all supported definition files in required strict ancestor directories.
 Directory selections retain validation of all definitions in the selected
-subtree. Envelope inspection for root/default discovery does not reinstate
-whole-directory validation in ancestor-only directories. Recognizable malformed
+subtree. Unselected files in a file target's containing directory and unrelated
+sibling branches do not block execution. Recognizable malformed
 inherited defaults still fail decoding, including flow mappings and multiline
 envelope scalars with malformed bodies. Defaults retain existing precedence;
 skipped steps never supply variables, captures, or cookies.
@@ -368,8 +372,12 @@ serially. Mode `1` executes all directories in one stage concurrently while
 executing each directory's steps files and each file's steps serially. Mode `2`
 also executes a directory's steps files concurrently; steps within one file
 remain serial. Directory and file task sets are unbounded. All modes retain one
-shared, concurrent, write-once KeyValueStore, so mode `0` is the deterministic
-choice for cross-file or cross-directory producer/consumer dependencies.
+shared, concurrent, write-once KeyValueStore. Steps files are ordered by
+ascending filename within each directory; mode `1` executes that order serially.
+Root stage `0` completes before children, including automatically selected
+ancestor work. Parent-stage captures are available to descendants after the
+barrier. Same-stage directories remain concurrent in mode `1`; mode `0` also
+serializes directories.
 
 Canonical output order is always stage, directory, steps file, then step,
 using the existing plan and slice order. Reporter buffers each steps file
@@ -504,7 +512,7 @@ The following are not product requirements:
 
 - definition placement/cardinality rules beyond nearest-ancestor root discovery
   and behavior when multiple qualifying roots exist in one directory;
-- deterministic file ordering or symlink/hidden-directory policy;
+- recursive symlink or hidden-directory discovery policy;
 - presence-sensitive default merging beyond the defined `DisableCookies`
   overlay and the timeout/retry fallbacks,
   implicit HTTP methods, URL

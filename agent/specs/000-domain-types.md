@@ -28,6 +28,10 @@ normalized `Selection` values declared in the skeleton; `Suite.WorkDir` anchors
 the tree at the discovered root. Packages do not duplicate this
 carrier or replace it with global flags or temporary-directory state.
 
+`Metadata.Description` is an optional string under `metadata.description` in
+YAML and JSON, alongside `name` and `labels`. It is empty when omitted and
+describes a scenario without changing selection or execution.
+
 `DefaultsDefinition.Spec`, `Directory.ResolvedDefaults`,
 `StepsDefinition.Spec.Defaults`, and `Step.Request.Defaults` are all
 value-typed `domain.Defaults`. Steps do not redeclare `BaseURL`, `BasePath`,
@@ -76,7 +80,8 @@ with the packages named in the PRD.
   request fields, value rather than pointer defaults carriers,
   presence-sensitive `DisableCookies` nil/true/false values, `YAMLString`
   expected/actual body round trips, the step index schema, and every provenance
-  helper, plus `RawCurl` exclusion from YAML and JSON;
+  helper, plus `RawCurl` exclusion from YAML and JSON and description
+  decoding/encoding with existing metadata fields;
   root `architecture_test.go` enforces the package boundaries against
   production paths rather than the protected skeleton tree and preserves the
   canonical skeleton TODO convention.

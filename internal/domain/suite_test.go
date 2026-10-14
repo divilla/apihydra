@@ -102,6 +102,7 @@ func TestDomainSchemaMatchesReference(t *testing.T) {
 	})
 	assertFields(t, reflect.TypeOf(Metadata{}), []fieldSchema{
 		{"Name", reflect.TypeOf(""), `yaml:"name" json:"name"`},
+		{"Description", reflect.TypeOf(""), `yaml:"description" json:"description"`},
 		{"Labels", reflect.TypeOf([]string(nil)), `yaml:"labels" json:"labels"`},
 	})
 	assertFields(t, reflect.TypeOf(Defaults{}), []fieldSchema{
@@ -375,6 +376,59 @@ type fieldSchema struct {
 	name   string
 	typeOf reflect.Type
 	tag    reflect.StructTag
+}
+
+func TestMetadataDescriptionRoundTrips(t *testing.T) {
+	for _, kind := range []string{"root", "defaults", "steps"} {
+		t.Run(kind, func(t *testing.T) {
+			input := []byte("app: apihydra\nkind: " + kind + "\nmetadata:\n  name: product-flow\n  description: Create, read, update, and delete a product.\n  labels: [products]\n")
+			var steps StepsDefinition
+			var defaults DefaultsDefinition
+			var definition any = &steps
+			metadata := &steps.Metadata
+			if kind != "steps" {
+				definition, metadata = &defaults, &defaults.Metadata
+			}
+			if err := yaml.Unmarshal(input, definition); err != nil {
+				t.Fatal(err)
+			}
+			want := "Create, read, update, and delete a product."
+			if metadata.Description != want || metadata.Name != "product-flow" || !reflect.DeepEqual(metadata.Labels, []string{"products"}) {
+				t.Fatalf("metadata = %+v", metadata)
+			}
+			yamlBytes, err := yaml.Marshal(metadata)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var yamlRoundTrip Metadata
+			if err := yaml.Unmarshal(yamlBytes, &yamlRoundTrip); err != nil || !reflect.DeepEqual(yamlRoundTrip, *metadata) {
+				t.Fatalf("YAML round trip = %+v, %v", yamlRoundTrip, err)
+			}
+			jsonBytes, err := json.Marshal(metadata)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var jsonFields map[string]any
+			if err := json.Unmarshal(jsonBytes, &jsonFields); err != nil || jsonFields["description"] != want {
+				t.Fatalf("JSON fields = %v, %v", jsonFields, err)
+			}
+			jsonBytes, err = json.Marshal(definition)
+			if err != nil {
+				t.Fatal(err)
+			}
+			*metadata = Metadata{}
+			if err := json.Unmarshal(jsonBytes, definition); err != nil || !reflect.DeepEqual(*metadata, yamlRoundTrip) {
+				t.Fatalf("JSON definition round trip = %+v, %v", metadata, err)
+			}
+			var omitted Metadata
+			if err := yaml.Unmarshal([]byte("name: no-description"), &omitted); err != nil || omitted.Description != "" {
+				t.Fatalf("omitted description = %+v, %v", omitted, err)
+			}
+			if err := json.Unmarshal([]byte(`{"name":"no-description"}`), &omitted); err != nil || omitted.Description != "" || omitted.Name != "no-description" {
+				t.Fatalf("JSON omitted description = %+v, %v", omitted, err)
+			}
+		})
+	}
 }
 
 func assertFields(t *testing.T, got reflect.Type, want []fieldSchema) {

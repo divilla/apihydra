@@ -64,6 +64,24 @@ func TestUserManualAcceptanceCriterion2QuickStartCLIAndExitCodes(t *testing.T) {
 	assertContainsAll(t, manual, required)
 }
 
+func TestUserManualSelectionLayoutGuidance(t *testing.T) {
+	manual := strings.Join(strings.Fields(readUserManual(t)), " ")
+	assertContainsAll(t, manual, []string{
+		"all steps in its strict ancestor directories through the nearest suite root",
+		"ancestors start above the file's containing directory",
+		"In default mode `1`, each directory runs",
+		"ascending filename order",
+		"every stage joins before the next",
+		"Same-stage directories, including siblings, run",
+		"Place authentication steps in the suite root",
+		"`shop/products`",
+		"`admin`, `user`, and `unauthenticated`",
+		"product create, get by ID, update,",
+		"Describe the scenario with `metadata.description`",
+		"Directory names are layout choices",
+	})
+}
+
 func TestDocumentationUsesCanonicalModuleAndCommandPaths(t *testing.T) {
 	paths := []string{
 		userManualPath,
@@ -97,6 +115,7 @@ func TestUserManualAcceptanceCriterion3CompleteConfigurationReference(t *testing
 		"`app`",
 		"`kind`",
 		"`metadata.name`",
+		"`metadata.description`",
 		"`metadata.labels`",
 		"`spec.base_url`",
 		"`spec.base_path`",
@@ -185,7 +204,7 @@ func TestUserManualAcceptanceCriterion5CompleteExamplesDecodeAndCoverFields(t *t
 
 	session := exampleMapping(t, examples[1])
 	assertMapPaths(t, session, [][]string{
-		{"app"}, {"kind"}, {"metadata", "name"}, {"metadata", "labels"},
+		{"app"}, {"kind"}, {"metadata", "name"}, {"metadata", "description"}, {"metadata", "labels"},
 		{"spec", "defaults"}, {"spec", "steps"},
 	})
 	spec := mapValue(t, session, "spec")

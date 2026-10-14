@@ -19,9 +19,11 @@ and the CLI phase order remain in the PRD.
 creation or reporting. Its binding selection contracts and reference tests live
 in `skeleton/internal/definition/selection.go` and `selection_test.go`.
 `LoadDirectoryStructure` builds the selected tree and necessary ancestor chains;
-`LoadDirectoryFiles` includes selected files and applicable inherited defaults.
-Full decoding stays in Decoder. Unselected steps and unrelated branches do not
-expand the validation scope.
+`LoadDirectoryFiles` includes selected files and applicable inherited defaults,
+plus all supported definitions in strict ancestor directories through the suite
+root. Files are ordered by ascending filename. A file target excludes other
+steps files in its containing directory; unrelated sibling subtrees remain
+excluded. Full decoding stays in Decoder.
 
 `ErrRootDefinitionMissing` uses `kind: root - file missing`; root qualification
 ignores unrelated invalid kinds and malformed files. `ErrInvalidSelection`
@@ -33,7 +35,7 @@ their exact existing diagnostic; malformed definitions keep the source cause.
 
 ## Deliberately unspecified
 
-The skeleton does not define traversal ordering, recursive symlink or hidden-directory
+The skeleton does not define directory traversal ordering, recursive symlink or hidden-directory
 policy, or behavior when multiple qualifying root definitions exist. These
 choices must not be promoted to requirements in this guide.
 
@@ -78,7 +80,10 @@ choices must not be promoted to requirements in this guide.
    `ErrInvalidKind` message and code `102`. Scoped kind validation follows root qualification;
    failed base classification does not change files or directories.
 
-8. File selections include only selected files and applicable defaults; unrelated
-   invalid files do not block execution. Required malformed defaults still fail,
+8. File selections include the selected files, applicable defaults, and all
+   supported definitions in strict ancestor directories through the suite root.
+   Files are loaded in ascending filename order. Invalid unselected files in
+   the containing directory and unrelated branches do not block execution.
+   Required malformed defaults and ancestor definitions still fail,
    including uniformly indented top-level envelopes, flow mappings, and multiline
    envelope scalars.

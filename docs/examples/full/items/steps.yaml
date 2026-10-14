@@ -2,6 +2,7 @@ app: apihydra
 kind: steps
 metadata:
   name: create-item
+  description: Create an item and capture its ID.
   labels: [example, create]
 spec:
   defaults:

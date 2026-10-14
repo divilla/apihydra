@@ -86,6 +86,10 @@ is defined by the applicable skeleton code and comments.
 The current CLI composition order is owned by the PRD.
 Loader resolves CLI selections to one nearest suite root, retains selected
 subtrees and ancestor chains, and loads selected files plus applicable defaults.
+Strict ancestor directories through the suite root include all supported
+definitions and executable steps; a file target excludes other files in its
+containing directory. Files are ordered by ascending filename within each
+directory.
 Kind validation occurs within that scope after root qualification. Resolver
 validates explicit file targets and ranges, then filters resolved steps while
 preserving source indices. `ErrInvalidSelection` uses the invalid-arguments

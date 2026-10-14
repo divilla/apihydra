@@ -33,11 +33,12 @@ func runSelectionScenarios(t *testing.T, ctx context.Context, binary, runRoot, c
 	root := filepath.Join(runRoot, "selection")
 	files := map[string]string{
 		"root.yml":                   "app: apihydra\nkind: root\nspec:\n  base_url: " + server.URL + "\n",
-		"steps.yaml":                 "app: apihydra\nkind: steps\nspec: {defaults: {headers: {Inherited: yes}}, steps: [{request: {path: /wrong-source}}]}",
+		"steps.yaml":                 "app: apihydra\nkind: steps\nspec: {defaults: {headers: {Inherited: yes}}, steps: [{request: {path: /root}}]}",
 		"a/defaults.yaml":            "app: apihydra\nkind: defaults\nspec:\n  headers: {Inherited: yes}\n",
 		"a/steps.yaml":               "app: apihydra\nkind: steps\nspec: {steps: [{request: {path: /parent}}]}",
 		"a/b/steps.yaml":             "app: apihydra\nkind: steps\nspec:\n  steps:\n    - request: {method: GET, path: /zero}\n      vars: {previous: supplied}\n    - request: {method: GET, path: /one}\n    - request: {method: GET, path: /two}\n    - request: {method: GET, path: /three}\n",
-		"a/unselected.yaml":          "app: apihydra\nkind: steps\nspec: [",
+		"a/bad/broken.yaml":          "app: apihydra\nkind: steps\nspec: [",
+		"a/bad/deep/steps.yaml":      "app: apihydra\nkind: steps\nspec: {steps: [{request: {path: /must-not-run}}]}",
 		"unrelated/bad.yaml":         "[",
 		"nested/root.yaml":           "app: apihydra\nkind: root\nspec: {}",
 		"bad-defaults/defaults.yaml": "---\n# indented envelope\n  app: apihydra\n  kind: defaults\n  spec: [\n    broken: value\n",
@@ -54,6 +55,10 @@ func runSelectionScenarios(t *testing.T, ctx context.Context, binary, runRoot, c
 		"commented/steps.yaml":       "app: apihydra\nkind: steps\nspec: {steps: [{request: {path: /must-not-run}}]}",
 		"cr/defaults.yaml":           "app: apihydra\rkind: defaults\rspec: [\r",
 		"cr/steps.yaml":              "app: apihydra\nkind: steps\nspec: {steps: [{request: {path: /must-not-run}}]}",
+		"scope/defaults.yaml":        "app: apihydra\nkind: defaults\nspec: {headers: {Inherited: yes}}",
+		"scope/steps.yaml":           "app: apihydra\nkind: steps\nspec: {steps: [{request: {path: /zero}}, {request: {path: /one}}]}",
+		"scope/sibling.yml":          "app: apihydra\nkind: steps\nspec: {steps: [{request: {path: /sibling}}]}",
+		"scope/deep/steps.yaml":      "app: apihydra\nkind: steps\nspec: {steps: [{request: {path: /deep}}]}",
 	}
 	if os.PathSeparator == '/' {
 		files["suite:v1/defaults.yaml"] = files["a/defaults.yaml"]
@@ -79,14 +84,14 @@ func runSelectionScenarios(t *testing.T, ctx context.Context, binary, runRoot, c
 			want []string
 			code int
 		}{
-			{"colon parent directory", root, []string{"suite:v1/child"}, []string{"/zero", "/one", "/two", "/three"}, 0},
-			{"colon parent file", root, []string{"suite:v1/child/steps.yaml"}, []string{"/zero", "/one", "/two", "/three"}, 0},
-			{"colon parent absolute range", root, []string{filepath.Join(root, "suite:v1/child/steps.yaml:1-2")}, []string{"/one", "/two"}, 0},
-			{"symlink directory", root, []string{"alias"}, []string{"/zero", "/one", "/two", "/three"}, 0},
-			{"symlink overlap", root, []string{"alias", "a/b/steps.yaml:1"}, []string{"/zero", "/one", "/two", "/three"}, 0},
-			{"symlink parent file", root, []string{"alias/../steps.yaml"}, []string{"/parent"}, 0},
-			{"symlink parent absolute step", root, []string{root + "/alias/../steps.yaml:0"}, []string{"/parent"}, 0},
-			{"symlink parent overlap", root, []string{"alias/../steps.yaml:0", "a/steps.yaml"}, []string{"/parent"}, 0},
+			{"colon parent directory", root, []string{"suite:v1/child"}, []string{"/root", "/zero", "/one", "/two", "/three"}, 0},
+			{"colon parent file", root, []string{"suite:v1/child/steps.yaml"}, []string{"/root", "/zero", "/one", "/two", "/three"}, 0},
+			{"colon parent absolute range", root, []string{filepath.Join(root, "suite:v1/child/steps.yaml:1-2")}, []string{"/root", "/one", "/two"}, 0},
+			{"symlink directory", root, []string{"alias"}, []string{"/root", "/parent", "/zero", "/one", "/two", "/three"}, 0},
+			{"symlink overlap", root, []string{"alias", "a/b/steps.yaml:1"}, []string{"/root", "/parent", "/zero", "/one", "/two", "/three"}, 0},
+			{"symlink parent file", root, []string{"alias/../steps.yaml"}, []string{"/root", "/parent"}, 0},
+			{"symlink parent absolute step", root, []string{root + "/alias/../steps.yaml:0"}, []string{"/root", "/parent"}, 0},
+			{"symlink parent overlap", root, []string{"alias/../steps.yaml:0", "a/steps.yaml"}, []string{"/root", "/parent"}, 0},
 			{"malformed inherited defaults", root, []string{"bad-defaults/steps.yaml"}, nil, 102},
 			{"cr defaults file", root, []string{"cr/steps.yaml"}, nil, 102},
 			{"cr defaults step", root, []string{"cr/steps.yaml:0"}, nil, 102},
@@ -110,23 +115,31 @@ func runSelectionScenarios(t *testing.T, ctx context.Context, binary, runRoot, c
 			{"dedented defaults step", root, []string{"dedented/steps.yaml:0"}, nil, 102},
 			{"dedented defaults directory", root, []string{"dedented"}, nil, 102},
 			{"dedented defaults later selection", root, []string{"a/b/steps.yaml", "dedented/steps.yaml"}, nil, 102},
-			{"filesystem casing directory", root, []string{"A/B"}, []string{"/zero", "/one", "/two", "/three"}, 0},
-			{"filesystem casing file", root, []string{"A/B/STEPS.YAML"}, []string{"/zero", "/one", "/two", "/three"}, 0},
-			{"filesystem casing range union", root, []string{"A/B/STEPS.YAML:1-2", "a/b/steps.yaml:1"}, []string{"/one", "/two"}, 0},
+			{"filesystem casing directory", root, []string{"A/B"}, []string{"/root", "/parent", "/zero", "/one", "/two", "/three"}, 0},
+			{"filesystem casing file", root, []string{"A/B/STEPS.YAML"}, []string{"/root", "/parent", "/zero", "/one", "/two", "/three"}, 0},
+			{"filesystem casing range union", root, []string{"A/B/STEPS.YAML:1-2", "a/b/steps.yaml:1"}, []string{"/root", "/parent", "/one", "/two"}, 0},
 			{"empty target", root, []string{"a/b", ""}, nil, 102},
 			{"directory suffix", root, []string{"a/b", "a/b:0"}, nil, 102},
 			{"invalid range end", root, []string{"a/b", "a/b/steps.yaml:0-x"}, nil, 102},
 			{"extra range bounds", root, []string{"a/b", "a/b/steps.yaml:0-1-2"}, nil, 102},
-			{"subtree", root, []string{"a/b"}, []string{"/zero", "/one", "/two", "/three"}, 0},
-			{"current inner", filepath.Join(root, "a/b"), nil, []string{"/zero", "/one", "/two", "/three"}, 0},
-			{"file", root, []string{filepath.Join(root, "a/b/steps.yaml")}, []string{"/zero", "/one", "/two", "/three"}, 0},
-			{"first", root, []string{"a/b/steps.yaml:0"}, []string{"/zero"}, 0},
-			{"range union", root, []string{"a/b/steps.yaml:3", "a/b/steps.yaml:1-3", "a/b/steps.yaml:2"}, []string{"/one", "/two", "/three"}, 0},
-			{"directory overlap", root, []string{"a/b/steps.yaml:1", "a/b"}, []string{"/zero", "/one", "/two", "/three"}, 0},
+			{"subtree", root, []string{"a/b"}, []string{"/root", "/parent", "/zero", "/one", "/two", "/three"}, 0},
+			{"current inner", filepath.Join(root, "a/b"), nil, []string{"/root", "/parent", "/zero", "/one", "/two", "/three"}, 0},
+			{"file", root, []string{filepath.Join(root, "a/b/steps.yaml")}, []string{"/root", "/parent", "/zero", "/one", "/two", "/three"}, 0},
+			{"first", root, []string{"a/b/steps.yaml:0"}, []string{"/root", "/parent", "/zero"}, 0},
+			{"equal range", root, []string{"a/b/steps.yaml:1-1"}, []string{"/root", "/parent", "/one"}, 0},
+			{"ancestor overlap", root, []string{"a/b/steps.yaml:1", "a/steps.yaml:0", "steps.yaml", "a/b/steps.yaml:1"}, []string{"/root", "/parent", "/one"}, 0},
+			{"invalid ancestor range", root, []string{"a/b/steps.yaml:1", "a/steps.yaml:1"}, nil, 102},
+			{"scope directory", root, []string{"scope"}, []string{"/root", "/sibling", "/zero", "/one", "/deep"}, 0},
+			{"scope file excludes siblings and descendants", root, []string{"scope/steps.yaml"}, []string{"/root", "/zero", "/one"}, 0},
+			{"scope index excludes siblings and descendants", root, []string{"scope/steps.yaml:1"}, []string{"/root", "/one"}, 0},
+			{"scope range excludes siblings and descendants", root, []string{"scope/steps.yaml:0-1"}, []string{"/root", "/zero", "/one"}, 0},
+			{"range union", root, []string{"a/b/steps.yaml:3", "a/b/steps.yaml:1-3", "a/b/steps.yaml:2"}, []string{"/root", "/parent", "/one", "/two", "/three"}, 0},
+			{"directory overlap", root, []string{"a/b/steps.yaml:1", "a/b"}, []string{"/root", "/parent", "/zero", "/one", "/two", "/three"}, 0},
 			{"out of bounds", root, []string{"a/b", "a/b/steps.yaml:4"}, nil, 102},
 			{"reversed", root, []string{"a/b", "a/b/steps.yaml:3-1"}, nil, 102},
 			{"different roots", root, []string{"a/b", "nested"}, nil, 102},
 			{"invalid file", root, []string{"a/b", "root.yml"}, nil, 102},
+			{"invalid ancestor", root, []string{"a/bad/deep/steps.yaml:0"}, nil, 102},
 			{"wrong scope includes invalid", root, []string{"a"}, nil, 102},
 		} {
 			t.Run(fmt.Sprintf("selection/%d/%s", mode, test.name), func(t *testing.T) {
@@ -152,6 +165,11 @@ func runSelectionScenarios(t *testing.T, ctx context.Context, binary, runRoot, c
 				mu.Lock()
 				got := slices.Clone(paths)
 				mu.Unlock()
+				if test.name == "scope directory" && mode == 2 && len(got) == len(test.want) {
+					// Concurrent files may interleave; root and child stages still bracket them.
+					slices.Sort(got[1 : len(got)-1])
+					slices.Sort(test.want[1 : len(test.want)-1])
+				}
 				if !reflect.DeepEqual(got, test.want) {
 					t.Fatalf("requests = %v, want %v", got, test.want)
 				}

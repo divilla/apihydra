@@ -29,8 +29,9 @@ defaults carrier at every level: directory resolution,
 `*domain.Defaults` pointers.
 
 Resolver validates every explicit file target and source range, then retains
-only the selected union in `ResolvedSteps`, preserving existing suite order and
-original indices. Selected source files have already been decoded in full.
+the selected union plus every strict ancestor directory's steps through the
+suite root in `ResolvedSteps`, preserving ascending filename order and original
+indices. Selected source files have already been decoded in full.
 Overlapping arguments never duplicate steps, and a broader selection cannot
 hide an invalid range. The binding helpers are in
 `skeleton/internal/definition/selection.go`.
@@ -91,4 +92,6 @@ errors.
 
 9. File targets and ranges are validated before committing the selected union.
    Original indices and provenance are retained; source definitions remain whole,
-   and skipped steps are absent from resolved execution groups.
+   and skipped source predecessors are absent from resolved execution groups.
+   Automatically included ancestor steps remain in those groups, without
+   duplicating steps selected by another argument.

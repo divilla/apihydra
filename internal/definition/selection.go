@@ -215,12 +215,22 @@ func withinDirectory(path, directory string) bool {
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
+// directorySelected includes selected directory subtrees and strict ancestors
+// of each target directory (or file's containing directory). Callers limit
+// discovery to the suite root, so ancestors above that root never enter scope.
 func directorySelected(selections []domain.Selection, path string) bool {
 	if len(selections) == 0 {
 		return true
 	}
 	for _, selection := range selections {
 		if selection.Directory && withinDirectory(path, selection.Path) {
+			return true
+		}
+		targetDirectory := selection.Path
+		if !selection.Directory {
+			targetDirectory = filepath.Dir(targetDirectory)
+		}
+		if path != targetDirectory && withinDirectory(targetDirectory, path) {
 			return true
 		}
 	}

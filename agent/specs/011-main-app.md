@@ -116,5 +116,7 @@ The installation documentation and isolated verification belong to
    a runnable `apih` application and enables the `012` black-box suite.
 
 10. Inner-directory, file, and zero-based range selections preserve inherited
-    defaults, deduplicate overlaps, and never run skipped prerequisites under
-    any parallelism mode. CLI help documents these forms.
+    defaults, include all strict ancestor steps through the suite root, and
+    deduplicate overlaps under every parallelism mode. Source predecessors
+    excluded by a range remain skipped. CLI help documents ancestor execution
+    and ascending filename order within each directory in mode `1`.

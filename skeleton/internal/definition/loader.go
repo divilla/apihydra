@@ -57,8 +57,11 @@ func (l *Loader) LoadDirectoryStructure(
 
 // LoadDirectoryFiles traverses suite.Root and populates only each Directory.Files
 // slice with selected .yaml and .yml files plus applicable root/defaults files.
-// Ancestor-only directories exclude unselected steps and unrelated malformed
-// files. Recognizable malformed defaults remain in scope for decoding errors,
+// Strict ancestor directories through the suite root include all supported
+// definition files, including their steps. File targets do not select other
+// steps files in their containing directory. Sibling subtrees remain excluded.
+// Files and the resulting StepsFiles are in ascending filename order.
+// Recognizable malformed defaults remain in scope for decoding errors,
 // including uniformly indented top-level envelopes.
 // A traversal or file-read
 // failure returns an ErrDefinitionDiscovery configuration error with the

@@ -94,6 +94,10 @@ func (e *Executor) Prepare(
 // concurrently. Directory and file task sets are unbounded. Steps within one
 // file are always serial. All modes retain plan, file-slice, and step-slice
 // order as the canonical reporting order and use the same shared Binder store.
+// Loader supplies files in ascending filename order. In mode 1, each directory
+// runs those files one by one; same-stage directories still run concurrently.
+// Root stage 0 completes before children, and every parent stage completes
+// before its child stage, including automatically selected ancestor steps.
 //
 // Execute creates every cookie jar below Config.TempRunDir before its owning
 // work executes, even when that work currently has cookies disabled. A request
